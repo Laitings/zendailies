@@ -1,0 +1,836 @@
+/* === Inter font setup (prevent faux-bold) === */
+@font-face {
+  font-family: "Inter";
+  src: url("/assets/fonts/Inter-Variable.woff2") format("woff2");
+  font-weight: 100 900; /* variable range */
+  font-style: normal;
+  font-display: swap; /* render immediately, then swap */
+}
+
+/* If you don’t have the variable file, use fixed weights instead:
+@font-face { font-family: "Inter"; src: url("/assets/fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("/assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("/assets/fonts/Inter-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+*/
+
+/* Stop the browser from synthesizing bold/italic while a weight isn’t loaded */
+html {
+  font-synthesis: none; /* prevents synthetic bold/italic flicker */
+}
+
+:root {
+  --topbar-h: 65px;
+  --bg: #0b0c10;
+  --panel: #111318;
+  --accent: #3aa0ff;
+  --text: #e9eef3;
+  --muted: #9aa7b2;
+  --border: #1f2430;
+  --danger: #d62828;
+}
+
+/* --- Base typography and layout --- */
+html,
+body {
+  font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif,
+    system-ui, -apple-system;
+  font-weight: 400; /* add this */
+  -webkit-font-smoothing: antialiased; /* add this (macOS) */
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  height: 100%;
+}
+
+/* Reserve space for the vertical scrollbar to prevent layout shift
+   — only on the scrollbar side, so the top bar touches the left edge */
+/* Reserve gutter only on the scrollbar side; apply to both html and body to cover engines that scroll <body> */
+body {
+  scrollbar-gutter: stable;
+}
+
+h1 {
+  color: var(--text);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+h1 .muted {
+  color: #818b94; /* muted grey variant */
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* --- Body layout --- */
+.zd-body {
+  background: var(--bg);
+  color: var(--text);
+  margin: 0;
+  display: flex; /* NEW: flex column page */
+  flex-direction: column; /* header, main, footer stack */
+  min-height: 100vh; /* fill viewport */
+}
+
+/* --- Topbar --- */
+.zd-topbar {
+  position: fixed;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  height: 65px;
+  width: 100%;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
+
+/* Topbar left: logo + title inline */
+.zd-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* space between logo and text */
+  white-space: nowrap; /* keep on one line */
+  min-width: 0; /* prevents weird wrapping in tight layouts */
+}
+
+.zd-topbar-right {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.zd-topbar .zd-proj-title {
+  font-size: 1.6rem; /* big but fits 65px header */
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--text);
+  white-space: nowrap; /* keep on one line */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70vw; /* avoids overlap with user menu */
+  text-align: center;
+}
+
+/* Sub header under the topbar for project links */
+.zd-subbar {
+  position: sticky; /* stays under the fixed topbar when scrolling */
+  top: var(--topbar-h);
+  z-index: 900;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+}
+
+/* --- True centering of project title --- */
+.zd-topbar {
+  position: relative;
+}
+
+.zd-topbar-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none; /* title doesn't block clicks on nav */
+}
+
+.zd-topbar-center .zd-proj-title {
+  font-weight: 600;
+  color: var(--text);
+  pointer-events: auto; /* clickable if you ever make it a link */
+}
+
+.zd-subnav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap; /* room for many links */
+  font-size: 0.95rem;
+}
+
+.zd-subnav a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.zd-subnav a:hover,
+.zd-subnav a.active {
+  color: var(--accent);
+}
+
+/* Make the Leave button look like a link and sit inline */
+.zd-subnav-leave {
+  display: inline;
+}
+.zd-subnav-leave .btn-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+}
+.zd-subnav-leave .btn-link:hover {
+  color: var(--accent);
+}
+
+/* Make the whole brand (logo + text) a single clickable target */
+.zd-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--text);
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.zd-brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.zd-brand-text {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.zd-logo {
+  width: 120px;
+  height: auto;
+  filter: brightness(1.1);
+}
+
+.zd-logo-topbar {
+  height: 34px;
+  width: auto;
+  display: block;
+}
+
+/* --- Navigation --- */
+.zd-nav a {
+  margin: 0 10px;
+  color: var(--muted);
+}
+
+.zd-nav a.active,
+.zd-nav a:hover {
+  color: var(--text);
+}
+
+.zd-proj-title {
+  text-align: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.2px;
+  margin: 0 auto 4px;
+  line-height: 1.2;
+}
+
+.zd-toplink {
+  margin-left: 8px;
+}
+
+.zd-toplink {
+  color: var(--text);
+  text-decoration: none;
+  opacity: 0.9;
+}
+
+.zd-toplink.active {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.zd-proj-nav {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.zd-proj-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.zd-proj-nav a:hover,
+.zd-proj-nav a.active {
+  color: var(--accent);
+}
+/* --- User menu (top right) --- */
+.zd-user {
+  position: relative;
+  color: var(--muted);
+}
+
+.zd-user-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.zd-user-btn:hover {
+  border-color: var(--accent);
+}
+
+.zd-caret {
+  fill: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.zd-user-btn[aria-expanded="true"] .zd-caret {
+  transform: rotate(180deg);
+}
+
+/* Topbar user dropdown – authoritative */
+.zd-user-menu {
+  position: absolute;
+  right: 0;
+  top: 42px;
+  min-width: 220px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  display: none; /* JS toggles to 'block' */
+  overflow: hidden;
+  z-index: 2000; /* sits above topbar content */
+}
+
+.zd-user-menu a,
+.zd-user-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  color: var(--text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.zd-user-menu a:hover,
+.zd-user-menu button:hover {
+  background: #151821;
+}
+
+.zd-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 200px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  padding: 6px;
+  display: none;
+  z-index: 2000;
+}
+
+.zd-menu.show {
+  display: block;
+}
+
+.zd-menu-item {
+  display: block;
+  padding: 10px 10px;
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.zd-menu-item:hover {
+  background: var(--bg);
+}
+
+.zd-menu-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--border);
+  border-radius: 1px;
+}
+
+/* --- Login/Auth buttons --- */
+.zd-logout,
+.zd-login {
+  color: var(--accent);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.zd-logout:hover,
+.zd-login:hover {
+  border-color: var(--accent);
+}
+
+/* --- Main content area --- */
+.zd-main {
+  flex: 1 0 auto;
+  /* top padding includes the fixed topbar height */
+  padding: calc(24px + var(--topbar-h)) 20px 40px;
+  box-sizing: border-box;
+}
+
+/* standard page width */
+.zd-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.zd-title {
+  font-size: 1.6rem;
+  font-weight: 600;
+  margin: 0 0 6px 0;
+}
+
+/* --- Shell layout --- */
+.zd-shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  /* single column – no empty sidebar column */
+  gap: 16px;
+  padding: 16px;
+  /* 
+  margin-top: var(--topbar-h, 65px);
+  */
+}
+
+@media (max-width: 1000px) {
+  .zd-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .zd-sidebar {
+    order: 2;
+  }
+}
+
+.zd-sidebar {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  min-height: 200px;
+}
+
+.zd-pre {
+  background: transparent;
+  margin: 8px 16px 0 16px;
+  color: var(--muted);
+}
+
+/* --- Footer --- */
+.zd-footer {
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex: 0 0 auto;
+}
+
+/* --- Card container for centered content (login, dashboard, etc.) --- */
+.zd-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px 40px;
+  /* max-width: 420px; */
+  width: 100%;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.zd-card h1,
+.zd-card h2 {
+  margin: 0 0 12px;
+  color: var(--text);
+  text-align: center;
+}
+
+.zd-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.zd-card input[type="text"],
+.zd-card input[type="email"],
+.zd-card input[type="password"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.zd-card button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.zd-card button:hover {
+  background: #61b8ff;
+}
+
+.zd-card p:last-child {
+  margin-bottom: 0;
+}
+
+/* --- Login brand section --- */
+.zd-login-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+/* Add this new scoped rule for login/centered cards: */
+.zd-login-wrap .zd-card,
+.zd-card--centered {
+  max-width: 420px;
+  margin: 0 auto; /* center it */
+}
+
+.zd-login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: var(--text);
+}
+
+.zd-login-brand h1 {
+  font-size: 1.6rem;
+  margin: 12px 0 0;
+  letter-spacing: 0.5px;
+  color: var(--text);
+}
+
+/* === Projects dashboard layout === */
+.zd-card-grid {
+  display: grid;
+}
+
+/* override login-card sizing so dashboard cards behave */
+.zd-card-grid .zd-card {
+  max-width: none;
+  width: 100%;
+  padding: 16px 16px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.zd-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.zd-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.zd-card-meta {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 10px;
+}
+
+.zd-card-meta .zd-k {
+  color: var(--muted);
+  margin-right: 6px;
+}
+
+.zd-card-meta .zd-v {
+  color: var(--text);
+}
+
+.zd-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* --- Chips --- */
+.zd-chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.zd-chip-ok {
+  color: #9af7b0;
+  background: #0f2417;
+  border-color: #275f3a;
+}
+
+.zd-chip-muted {
+  color: var(--muted);
+  background: #0e1116;
+  border-color: var(--border);
+}
+
+/* --- Clips page layout --- */
+/* Clips page: stack headline+info above the table */
+.zd-clips-layout {
+  display: grid;
+  grid-template-columns: 1fr; /* single column by default */
+  gap: 16px;
+}
+
+.zd-clips-head {
+  display: block;
+  margin: 0 0 12px;
+  padding: 0 8px;
+}
+
+/* If you still keep a left column element on this page, it will naturally fall below the head.
+   If you want it gone on this page, add display:none to its specific class here. */
+
+/* --- Global form controls: inputs, selects, textareas --- */
+/* Dark-as-background inputs */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="number"],
+input[type="url"],
+input[type="tel"],
+select,
+textarea {
+  background: var(--bg); /* same as page bg */
+  color: var(--text);
+  border: 1px solid var(--border); /* subtle edge so it's visible */
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 15px;
+  outline: none;
+  box-sizing: border-box;
+  caret-color: var(--text);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #778493; /* a bit dimmer than #9aa7b2 for contrast on darker bg */
+  opacity: 1;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(58, 160, 255, 0.18);
+}
+
+/* Hover: keep dark, just lift border slightly */
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: #263042;
+}
+
+/* Disabled/read-only contrast */
+input:disabled,
+textarea:disabled,
+select:disabled {
+  background: var(--bg);
+  color: #6d7a88;
+  border-color: #1a202a;
+  opacity: 1;
+}
+
+/* Fix Chrome autofill yellow on very dark backgrounds */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0 1000px var(--bg) inset;
+  transition: background-color 9999s ease-out 0s;
+}
+
+/* Optional: make selects' arrow visible on dark bg (WebKit) */
+select {
+  background-image: none;
+}
+
+/* Icons */
+.icon-btn {
+  background: none;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Base icon: no forced color transform */
+.icon {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+}
+
+/* Force-white variant for black SVG sources (thumbnail.svg, metadata.svg, etc.) */
+.icon--light {
+  filter: invert(1) brightness(1.2);
+}
+
+/* Danger variant (trash/delete) keeps red tint */
+.icon-btn.danger {
+  background: none;
+  border: none;
+}
+
+.icon-btn.danger .icon {
+  filter: invert(42%) sepia(89%) saturate(3733%) hue-rotate(340deg)
+    brightness(90%) contrast(90%);
+  /* Produces a dark red tone similar to #d62828 */
+}
+
+.icon-btn.danger:hover {
+  background: rgba(214, 40, 40, 0.15);
+}
+
+.icon-btn.danger:active {
+  background: rgba(214, 40, 40, 0.3);
+}
+
+.zd-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+  z-index: 1000;
+}
+
+/* Global defensive rules for modals */
+.zd-modal-backdrop,
+.zd-modal {
+  position: fixed; /* take them out of normal flow */
+}
+
+/* --- Sub top bar centering --- */
+.zd-subbar {
+  --subbar-h: 15x; /* tweak height if you like */
+}
+
+.zd-subbar .zd-subnav {
+  display: flex;
+  align-items: center; /* vertical centering */
+  justify-content: center; /* horizontal centering */
+  gap: 14px;
+  height: var(--subbar-h);
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+
+.zd-subbar .zd-subnav a,
+.zd-subbar .zd-subnav .btn-link {
+  display: inline-flex; /* fixes baseline misalignment */
+  align-items: center; /* vertical centering inside each item */
+  height: calc(var(--subbar-h) - 2px);
+  padding: 0 12px;
+  line-height: 1;
+}
+
+.zd-subnav-leave {
+  /* make the form behave like a link */
+  margin: 0;
+  display: inline-flex;
+}
+
+.zd-subnav-leave .btn-link {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 0 12px;
+}
+
+/* === Layout: center main content shell === */
+.zd-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-inline: 16px;
+}
+
+/* Add these rules to your main.css to fix the subbar and spacing */
+
+/* Fix subbar to stay under the fixed topbar */
+.zd-subbar {
+  position: fixed !important;
+  top: var(--topbar-h) !important;
+  width: 100%;
+  z-index: 900;
+}
+
+/* Remove the extra 65px top padding when a project subbar is present */
+body.has-subbar .zd-main {
+  padding-top: 24px !important;
+}
+
+/* Keep the original spacing on pages without a subbar */
+body:not(.has-subbar) .zd-main {
+  padding-top: calc(24px + var(--topbar-h)) !important;
+}
+
+/* Add padding to shell when subbar is present so content doesn't hide under it */
+body.has-subbar .zd-shell {
+  padding-top: 50px; /* subbar height + spacing */
+}

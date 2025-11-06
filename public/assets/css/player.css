@@ -1,0 +1,669 @@
+/* =========================================================
+   PLAYER PAGE STYLES
+   ========================================================= */
+
+/* Player styles */
+.tc-overlay {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  pointer-events: none;
+  user-select: none;
+}
+
+.zd-player-frame > video {
+  position: absolute;
+  /* you already have this via inset:0 */
+  z-index: 1;
+  /* video below */
+}
+
+.tc-overlay {
+  z-index: 3;
+  /* overlay above */
+}
+
+/* Frame-step controls: overlay that fades like native controls */
+.frame-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 35px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+  /* video is z-index:1, tcOverlay can be 3 */
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+.frame-controls.controls-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.frame-controls button {
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+  backdrop-filter: saturate(1.2) blur(2px);
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+.frame-controls button:hover {
+  background: rgba(58, 160, 255, 0.22);
+}
+
+.frame-controls button:active {
+  transform: translateY(1px);
+}
+
+.frame-controls button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ===== Layout & Containers ===== */
+
+.zd-bleed {
+  width: 100%;
+  margin: 0;
+  overflow-x: clip;
+}
+
+/* Player sizing variables (16:9) */
+:root {
+  --player-maxw: 1000px;
+  --player-maxh: 92vh;
+}
+
+.zd-player-wrap {
+  width: 100%;
+  max-width: var(--player-maxw);
+  margin: 0 auto;
+}
+
+.zd-player-frame {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  /* 16:9 aspect ratio */
+  max-height: var(--player-maxh);
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.zd-player-frame > video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+
+/* LUT Overlay */
+/* === LUT Canvas overlay === */
+.lut-canvas {
+  position: absolute;
+  inset: 0;
+  /* fill player frame */
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  /* above video; below timecode chip if you want */
+  pointer-events: none;
+  /* let clicks reach video/controls */
+}
+
+/* ===== 3-Column Layout: [Sidebar | Resizer | Player] ===== */
+
+.player-layout {
+  display: grid;
+  grid-template-columns: var(--clipcol-width, 360px) 10px 1fr;
+  column-gap: 8px;
+  align-items: stretch;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.player-layout > aside {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  overflow: visible;
+  position: relative;
+  contain: none;
+}
+
+.sidebar-resizer {
+  width: 6px;
+  height: 100%;
+  margin: 0 auto;
+  cursor: col-resize;
+  background: var(--border);
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+.sidebar-resizer:hover {
+  background: var(--accent);
+}
+
+/* ===== Scroll Containers ===== */
+
+.clipScrollOuter,
+.dayScrollOuter {
+  max-height: 72vh;
+  position: relative;
+  overflow: visible;
+  padding: 10px;
+  margin: -10px;
+}
+
+.clipScrollInner,
+.dayScrollInner {
+  overflow-y: auto;
+  overflow-x: visible;
+  max-height: 72vh;
+  padding: 10px 12px 20px 10px;
+  margin: -10px 0 0 -10px;
+  box-sizing: border-box;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #2a3342 #0b0c10;
+}
+
+/* Scrollbar Styles */
+html,
+body,
+#clipListContainer,
+.clipScrollInner,
+.dayScrollInner {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3342 #0b0c10;
+}
+
+#clipListContainer::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.clipScrollInner::-webkit-scrollbar,
+.dayScrollInner::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+#clipListContainer::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+.clipScrollInner::-webkit-scrollbar-track,
+.dayScrollInner::-webkit-scrollbar-track {
+  background: #0b0c10;
+}
+
+#clipListContainer::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+.clipScrollInner::-webkit-scrollbar-thumb,
+.dayScrollInner::-webkit-scrollbar-thumb {
+  background: #2a3342;
+  border-radius: 8px;
+  border: 2px solid #0b0c10;
+}
+
+#clipListContainer::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+.clipScrollInner::-webkit-scrollbar-thumb:hover,
+.dayScrollInner::-webkit-scrollbar-thumb:hover {
+  background: #3a4658;
+}
+
+/* ===== Clip List & Day List Containers ===== */
+
+#clipListContainer,
+#dayListContainer {
+  position: relative;
+  overflow: visible !important;
+  padding: 10px 12px 10px 10px;
+  margin: -10px -12px -10px -10px;
+  box-sizing: border-box;
+  contain: none;
+}
+
+#clipListContainer {
+  scrollbar-gutter: stable;
+}
+
+#clipListContainer.list-view,
+#dayListContainer.list-view {
+  display: block;
+}
+
+#clipListContainer.grid-view,
+#dayListContainer.grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  overflow: visible !important;
+}
+
+#dayListContainer.grid-view {
+  gap: 18px;
+  padding-left: 10px;
+  margin-left: -10px;
+}
+
+/* ===== Clip Items (Base Styles) ===== */
+
+#clipListContainer .clip-item {
+  display: block;
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  background: transparent;
+  margin-bottom: 8px;
+  min-width: 0;
+  isolation: isolate;
+  transition: background 0.15s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  transform-origin: center center;
+}
+
+#clipListContainer .clip-item:hover {
+  background: rgba(58, 160, 255, 0.06);
+  transform: scale(1.03);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.6);
+  position: relative;
+  z-index: 999;
+  pointer-events: auto;
+}
+
+#clipListContainer .clip-item:focus {
+  outline: none;
+}
+
+/* Blue outline for active/focused clips */
+#clipListContainer .clip-item::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 2;
+  /* Ensure outline doesn't get clipped during transforms */
+  transform: translateZ(0);
+}
+
+#clipListContainer .clip-item.is-active::after,
+#clipListContainer .clip-item:focus-visible::after {
+  border-color: #3aa0ff;
+  z-index: 3;
+}
+
+/* ===== Clip List View (Horizontal Layout) ===== */
+
+#clipListContainer.list-view .clip-item {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  grid-auto-rows: min-content;
+  /* rows size to content */
+  gap: 0 10px;
+  align-items: center;
+  padding: 8px;
+  min-height: 52px;
+  /* 36px thumbnail + padding */
+}
+
+#clipListContainer.list-view .thumb-wrap {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+#clipListContainer.list-view .clip-item img,
+#clipListContainer.list-view .clip-item .no-thumb {
+  width: 64px !important;
+  height: 36px !important;
+  min-width: 64px;
+  min-height: 36px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #000;
+  border: 1px solid var(--border);
+  align-self: center;
+  flex-shrink: 0;
+  display: block;
+}
+
+#clipListContainer.list-view .clip-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 0 2px 0;
+  /* tiny space above filename */
+}
+
+#clipListContainer.list-view .clip-text {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* vertical centering of title+filename */
+  min-width: 0;
+  /* allow ellipsis to work */
+}
+
+#clipListContainer.list-view .zd-meta {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
+
+/* ===== Clip Grid View (Tile Layout) ===== */
+
+#clipListContainer.grid-view .clip-item {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin-bottom: 0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+#clipListContainer.grid-view .clip-item img,
+#clipListContainer.grid-view .clip-item .no-thumb {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-bottom: 1px solid var(--border);
+  border-radius: 10px 10px 0 0;
+  background: #000;
+  position: relative;
+  z-index: 0;
+}
+
+/* --- Grid view: title above thumb, filename below --- */
+#clipListContainer.grid-view .clip-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+}
+
+/* Make title and filename siblings of the thumb for ordering */
+#clipListContainer.grid-view .clip-text {
+  display: contents;
+  /* children participate as direct flex items */
+}
+
+/* Title above the thumb */
+#clipListContainer.grid-view .clip-title {
+  order: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 6px 8px 2px 8px;
+}
+
+/* Thumb in the middle */
+#clipListContainer.grid-view .thumb-wrap {
+  order: 1;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Filename below the thumb */
+#clipListContainer.grid-view .zd-meta {
+  order: 2;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 8px 6px 8px;
+}
+
+#clipListContainer.grid-view .thumb-wrap {
+  order: 1;
+  /* thumb second */
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+#clipListContainer.grid-view .zd-meta {
+  order: 2;
+  /* filename last */
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 8px 6px 8px;
+}
+
+#clipListContainer.grid-view .zd-meta {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 8px 6px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== Day Items ===== */
+
+.day-item {
+  display: block;
+  width: 100%;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+  margin-bottom: 8px;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transition: background 0.15s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  transform-origin: center center;
+}
+
+.day-item:hover {
+  background: rgba(58, 160, 255, 0.06);
+  position: relative;
+  z-index: 999;
+  transform: scale(1.04);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.6);
+  pointer-events: auto;
+}
+
+.day-thumb {
+  width: 100%;
+  background: #000;
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+
+.day-thumb-inner {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.day-thumb-inner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: brightness(0.7);
+  transform: scale(1);
+  transition: transform 0.18s ease, filter 0.18s ease;
+}
+
+.day-item:hover .day-thumb-inner img {
+  filter: brightness(0.9);
+}
+
+.day-overlay-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  opacity: 1;
+  transition: opacity 0.18s ease, background 0.18s ease;
+  line-height: 1.3;
+  padding: 10px 8px;
+  box-sizing: border-box;
+}
+
+.day-item:hover .day-overlay-label {
+  opacity: 0.4;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.day-rowtext {
+  display: none;
+  padding: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Custom Player Controls (initial minimal styling) --- */
+.zd-player-frame {
+  position: relative;
+}
+
+/* keep your tc overlay and frame-step where they are; this only styles the new bar */
+/* Overlay controls on top of the video */
+.zd-player-frame {
+  position: relative;
+}
+
+#zdVideo {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* keep tc + frame-step above video */
+.tc-overlay {
+  position: absolute;
+  z-index: 3;
+}
+.frame-controls {
+  position: absolute;
+  z-index: 3;
+}
+
+/* ensure LUT canvas never blocks clicks */
+.lut-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* control bar overlay */
+.zd-controls {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  backdrop-filter: blur(2px);
+}
+
+.zd-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.zd-btn:hover {
+  filter: brightness(1.1);
+}
+
+.zd-scrub-wrap {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+#scrub {
+  width: 100%;
+}
+.zd-time {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.zd-vol {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#vol {
+  width: 90px;
+}
+
+/* Optional: hide default media controls on some browsers that still show ghost UI */
+#zdVideo::-webkit-media-controls {
+  display: none !important;
+}
