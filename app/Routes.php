@@ -122,6 +122,10 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     $r->get('/admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/edit', [\App\Http\Controllers\Admin\ProjectClipsController::class, 'editForm']);
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/edit', [\App\Http\Controllers\Admin\ProjectClipsController::class, 'update']);
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/quick', [\App\Http\Controllers\Admin\ProjectClipsController::class, 'quickField']);
+    $r->post(
+        '/admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/select',
+        [new \App\Http\Controllers\Admin\ProjectClipsController, 'quickSelect']
+    );
 
 
     // Project member management

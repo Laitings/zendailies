@@ -8,6 +8,18 @@ use PDO;
 
 final class ResolveCsvImportService
 {
+    /** Normalize DaVinci "Good Take" field to bool (1/0). Accepts 1/0/true/false strings. */
+    private function parseGoodTake(mixed $val): bool
+    {
+        if ($val === null) return false;
+        $s = strtolower(trim((string)$val));
+        // DaVinci tends to use "1" or "FALSE"
+        if ($s === '1' || $s === 'true' || $s === 'yes') return true;
+        if ($s === '0' || $s === 'false' || $s === 'no') return false;
+        // Fallback: any non-empty that isn't an explicit false → false by default
+        return false;
+    }
+
     /** Ingest a Resolve CSV: create/locate import_source → create import_job → parse → write import_rows. Returns ['job_uuid'=>string,'total_rows'=>int]. */
     public function ingestCsv(PDO $pdo, string $projectUuid, string $dayUuid, string $csvAbsPath, string $origName): array
     {
@@ -203,6 +215,13 @@ final class ResolveCsvImportService
         $tcStart = $norm($row['tc_start'] ?? null);
         $tcEnd   = $norm($row['tc_end']   ?? null);
         $durMs   = isset($row['duration_ms']) ? (int)$row['duration_ms'] : null;
+        // --- Good Take → is_select ---------------------------
+        // raw_json contains the full CSV row; pull "Good Take" and normalize
+        $rawAssoc = json_decode((string)$row['raw_json'], true) ?: [];
+        $goodTake = $this->parseGoodTake($rawAssoc['Good Take'] ?? null);
+        $isSelect = $goodTake ? 1 : 0;
+        // ------------------------------------------------------
+
 
         // If take becomes NULL (blank in CSV), keep take_int NULL too; else recompute from normalized take
         $takeInt = ($takeVal !== null && ctype_digit((string)$takeVal)) ? (int)$takeVal : null;
@@ -221,6 +240,7 @@ final class ResolveCsvImportService
                tc_start    = :tc_start,
                tc_end      = :tc_end,
                duration_ms = :dur_ms,
+               is_select   = :is_select,
                ingest_state= CASE
                                WHEN ((:scene_case IS NOT NULL) AND (:slate_case IS NOT NULL) AND (:take_case IS NOT NULL))
                                THEN 'ready'
@@ -240,6 +260,7 @@ final class ResolveCsvImportService
                 ':tc_start'   => $tcStart,
                 ':tc_end'     => $tcEnd,
                 ':dur_ms'     => $durMs,
+                ':is_select'  => $isSelect,
                 // CASE probes
                 ':scene_case' => $scene,
                 ':slate_case' => $slate,
@@ -262,6 +283,7 @@ final class ResolveCsvImportService
                tc_start    = COALESCE(:tc_start,  tc_start),
                tc_end      = COALESCE(:tc_end,    tc_end),
                duration_ms = COALESCE(:dur_ms,    duration_ms),
+               is_select   = COALESCE(:is_select, is_select),
                ingest_state= CASE
                                WHEN (COALESCE(:scene_case, scene) IS NOT NULL
                                  AND COALESCE(:slate_case, slate) IS NOT NULL
@@ -283,6 +305,7 @@ final class ResolveCsvImportService
                 ':tc_start'   => $tcStart,
                 ':tc_end'     => $tcEnd,
                 ':dur_ms'     => $durMs,
+                ':is_select'  => $isSelect,
                 // CASE probes still use normalized (so blanks don't incorrectly mark 'ready')
                 ':scene_case' => $scene,
                 ':slate_case' => $slate,
@@ -306,7 +329,7 @@ final class ResolveCsvImportService
         ]);
 
         // explode raw_json into clip_metadata (skip identifiers we already mapped)
-        $raw = json_decode((string)$row['raw_json'], true) ?: [];
+        $raw = $rawAssoc; // reuse the decoded CSV row we already parsed above
         $skip = [
             'File Name',
             'Filename',

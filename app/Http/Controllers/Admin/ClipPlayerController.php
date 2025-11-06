@@ -122,16 +122,17 @@ final class ClipPlayerController
             $clipListParams[':viewer_person_uuid'] = $viewerParam;
         }
 
+        // BEGIN: day’s clip list query
         $clipListSql = "
             SELECT
                 BIN_TO_UUID(c.id,1)        AS clip_uuid,
                 c.scene, c.slate, c.take, c.take_int, c.camera,
-                c.file_name,
+                c.file_name, CAST(c.is_select AS UNSIGNED) AS is_select,
                 (
                     SELECT storage_path
                     FROM clip_assets a
                     WHERE a.clip_id = c.id
-                      AND a.asset_type = 'poster'
+                    AND a.asset_type = 'poster'
                     ORDER BY a.created_at DESC
                     LIMIT 1
                 ) AS poster_path
@@ -140,8 +141,8 @@ final class ClipPlayerController
             LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
             LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
             WHERE c.project_id = UUID_TO_BIN(:p,1)
-              AND c.day_id     = UUID_TO_BIN(:d,1)
-              $visibilitySql
+            AND c.day_id     = UUID_TO_BIN(:d,1)
+            $visibilitySql
             ORDER BY
                 c.scene IS NULL, c.scene,
                 c.slate IS NULL, c.slate,
@@ -151,6 +152,8 @@ final class ClipPlayerController
                 c.created_at
             LIMIT 500
         ";
+        // END: day’s clip list query
+
         $listStmt = $pdo->prepare($clipListSql);
         foreach ($clipListParams as $k => $v) $listStmt->bindValue($k, $v);
         $listStmt->execute();
@@ -173,7 +176,7 @@ final class ClipPlayerController
                 BIN_TO_UUID(c.day_id,1)     AS day_uuid,
                 c.scene, c.slate, c.take, c.camera, c.reel,
                 c.file_name, c.tc_start, c.tc_end, c.duration_ms,
-                c.rating, c.is_select, c.created_at
+                c.rating, CAST(c.is_select AS UNSIGNED) AS is_select, c.created_at
             FROM clips c
             JOIN days d ON d.id = c.day_id
             LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id

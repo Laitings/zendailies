@@ -801,6 +801,83 @@ final class ProjectClipsController
         }
     }
 
+    public function quickSelect(string $projectUuid, string $dayUuid, string $clipUuid): void
+    {
+        if (session_status() === PHP_SESSION_NONE) session_start();
+        \App\Support\Csrf::validateOrAbort($_POST['_csrf'] ?? null);
+
+        header('Content-Type: application/json; charset=utf-8');
+
+        $account     = $_SESSION['account'] ?? null;
+        $personUuid  = $_SESSION['person_uuid'] ?? null;
+        $isSuperuser = (int)($account['is_superuser'] ?? 0);
+
+        $pdo = DB::pdo();
+
+        // permission: superuser OR project admin
+        $isProjectAdmin = 0;
+        if ($personUuid) {
+            $stmtAdmin = $pdo->prepare("
+            SELECT pm.is_project_admin
+            FROM project_members pm
+            JOIN projects p ON p.id = pm.project_id
+            WHERE p.id = UUID_TO_BIN(:p,1)
+              AND pm.person_id = UUID_TO_BIN(:person,1)
+            LIMIT 1
+        ");
+            $stmtAdmin->execute([':p' => $projectUuid, ':person' => $personUuid]);
+            $isProjectAdmin = (int)($stmtAdmin->fetchColumn() ?: 0);
+        }
+        if (!$isSuperuser && !$isProjectAdmin) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'Forbidden']);
+            return;
+        }
+
+        // ensure clip belongs to project+day
+        $exists = $pdo->prepare("
+        SELECT is_select
+        FROM clips
+        WHERE id = UUID_TO_BIN(:c,1)
+          AND project_id = UUID_TO_BIN(:p,1)
+          AND day_id     = UUID_TO_BIN(:d,1)
+        LIMIT 1
+    ");
+        $exists->execute([':c' => $clipUuid, ':p' => $projectUuid, ':d' => $dayUuid]);
+        $cur = $exists->fetchColumn();
+        if ($cur === false) {
+            http_response_code(404);
+            echo json_encode(['ok' => false, 'error' => 'Clip not found']);
+            return;
+        }
+
+        // If client sent explicit value (0/1) use it; else toggle.
+        $posted = $_POST['value'] ?? null;
+        if ($posted === '0' || $posted === '1') {
+            $next = (int)$posted;
+        } else {
+            $next = ((int)$cur) ? 0 : 1;
+        }
+
+        try {
+            $upd = $pdo->prepare("
+            UPDATE clips
+            SET is_select = :v
+            WHERE id = UUID_TO_BIN(:c,1)
+              AND project_id = UUID_TO_BIN(:p,1)
+              AND day_id     = UUID_TO_BIN(:d,1)
+            LIMIT 1
+        ");
+            $upd->execute([':v' => $next, ':c' => $clipUuid, ':p' => $projectUuid, ':d' => $dayUuid]);
+
+            echo json_encode(['ok' => true, 'is_select' => $next]);
+        } catch (\Throwable $e) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+
     public function destroy(string $projectUuid, string $dayUuid, string $clipUuid): void
     {
         // AuthN

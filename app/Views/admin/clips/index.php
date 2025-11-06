@@ -264,6 +264,49 @@ function zd_sort_link(string $key, string $label, array $filters): string
     td[data-edit="take"] .zd-inline-input {
         width: 4ch;
     }
+
+    .zd-select-td {
+        width: 54px;
+        text-align: center;
+    }
+
+    .star-toggle {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        padding: 4px;
+        border-radius: 6px;
+        cursor: pointer;
+        line-height: 0;
+    }
+
+    .star-toggle:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
+    .star {
+        width: 18px;
+        height: 18px;
+        display: block;
+        transition: transform .08s ease, opacity .12s ease;
+    }
+
+    .star.on {
+        fill: #ffd54a;
+        opacity: 1;
+    }
+
+    .star.off {
+        fill: #ffd54a;
+        opacity: .18;
+    }
+
+    /* faint placeholder */
+    .star-toggle:hover .star {
+        transform: scale(1.07);
+        opacity: 1;
+    }
 </style>
 <title>Clips · Zentropa Dailies</title>
 
@@ -403,6 +446,7 @@ if ($__fb) {
                         <th><?= zd_sort_link('slate',    'Slate',  $filters) ?></th>
                         <th><?= zd_sort_link('take',     'Take',   $filters) ?></th>
                         <th><?= zd_sort_link('camera',   'Cam',    $filters) ?></th>
+                        <th><?= zd_sort_link('select', 'Selected', $filters) ?></th>
                         <th><?= zd_sort_link('reel',     'Reel',   $filters) ?></th>
                         <th><?= zd_sort_link('file',     'File',   $filters) ?></th>
                         <th><?= zd_sort_link('tc_start', 'TC In',  $filters) ?></th>
@@ -434,6 +478,25 @@ if ($__fb) {
                                 <td class="zd-editable" data-edit="slate"><span><?= htmlspecialchars($r['slate'] ?? '') ?></span></td>
                                 <td class="zd-editable" data-edit="take"><span><?= htmlspecialchars(($r['take_int'] ?? null) !== null ? (string)$r['take_int'] : ($r['take'] ?? '')) ?></span></td>
                                 <td><?= htmlspecialchars($r['camera'] ?? '') ?></td>
+                                <td class="zd-select-td" data-field="select">
+                                    <button class="star-toggle"
+                                        type="button"
+                                        data-clip="<?= htmlspecialchars($r['clip_uuid']) ?>"
+                                        data-selected="<?= (int)($r['is_select'] ?? 0) ?>"
+                                        aria-label="Toggle selected"
+                                        title="Toggle selected">
+                                        <?php if ((int)($r['is_select'] ?? 0) === 1): ?>
+                                            <svg viewBox="0 0 24 24" class="star on" aria-hidden="true">
+                                                <path d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
+                                            </svg>
+                                        <?php else: ?>
+                                            <svg viewBox="0 0 24 24" class="star off" aria-hidden="true">
+                                                <path d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
+                                            </svg>
+                                        <?php endif; ?>
+                                    </button>
+                                </td>
+
                                 <td><?= htmlspecialchars($r['reel'] ?? '') ?></td>
 
                                 <!-- File name + UUID -->
@@ -1032,6 +1095,59 @@ if ($__fb) {
 
         beginQuickEdit(td);
     });
+
+    // Toggle select/star (event delegation on tbody)
+    tbodyEl.addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('button.star-toggle');
+        if (!btn) return;
+
+        ev.stopPropagation(); // don't trigger row selection
+
+        const clipUuid = btn.getAttribute('data-clip');
+        if (!clipUuid) return;
+
+        // Current state
+        const cur = parseInt(btn.getAttribute('data-selected') || '0', 10);
+        const next = cur ? 0 : 1;
+
+        // Optimistic UI
+        setStarVisual(btn, next);
+        btn.setAttribute('data-selected', String(next));
+
+        try {
+            const body = new URLSearchParams({
+                _csrf: "<?= htmlspecialchars($quick_csrf ?? '') ?>",
+                value: String(next)
+            });
+            const resp = await fetch(`/admin/projects/<?= $projectUuidSafe ?>/days/<?= $dayUuidSafe ?>/clips/${clipUuid}/select`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body
+            });
+            const json = await resp.json();
+
+            if (!(resp.ok && json.ok)) {
+                // revert on failure
+                setStarVisual(btn, cur);
+                btn.setAttribute('data-selected', String(cur));
+                alert(json.error || 'Failed to save');
+            }
+        } catch (e) {
+            setStarVisual(btn, cur);
+            btn.setAttribute('data-selected', String(cur));
+            alert('Network error');
+        }
+    });
+
+    // helper to flip the SVG classes
+    function setStarVisual(btn, isOn) {
+        const svg = btn.querySelector('svg.star');
+        if (!svg) return;
+        svg.classList.toggle('on', !!isOn);
+        svg.classList.toggle('off', !isOn);
+    }
 </script>
 
 <?php $this->end(); /* end of content section */ ?>
