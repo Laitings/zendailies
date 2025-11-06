@@ -266,6 +266,9 @@ $this->extend('layout/main');
                                     <!-- simple text for now; swap to SVG later -->
                                     <span data-state="play">▶</span><span data-state="pause" style="display:none;">⏸</span>
                                 </button>
+                                <button class="zd-btn" id="btnStepBack" title="Step 1 frame back" aria-label="Step back 1 frame">◀ 1f</button>
+                                <button class="zd-btn" id="btnStepFwd" title="Step 1 frame forward" aria-label="Step forward 1 frame">1f ▶</button>
+
 
                                 <!-- Scrubber -->
                                 <div class="zd-scrub-wrap" aria-label="Scrub">
@@ -287,10 +290,6 @@ $this->extend('layout/main');
 
                             <canvas id="lutCanvas" class="lut-canvas"></canvas> <!-- LUT render target -->
 
-                            <div class="frame-controls">
-                                <button id="stepBack" title="Step 1 frame back">◀ 1 f</button>
-                                <button id="stepFwd" title="Step 1 frame forward">1 f ▶</button>
-                            </div>
                         </div>
                     <?php else: ?>
                         <div style="padding:24px;color:#d62828;">No proxy available for this clip yet.</div>

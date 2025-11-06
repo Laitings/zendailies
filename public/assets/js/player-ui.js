@@ -4,6 +4,13 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!vid) return;
 
   const btnPlayPause = document.getElementById("btnPlayPause");
+  const btnStepBack = document.getElementById("btnStepBack");
+  const btnStepFwd = document.getElementById("btnStepFwd");
+
+  // FPS for frame stepping
+  const fps = parseFloat(vid.dataset.fps || "25") || 25;
+  const frameDur = 1 / fps;
+
   const iconPlay = btnPlayPause?.querySelector('[data-state="play"]');
   const iconPause = btnPlayPause?.querySelector('[data-state="pause"]');
 
@@ -88,6 +95,34 @@ document.addEventListener("DOMContentLoaded", () => {
     syncScrubFromVideo();
   });
   vid.addEventListener("durationchange", syncDuration);
+
+  // --- Frame step buttons (now in the main bar) ---
+  function step(delta) {
+    vid.pause();
+    const t = Math.max(0, (vid.currentTime || 0) + delta);
+    vid.currentTime = t;
+  }
+  btnStepFwd?.addEventListener("click", () => step(frameDur));
+  btnStepBack?.addEventListener("click", () => step(-frameDur));
+
+  // Optional: Shift+Arrow keys keep working
+  document.addEventListener("keydown", (e) => {
+    if (!e.shiftKey) return;
+    if (e.code === "ArrowRight") {
+      e.preventDefault();
+      step(frameDur);
+    }
+    if (e.code === "ArrowLeft") {
+      e.preventDefault();
+      step(-frameDur);
+    }
+  });
+
+  // --- Click video to toggle play/pause ---
+  vid.addEventListener("click", () => {
+    if (vid.paused) vid.play();
+    else vid.pause();
+  });
 
   // --- Volume / Mute ---
   if (vol) {

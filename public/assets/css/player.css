@@ -2,7 +2,72 @@
    PLAYER PAGE STYLES
    ========================================================= */
 
-/* Player styles */
+/* ===== CSS Variables ===== */
+:root {
+  --player-maxw: 1000px;
+  --player-maxh: 92vh;
+}
+
+/* =========================================================
+   VIDEO PLAYER & OVERLAYS
+   ========================================================= */
+
+/* Main player container */
+.zd-player-wrap {
+  width: 100%;
+  max-width: var(--player-maxw);
+  margin: 0 auto;
+}
+
+.zd-player-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: var(--player-maxh);
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Z-index layering (bottom to top):
+   1. Video (base layer)
+   2. LUT canvas overlay
+   3. Timecode overlay + frame controls
+   4. Player controls bar
+*/
+
+/* Video element - bottom layer */
+#zdVideo,
+.zd-player-frame > video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #000;
+  z-index: 1;
+}
+
+/* Hide default browser video controls */
+#zdVideo::-webkit-media-controls {
+  display: none !important;
+}
+
+/* LUT Canvas overlay - layer 2 */
+.lut-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  z-index: 2;
+  pointer-events: none; /* Never block clicks */
+}
+
+/* Timecode overlay - layer 3 */
 .tc-overlay {
   position: absolute;
   top: 8px;
@@ -15,37 +80,7 @@
   font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   pointer-events: none;
   user-select: none;
-}
-
-.zd-player-frame > video {
-  position: absolute;
-  /* you already have this via inset:0 */
-  z-index: 1;
-  /* video below */
-}
-
-.tc-overlay {
   z-index: 3;
-  /* overlay above */
-}
-
-/* Frame-step controls: overlay that fades like native controls */
-.frame-controls {
-  position: absolute;
-  left: 50%;
-  bottom: 35px;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 8px;
-  z-index: 2;
-  /* video is z-index:1, tcOverlay can be 3 */
-  opacity: 1;
-  transition: opacity 0.25s ease;
-}
-
-.frame-controls.controls-hidden {
-  opacity: 0;
-  pointer-events: none;
 }
 
 .frame-controls button {
@@ -73,7 +108,68 @@
   outline-offset: 2px;
 }
 
-/* ===== Layout & Containers ===== */
+/* Custom player controls bar - layer 4 (topmost) */
+.zd-controls {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: auto auto auto 1fr auto auto; /* play | step- | step+ | scrub | vol | fs */
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  backdrop-filter: blur(2px);
+}
+
+.zd-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.zd-btn:hover {
+  filter: brightness(1.1);
+}
+
+.zd-scrub-wrap {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+#scrub {
+  width: 100%;
+}
+
+.zd-time {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.zd-vol {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#vol {
+  width: 90px;
+}
+
+/* =========================================================
+   LAYOUT CONTAINERS
+   ========================================================= */
 
 .zd-bleed {
   width: 100%;
@@ -81,55 +177,7 @@
   overflow-x: clip;
 }
 
-/* Player sizing variables (16:9) */
-:root {
-  --player-maxw: 1000px;
-  --player-maxh: 92vh;
-}
-
-.zd-player-wrap {
-  width: 100%;
-  max-width: var(--player-maxw);
-  margin: 0 auto;
-}
-
-.zd-player-frame {
-  position: relative;
-  width: 100%;
-  padding-top: 56.25%;
-  /* 16:9 aspect ratio */
-  max-height: var(--player-maxh);
-  background: #000;
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.zd-player-frame > video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-  background: #000;
-}
-
-/* LUT Overlay */
-/* === LUT Canvas overlay === */
-.lut-canvas {
-  position: absolute;
-  inset: 0;
-  /* fill player frame */
-  width: 100%;
-  height: 100%;
-  z-index: 2;
-  /* above video; below timecode chip if you want */
-  pointer-events: none;
-  /* let clicks reach video/controls */
-}
-
-/* ===== 3-Column Layout: [Sidebar | Resizer | Player] ===== */
-
+/* 3-Column Layout: [Sidebar | Resizer | Player] */
 .player-layout {
   display: grid;
   grid-template-columns: var(--clipcol-width, 360px) 10px 1fr;
@@ -162,7 +210,9 @@
   background: var(--accent);
 }
 
-/* ===== Scroll Containers ===== */
+/* =========================================================
+   SCROLL CONTAINERS
+   ========================================================= */
 
 .clipScrollOuter,
 .dayScrollOuter {
@@ -227,7 +277,9 @@ body::-webkit-scrollbar-thumb:hover,
   background: #3a4658;
 }
 
-/* ===== Clip List & Day List Containers ===== */
+/* =========================================================
+   CLIP & DAY LIST CONTAINERS
+   ========================================================= */
 
 #clipListContainer,
 #dayListContainer {
@@ -243,11 +295,13 @@ body::-webkit-scrollbar-thumb:hover,
   scrollbar-gutter: stable;
 }
 
+/* List view layout */
 #clipListContainer.list-view,
 #dayListContainer.list-view {
   display: block;
 }
 
+/* Grid view layout */
 #clipListContainer.grid-view,
 #dayListContainer.grid-view {
   display: grid;
@@ -262,7 +316,9 @@ body::-webkit-scrollbar-thumb:hover,
   margin-left: -10px;
 }
 
-/* ===== Clip Items (Base Styles) ===== */
+/* =========================================================
+   CLIP ITEMS - BASE STYLES
+   ========================================================= */
 
 #clipListContainer .clip-item {
   display: block;
@@ -301,8 +357,7 @@ body::-webkit-scrollbar-thumb:hover,
   border-radius: 10px;
   pointer-events: none;
   z-index: 2;
-  /* Ensure outline doesn't get clipped during transforms */
-  transform: translateZ(0);
+  transform: translateZ(0); /* Prevent clipping during transforms */
 }
 
 #clipListContainer .clip-item.is-active::after,
@@ -311,18 +366,18 @@ body::-webkit-scrollbar-thumb:hover,
   z-index: 3;
 }
 
-/* ===== Clip List View (Horizontal Layout) ===== */
+/* =========================================================
+   CLIP ITEMS - LIST VIEW
+   ========================================================= */
 
 #clipListContainer.list-view .clip-item {
   display: grid;
   grid-template-columns: 64px 1fr;
   grid-auto-rows: min-content;
-  /* rows size to content */
   gap: 0 10px;
   align-items: center;
   padding: 8px;
   min-height: 52px;
-  /* 36px thumbnail + padding */
 }
 
 #clipListContainer.list-view .thumb-wrap {
@@ -345,24 +400,21 @@ body::-webkit-scrollbar-thumb:hover,
   display: block;
 }
 
-#clipListContainer.list-view .clip-title {
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin: 0 0 2px 0;
-  /* tiny space above filename */
-}
-
 #clipListContainer.list-view .clip-text {
   grid-column: 2;
   grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  /* vertical centering of title+filename */
   min-width: 0;
-  /* allow ellipsis to work */
+}
+
+#clipListContainer.list-view .clip-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 0 2px 0;
 }
 
 #clipListContainer.list-view .zd-meta {
@@ -374,13 +426,42 @@ body::-webkit-scrollbar-thumb:hover,
   margin: 0;
 }
 
-/* ===== Clip Grid View (Tile Layout) ===== */
+/* =========================================================
+   CLIP ITEMS - GRID VIEW
+   ========================================================= */
 
 #clipListContainer.grid-view .clip-item {
   display: flex;
   flex-direction: column;
+  align-items: center;
   padding: 0;
   margin-bottom: 0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Use display: contents to make children participate as direct flex items */
+#clipListContainer.grid-view .clip-text {
+  display: contents;
+}
+
+/* Title above thumbnail */
+#clipListContainer.grid-view .clip-title {
+  order: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 6px 8px 2px 8px;
+}
+
+/* Thumbnail in the middle */
+#clipListContainer.grid-view .thumb-wrap {
+  order: 1;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   border-radius: 10px;
   overflow: hidden;
 }
@@ -399,42 +480,7 @@ body::-webkit-scrollbar-thumb:hover,
   z-index: 0;
 }
 
-/* --- Grid view: title above thumb, filename below --- */
-#clipListContainer.grid-view .clip-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 0;
-}
-
-/* Make title and filename siblings of the thumb for ordering */
-#clipListContainer.grid-view .clip-text {
-  display: contents;
-  /* children participate as direct flex items */
-}
-
-/* Title above the thumb */
-#clipListContainer.grid-view .clip-title {
-  order: 0;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 6px 8px 2px 8px;
-}
-
-/* Thumb in the middle */
-#clipListContainer.grid-view .thumb-wrap {
-  order: 1;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-/* Filename below the thumb */
+/* Filename below thumbnail */
 #clipListContainer.grid-view .zd-meta {
   order: 2;
   font-size: 11px;
@@ -446,38 +492,9 @@ body::-webkit-scrollbar-thumb:hover,
   padding: 2px 8px 6px 8px;
 }
 
-#clipListContainer.grid-view .thumb-wrap {
-  order: 1;
-  /* thumb second */
-  width: 100%;
-  aspect-ratio: 16/9;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-#clipListContainer.grid-view .zd-meta {
-  order: 2;
-  /* filename last */
-  font-size: 11px;
-  color: var(--muted);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 2px 8px 6px 8px;
-}
-
-#clipListContainer.grid-view .zd-meta {
-  text-align: center;
-  font-size: 11px;
-  color: var(--muted);
-  padding: 0 8px 6px 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ===== Day Items ===== */
+/* =========================================================
+   DAY ITEMS
+   ========================================================= */
 
 .day-item {
   display: block;
@@ -567,103 +584,4 @@ body::-webkit-scrollbar-thumb:hover,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* --- Custom Player Controls (initial minimal styling) --- */
-.zd-player-frame {
-  position: relative;
-}
-
-/* keep your tc overlay and frame-step where they are; this only styles the new bar */
-/* Overlay controls on top of the video */
-.zd-player-frame {
-  position: relative;
-}
-
-#zdVideo {
-  position: relative;
-  z-index: 1;
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-/* keep tc + frame-step above video */
-.tc-overlay {
-  position: absolute;
-  z-index: 3;
-}
-.frame-controls {
-  position: absolute;
-  z-index: 3;
-}
-
-/* ensure LUT canvas never blocks clicks */
-.lut-canvas {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-}
-
-/* control bar overlay */
-.zd-controls {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  z-index: 4;
-
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  align-items: center;
-  gap: 10px;
-
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px;
-  backdrop-filter: blur(2px);
-}
-
-.zd-btn {
-  appearance: none;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  padding: 6px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.zd-btn:hover {
-  filter: brightness(1.1);
-}
-
-.zd-scrub-wrap {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 10px;
-}
-#scrub {
-  width: 100%;
-}
-.zd-time {
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.zd-vol {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-#vol {
-  width: 90px;
-}
-
-/* Optional: hide default media controls on some browsers that still show ghost UI */
-#zdVideo::-webkit-media-controls {
-  display: none !important;
 }
