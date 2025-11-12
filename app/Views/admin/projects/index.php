@@ -134,7 +134,7 @@ This keeps the change scoped
 <div class="zd-page">
     <div class="zd-page-header">
         <h1>Projects</h1>
-        <a href="/admin/projects/new" class="zd-btn zd-btn-primary">New Project</a>
+        <a href="/admin/projects/new" class="zd-btn zd-btn-primary">+ New Project</a>
     </div>
 
     <?php if (empty($projects)): ?>

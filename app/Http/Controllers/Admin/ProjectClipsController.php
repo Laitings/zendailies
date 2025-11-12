@@ -436,7 +436,6 @@ final class ProjectClipsController
             }
         }
 
-
         // CSRF for the update POST
         $csrf = \App\Support\Csrf::token();
 

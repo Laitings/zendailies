@@ -20,6 +20,7 @@ html {
 
 :root {
   --topbar-h: 65px;
+  --subbar-h: 32px;
   --bg: #0b0c10;
   --panel: #111318;
   --accent: #3aa0ff;
@@ -27,6 +28,24 @@ html {
   --muted: #9aa7b2;
   --border: #1f2430;
   --danger: #d62828;
+}
+
+:root {
+  --content-top: 60px;
+}
+/* Keep normal pages aligned to topbar only */
+body:not(.has-subbar) .zd-main {
+  padding-top: var(--content-top);
+}
+
+/* When a subbar is present, add a small gap under it */
+body.has-subbar .zd-main {
+  padding-top: calc(var(--content-top) + 60px);
+}
+
+/* === Content offset variables bound to body state === */
+body {
+  --content-top: var(--topbar-h);
 }
 
 /* --- Base typography and layout --- */
@@ -49,7 +68,7 @@ body {
    — only on the scrollbar side, so the top bar touches the left edge */
 /* Reserve gutter only on the scrollbar side; apply to both html and body to cover engines that scroll <body> */
 body {
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
 }
 
 h1 {
@@ -79,7 +98,7 @@ a {
 
 /* --- Topbar --- */
 .zd-topbar {
-  position: fixed;
+  position: fixed !important;
   top: 0;
   z-index: 1000;
   display: flex;
@@ -121,16 +140,6 @@ a {
   text-align: center;
 }
 
-/* Sub header under the topbar for project links */
-.zd-subbar {
-  position: sticky; /* stays under the fixed topbar when scrolling */
-  top: var(--topbar-h);
-  z-index: 900;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  padding: 8px 16px;
-}
-
 /* --- True centering of project title --- */
 .zd-topbar {
   position: relative;
@@ -150,7 +159,20 @@ a {
   color: var(--text);
   pointer-events: auto; /* clickable if you ever make it a link */
 }
-
+/* Fix subbar to stay under the fixed topbar */
+.zd-subbar {
+  position: fixed;
+  top: var(--topbar-h) !important;
+  left: 0;
+  right: 0;
+  height: var(--subbar-h);
+  z-index: 900;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+}
 .zd-subnav {
   display: flex;
   justify-content: center;
@@ -394,16 +416,9 @@ a {
 /* --- Main content area --- */
 .zd-main {
   flex: 1 0 auto;
-  /* top padding includes the fixed topbar height */
-  padding: calc(24px + var(--topbar-h)) 20px 40px;
   box-sizing: border-box;
 }
 
-/* standard page width */
-.zd-container {
-  max-width: 1200px;
-  margin: 0 auto;
-}
 .zd-title {
   font-size: 1.6rem;
   font-weight: 600;
@@ -416,7 +431,7 @@ a {
   grid-template-columns: 1fr;
   /* single column – no empty sidebar column */
   gap: 16px;
-  padding: 16px;
+  padding: 0px 16px 16px;
   /* 
   margin-top: var(--topbar-h, 65px);
   */
@@ -441,7 +456,7 @@ a {
 
 .zd-pre {
   background: transparent;
-  margin: 8px 16px 0 16px;
+  margin: 0px 16px 0 16px;
   color: var(--muted);
 }
 
@@ -764,19 +779,12 @@ select {
   position: fixed; /* take them out of normal flow */
 }
 
-/* --- Sub top bar centering --- */
-.zd-subbar {
-  --subbar-h: 15x; /* tweak height if you like */
-}
-
 .zd-subbar .zd-subnav {
   display: flex;
-  align-items: center; /* vertical centering */
-  justify-content: center; /* horizontal centering */
+  align-items: center;
+  justify-content: center;
   gap: 14px;
-  height: var(--subbar-h);
-  padding: 0 8px;
-  box-sizing: border-box;
+  width: 100%;
 }
 
 .zd-subbar .zd-subnav a,
@@ -803,34 +811,16 @@ select {
   padding: 0 12px;
 }
 
-/* === Layout: center main content shell === */
-.zd-container {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding-inline: 16px;
-}
-
 /* Add these rules to your main.css to fix the subbar and spacing */
 
-/* Fix subbar to stay under the fixed topbar */
-.zd-subbar {
-  position: fixed !important;
-  top: var(--topbar-h) !important;
-  width: 100%;
-  z-index: 900;
+.zd-container {
+  max-width: 1280px; /* or 1200px if you prefer */
+  margin: 0 auto;
+  padding-inline: 16px; /* <<< ensures right gutter too */
+  box-sizing: content-box;
 }
 
-/* Remove the extra 65px top padding when a project subbar is present */
-body.has-subbar .zd-main {
-  padding-top: 24px !important;
-}
-
-/* Keep the original spacing on pages without a subbar */
-body:not(.has-subbar) .zd-main {
-  padding-top: calc(24px + var(--topbar-h)) !important;
-}
-
-/* Add padding to shell when subbar is present so content doesn't hide under it */
-body.has-subbar .zd-shell {
-  padding-top: 50px; /* subbar height + spacing */
+/* If you use a page head block */
+.zd-clips-head {
+  margin-top: 4px;
 }

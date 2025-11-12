@@ -9,120 +9,117 @@ $this->extend('layout/main');
 $this->start('head'); ?>
 <title><?= htmlspecialchars($project['title']) ?> · Shooting Days · Zentropa Dailies</title>
 <style>
-    .zd-sep {
-        opacity: .6;
-        margin: 0 10px;
-        user-select: none
-    }
-
-    /* Card should use full container width (Clips style) */
-    .zd-days.zd-card {
-        max-width: none;
+    /* One wrapper controls width + even gutters (16px each side). */
+    .days-page {
+        max-width: 960px;
         width: 100%;
-        padding: 16px
+        margin: 0 auto;
+        /* centered inside .zd-container's own 16px gutters */
     }
 
-    /* Table base (copied from Clips style) */
+
+    /* Header sits flush with the wrapper (no padding), so it aligns
+     with the OUTER card edge, not the card’s inner padding. */
+    .days-page .page-head {
+        margin: 0 0 12px;
+        padding: 0;
+    }
+
+    .days-page .page-head h1 {
+        font-size: 1.8rem;
+        /* same visual size as Projects title */
+        font-weight: 700;
+        margin: 0 0 6px;
+    }
+
+    .days-page .page-head .subtitle {
+        color: var(--muted);
+        margin: 0 0 8px;
+    }
+
+    .days-page .page-head .actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 6px 0 10px;
+    }
+
+    /* Card fills the wrapper width and has its own inner padding. */
+    .zd-card.zd-days {
+        width: 100%;
+        margin: 0;
+        padding: 16px;
+    }
+
+    /* Table: compact and neat */
     .zd-table {
         width: 100%;
         border-collapse: separate;
-        border-spacing: 0
+        border-spacing: 0;
     }
 
     .zd-table th,
     .zd-table td {
         padding: 8px 10px;
-        border-bottom: 1px solid #1f2430
+        border-bottom: 1px solid var(--border);
+        text-align: left;
     }
 
-    /* Sticky header like Clips */
-    .zd-table th {
+    .zd-table thead th {
         font-weight: 600;
-        color: #e9eef3;
-        text-align: left;
+        color: var(--text);
+        background: var(--bg);
         position: sticky;
         top: 0;
+        /* sticks at top inside the card */
         z-index: 1;
-        background: #0b0c10;
-        background-clip: padding-box
+        background-clip: padding-box;
     }
 
-    /* Rounded header corners + last row corners */
+    /* Rounded corners */
     .zd-table thead th:first-child {
-        border-top-left-radius: 8px
+        border-top-left-radius: 8px;
     }
 
     .zd-table thead th:last-child {
-        border-top-right-radius: 8px
+        border-top-right-radius: 8px;
     }
 
     .zd-table tbody tr:last-child td:first-child {
-        border-bottom-left-radius: 8px
+        border-bottom-left-radius: 8px;
     }
 
     .zd-table tbody tr:last-child td:last-child {
-        border-bottom-right-radius: 8px
+        border-bottom-right-radius: 8px;
     }
 
-    /* Days-specific left alignment */
-    .zd-days,
-    .zd-days th,
-    .zd-days td {
-        text-align: left !important
+    /* Tight layout + ellipsis */
+    .zd-table--tight {
+        table-layout: fixed;
     }
 
-    /* Header stack (copied approach from Clips head) */
-    .zd-page-header {
-        display: block;
-        margin: 6px 0 8px
+    .zd-table--tight th,
+    .zd-table--tight td {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-
-
-    .zd-subtitle {
-        color: var(--muted);
-        margin: 0 0 8px
-    }
-
-    /* Actions row like Clips */
-    .zd-actions {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        margin: 6px 0 10px
-    }
-
-    .zd-chip {
-        display: inline-block;
-        background: #18202b;
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        padding: 2px 8px
-    }
-
-    /* Optional: compact card title if you re-introduce it */
-    .zd-days .zd-card-title {
-        font-size: 1.1rem;
-        font-weight: 600;
-        margin-bottom: 8px;
-        text-align: left !important
-    }
-
-    /* --- Clickable rows --- */
+    /* Clickable rows */
     .zd-days table.zd-table tr {
         cursor: pointer;
-        transition: background 0.15s ease, color 0.15s ease;
+        transition: background .15s;
     }
 
     .zd-days table.zd-table tr:hover {
         background: #151821;
-        /* slightly lighter panel tone */
     }
 
     .zd-days table.zd-table tr:active {
         background: #1a1f2a;
     }
 
+    /* Sort links */
     .sort-link {
         color: var(--text);
         text-decoration: none;
@@ -135,111 +132,111 @@ $this->start('head'); ?>
 
     .sort-arrow {
         font-size: 10px;
-        opacity: 0.7;
+        opacity: .7;
+    }
+
+    /* Keep the actions column narrow */
+    .col-actions {
+        width: 140px;
+        text-align: right;
+        white-space: nowrap;
     }
 </style>
-
 <?php $this->end(); ?>
 
 <?php $this->start('content'); ?>
 
-<header class="zd-page-header">
-    <h1 class="zd-title">Shooting days</h1>
-    <p class="zd-subtitle">
-        Project: <?= htmlspecialchars($project['title'] ?? '') ?> ·
-        Code: <span class="zd-chip"><?= htmlspecialchars($project['code'] ?? '') ?></span> ·
-        Status: <span class="zd-chip"><?= htmlspecialchars($project['status'] ?? '') ?></span>
-    </p>
+<div class="days-page">
 
-    <div class="zd-actions">
-        <a class="za-btn za-btn-primary" href="<?= htmlspecialchars($routes['new_day'] ?? '') ?>">+ New Day</a>
-    </div>
-</header>
-
-
-<div class="zd-card zd-days">
-    <?php if (empty($days)): ?>
-        <div class="zd-empty">No days yet. (Try Import or add a day manually.)</div>
-        <div style="margin-top:10px">
-            <a class="za-btn za-btn-primary" href="<?= htmlspecialchars($routes['new_day'] ?? '') ?>">Create the first day</a>
+    <header class="page-head">
+        <h1>Shooting days</h1>
+        <p class="subtitle">
+            Project: <?= htmlspecialchars($project['title'] ?? '') ?> ·
+            Code: <span class="zd-chip"><?= htmlspecialchars($project['code'] ?? '') ?></span> ·
+            Status: <span class="zd-chip"><?= htmlspecialchars($project['status'] ?? '') ?></span>
+        </p>
+        <div class="actions">
+            <a class="za-btn za-btn-primary" href="<?= htmlspecialchars($routes['new_day'] ?? '') ?>">+ New Day</a>
         </div>
-</div>
-<?php else: ?>
-    <table class="zd-table">
-        <?php
-        // Small helper for arrow icons
-        function sortArrow($col, $sort, $dir)
-        {
-            if ($col !== $sort) return '';
-            return $dir === 'ASC'
-                ? ' <span class="sort-arrow">▲</span>'
-                : ' <span class="sort-arrow">▼</span>';
-        }
-        function nextDir($col, $sort, $dir)
-        {
-            return ($col === $sort && $dir === 'ASC') ? 'DESC' : 'ASC';
-        }
-        ?>
-        <thead>
-            <tr>
+    </header>
+
+    <div class="zd-card zd-days">
+        <?php if (empty($days)): ?>
+            <div class="zd-empty">No days yet. (Try Import or add a day manually.)</div>
+            <div style="margin-top:10px">
+                <a class="za-btn za-btn-primary" href="<?= htmlspecialchars($routes['new_day'] ?? '') ?>">Create the first day</a>
+            </div>
+        <?php else: ?>
+            <table class="zd-table zd-table--tight">
                 <?php
-                $cols = [
-                    'title'      => 'Title',
-                    'shoot_date' => 'Date',
-                    'unit'       => 'Unit',
-                    'clip_count' => 'Clips',
-                ];
-                foreach ($cols as $col => $label):
-                    $url = "?sort=$col&dir=" . nextDir($col, $sort, $dir);
+                function sortArrow($col, $sort, $dir)
+                {
+                    if ($col !== $sort) return '';
+                    return $dir === 'ASC' ? ' <span class="sort-arrow">▲</span>' : ' <span class="sort-arrow">▼</span>';
+                }
+                function nextDir($col, $sort, $dir)
+                {
+                    return ($col === $sort && $dir === 'ASC') ? 'DESC' : 'ASC';
+                }
                 ?>
-                    <th>
-                        <a href="<?= htmlspecialchars($url) ?>" class="sort-link">
-                            <?= htmlspecialchars($label) ?><?= sortArrow($col, $sort, $dir) ?>
-                        </a>
-                    </th>
-                <?php endforeach; ?>
-                <th style="width:140px;text-align:right;">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach ($days as $d): ?>
-                <?php
-                $date = $d['shoot_date'];
-                $unit = $d['unit'] ?? '';
-                $clips = (int)$d['clip_count'];
-                $dayUuid = $d['day_uuid'];
-                $viewClipsUrl = $routes['clips_base'] . '/' . $dayUuid . '/clips';
-                $title = $d['title'] ?? '';
-                $niceTitle = $title !== '' ? $title : ('Day ' . htmlspecialchars($d['shoot_date']));
-                ?>
-                <tr onclick="window.location.href='<?= htmlspecialchars($viewClipsUrl) ?>'">
-                    <td><?= htmlspecialchars($niceTitle) ?></td>
-                    <td><?= htmlspecialchars($date) ?></td>
-                    <td><?= htmlspecialchars($unit) ?></td>
-                    <td><?= $clips ?></td>
-                    <td style="white-space:nowrap">
+                <thead>
+                    <tr>
                         <?php
-                        $editUrl = "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/edit";
-                        $deleteUrl = "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/delete";
+                        $cols = [
+                            'title'      => 'Title',
+                            'shoot_date' => 'Date',
+                            'unit'       => 'Unit',
+                            'clip_count' => 'Clips',
+                        ];
+                        foreach ($cols as $col => $label):
+                            $url = "?sort=$col&dir=" . nextDir($col, $sort, $dir);
                         ?>
-                        <a href="<?= htmlspecialchars($editUrl) ?>" class="icon-btn" title="Edit day" onclick="event.stopPropagation();">
-                            <img src="/assets/icons/pencil.svg" alt="Edit" class="icon">
-                        </a>
-                        <a href="<?= htmlspecialchars($deleteUrl) ?>" class="icon-btn danger" title="Delete day" onclick="event.stopPropagation();">
-                            <img src="/assets/icons/trash.svg" alt="Delete" class="icon">
-                        </a>
-                    </td>
+                            <th>
+                                <a href="<?= htmlspecialchars($url) ?>" class="sort-link">
+                                    <?= htmlspecialchars($label) ?><?= sortArrow($col, $sort, $dir) ?>
+                                </a>
+                            </th>
+                        <?php endforeach; ?>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($days as $d): ?>
+                        <?php
+                        $date      = $d['shoot_date'];
+                        $unit      = $d['unit'] ?? '';
+                        $clips     = (int)$d['clip_count'];
+                        $dayUuid   = $d['day_uuid'];
+                        $viewUrl   = $routes['clips_base'] . '/' . $dayUuid . '/clips';
+                        $title     = $d['title'] ?? '';
+                        $niceTitle = $title !== '' ? $title : ('Day ' . htmlspecialchars($d['shoot_date']));
+                        $editUrl   = "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/edit";
+                        $delUrl    = "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/delete";
+                        ?>
+                        <tr onclick="window.location.href='<?= htmlspecialchars($viewUrl) ?>'">
+                            <td><?= htmlspecialchars($niceTitle) ?></td>
+                            <td><?= htmlspecialchars($date) ?></td>
+                            <td><?= htmlspecialchars($unit) ?></td>
+                            <td><?= $clips ?></td>
+                            <td class="col-actions">
+                                <a href="<?= htmlspecialchars($editUrl) ?>" class="icon-btn" title="Edit day" onclick="event.stopPropagation();">
+                                    <img src="/assets/icons/pencil.svg" alt="Edit" class="icon">
+                                </a>
+                                <a href="<?= htmlspecialchars($delUrl) ?>" class="icon-btn danger" title="Delete day" onclick="event.stopPropagation();">
+                                    <img src="/assets/icons/trash.svg" alt="Delete" class="icon">
+                                </a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
 
-
-                </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
-<?php endif; ?>
 </div>
 
 <?php $this->end(); ?>
 
 <?php $this->start('scripts'); ?>
-<!-- Reserved for day-page JS later -->
+<!-- No page JS yet -->
 <?php $this->end(); ?>

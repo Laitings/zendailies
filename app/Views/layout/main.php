@@ -76,18 +76,6 @@ if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
     <link rel="icon" type="image/png" href="/assets/img/zentropa-favicon.png">
     <link rel="stylesheet" href="/assets/css/main.css">
 
-    <style>
-        /* Remove the extra 65px top padding when a project subbar is present */
-        body.has-subbar .zd-main {
-            padding-top: 24px !important;
-            /* kill the calc(...) from main.css */
-        }
-
-        /* Keep the original spacing on pages without a subbar */
-        body:not(.has-subbar) .zd-main {
-            padding-top: calc(24px + var(--topbar-h)) !important;
-        }
-    </style>
 
     <?php __zd_render_section('head', $__sections); ?>
 </head>
@@ -146,11 +134,6 @@ if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
         </div>
     </header>
 
-    <?php if (!empty($__sections['precontent'])): ?>
-        <div class="zd-pre">
-            <?php __zd_render_section('precontent', $__sections); ?>
-        </div>
-    <?php endif; ?>
     <?php
     static $subbarRendered = false;
     if ($ctx && !$subbarRendered):
@@ -160,6 +143,8 @@ if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
             <nav class="zd-subnav">
                 <a class="<?= str_starts_with($reqUri, "/admin/projects/$puuid/days") ? 'active' : '' ?>"
                     href="/admin/projects/<?= urlencode($puuid) ?>/days">Days</a>
+                <a class="<?= str_starts_with($reqUri, "/admin/projects/$puuid/player") ? 'active' : '' ?>"
+                    href="/admin/projects/<?= urlencode($puuid) ?>/player?pane=days">Player</a>
                 <?php if ($isSuperuser || $isProjectAdmin): ?>
                     <a class="<?= str_starts_with($reqUri, "/admin/projects/$puuid/members") ? 'active' : '' ?>"
                         href="/admin/projects/<?= urlencode($puuid) ?>/members">Members</a>
@@ -174,6 +159,13 @@ if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
             </nav>
         </div>
     <?php endif; ?>
+
+    <?php if (!empty($__sections['precontent'])): ?>
+        <div class="zd-pre">
+            <?php __zd_render_section('precontent', $__sections); ?>
+        </div>
+    <?php endif; ?>
+
 
 
 

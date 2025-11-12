@@ -7,32 +7,291 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnStepBack = document.getElementById("btnStepBack");
   const btnStepFwd = document.getElementById("btnStepFwd");
 
-  // FPS for frame stepping
+  // FPS for frame stepping (declare BEFORE any TC logic uses it)
   const fps = parseFloat(vid.dataset.fps || "25") || 25;
   const frameDur = 1 / fps;
+
+  // === Timecode inline editor ===
+  {
+    const tcChip = document.getElementById("tcChip");
+    if (!tcChip) {
+      // nothing to wire
+    } else {
+      const fps = Math.round(parseFloat(vid.dataset.fps || "25") || 25);
+      const drop = Math.abs(fps - 30) < 0.2 || Math.abs(fps - 60) < 0.2; // treat 29.97/59.94 as drop
+      const SEP = drop ? ";" : ":";
+
+      // ---- TC helpers (same math as your overlay) ----
+      const pad2 = (n) => String(n).padStart(2, "0");
+
+      function tcToFramesND(tc) {
+        const m = /^(\d{2}):(\d{2}):(\d{2})[:;](\d{2})$/.exec(tc);
+        if (!m) return 0;
+        const [_, hh, mm, ss, ff] = m.map(Number);
+        return ((hh * 60 + mm) * 60 + ss) * fps + Math.min(fps - 1, ff);
+      }
+      function framesToTcND(fr) {
+        let f = Math.max(0, Math.round(fr));
+        const ff = f % fps;
+        f = (f - ff) / fps;
+        const ss = f % 60;
+        f = (f - ss) / 60;
+        const mm = f % 60;
+        const hh = (f - mm) / 60;
+        return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}:${pad2(ff)}`;
+      }
+      function tcToFramesDF(tc) {
+        const m = /^(\d{2}):(\d{2}):(\d{2})[:;](\d{2})$/.exec(tc);
+        if (!m) return 0;
+        const [_, hh, mm, ss, ff] = m.map(Number);
+        const df = Math.round(fps / 15); // 2 for 29.97, 4 for 59.94
+        const totalMin = hh * 60 + mm;
+        const dropped = df * (totalMin - Math.floor(totalMin / 10));
+        return (
+          ((hh * 60 + mm) * 60 + ss) * fps + Math.min(fps - 1, ff) - dropped
+        );
+      }
+      function framesToTcDF(fr) {
+        const df = Math.round(fps / 15);
+        const FPH = fps * 3600,
+          FP10 = fps * 600,
+          FPM = fps * 60;
+        let f = Math.max(0, Math.round(fr));
+        const d =
+          Math.floor(f / (FP10 - df * 9)) * 9 * df +
+          Math.max(0, Math.floor((f % (FP10 - df * 9)) / (FPM - df))) * df;
+        let a = f + d;
+        const hh = Math.floor(a / FPH);
+        a -= hh * FPH;
+        const mm = Math.floor(a / FPM);
+        a -= mm * FPM;
+        const ss = Math.floor(a / fps);
+        const ff = a % fps;
+        return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}${SEP}${pad2(ff)}`;
+      }
+
+      const parseTC = (tc) => (drop ? tcToFramesDF(tc) : tcToFramesND(tc));
+      const fmtTC = (fr) => (drop ? framesToTcDF(fr) : framesToTcND(fr));
+
+      const startTC = (vid.dataset.tcStart || "00:00:00:00").trim();
+      const startFrames = parseTC(startTC);
+
+      function currentChipTC() {
+        const curAbs = startFrames + Math.round((vid.currentTime || 0) * fps);
+        return fmtTC(curAbs);
+      }
+
+      // keep chip in sync while playing
+      const paint = () => {
+        tcChip.textContent = currentChipTC();
+      };
+      vid.addEventListener("timeupdate", paint);
+      vid.addEventListener("loadedmetadata", paint);
+      paint();
+
+      // --- build a single input next to the chip (hidden until edit) ---
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "zd-tc-input";
+      input.autocomplete = "off";
+      input.spellcheck = false;
+      input.inputMode = "numeric";
+      input.maxLength = 11; // "HH:MM:SS:FF"
+      input.style.display = "none";
+      tcChip.insertAdjacentElement("afterend", input);
+
+      // We use a fixed mask "HH:MM:SS:FF" and overwrite digits.
+      // Writable indexes: 0,1  3,4  6,7  9,10  (skip 2,5,8 which are separators)
+      const WRITABLE = [0, 1, 3, 4, 6, 7, 9, 10];
+
+      function normalizeMask(s) {
+        // keep exactly the mask length and separators
+        let raw = (s || "").replace(/\D+/g, "").slice(0, 8).padEnd(8, "0");
+        const hh = raw.slice(0, 2),
+          mm = raw.slice(2, 4),
+          ss = raw.slice(4, 6),
+          ff = raw.slice(6, 8);
+        const mmC = pad2(Math.min(59, +mm));
+        const ssC = pad2(Math.min(59, +ss));
+        const ffC = pad2(Math.min(fps - 1, +ff));
+        return `${pad2(+hh)}:${mmC}:${ssC}${SEP}${ffC}`;
+      }
+
+      function beginEdit() {
+        // snapshot live TC, put into input, place caret at HH start
+        const val = currentChipTC();
+        input.value = val;
+        tcChip.style.display = "none";
+        input.style.display = "";
+        input.focus();
+        input.setSelectionRange(0, 2);
+      }
+
+      function endEdit(commit) {
+        if (commit) {
+          // seek to entered TC (absolute) converted to clip-relative
+          const entered = input.value;
+          const absFrames = parseTC(entered);
+          let rel = absFrames - startFrames;
+          let sec = rel / fps;
+          if (Number.isFinite(vid.duration)) {
+            sec = Math.max(0, Math.min(vid.duration - 0.001, sec));
+          } else {
+            sec = Math.max(0, sec);
+          }
+          vid.currentTime = sec;
+        }
+        // On exit (commit or cancel), show live playhead TC again
+        input.style.display = "none";
+        tcChip.style.display = "";
+        tcChip.textContent = currentChipTC();
+      }
+
+      // Overwrite typing: digits only, move caret to next writable slot, skip separators
+      input.addEventListener("keydown", (e) => {
+        const key = e.key;
+
+        if (key === "Enter") {
+          e.preventDefault();
+          return endEdit(true);
+        }
+        if (key === "Escape") {
+          e.preventDefault();
+          return endEdit(false);
+        }
+
+        if (key === "Tab") return; // allow tabbing out
+
+        // Backspace: move left to previous writable slot and zero it
+        if (key === "Backspace") {
+          e.preventDefault();
+          let i = Math.max(0, (input.selectionStart ?? 0) - 1);
+          while (i > 0 && !WRITABLE.includes(i)) i--;
+          const a = input.value.split("");
+          if (WRITABLE.includes(i)) a[i] = "0";
+          input.value = a.join("");
+          input.setSelectionRange(i, i + 1);
+          return;
+        }
+
+        // Digits: write at current caret (or next writable), then advance
+        if (/^\d$/.test(key)) {
+          e.preventDefault();
+          let i = input.selectionStart ?? 0;
+          // if caret is on a separator, jump to next writable
+          while (i < 11 && !WRITABLE.includes(i)) i++;
+          if (i >= 11) return; // end
+          const a = input.value.split("");
+          a[i] = key;
+          input.value = a.join("");
+
+          // clamp fields live so it never becomes invalid
+          input.value = normalizeMask(input.value);
+
+          // advance to next writable slot
+          let j = i + 1;
+          while (j < 11 && !WRITABLE.includes(j)) j++;
+          input.setSelectionRange(Math.min(j, 11), Math.min(j, 11));
+          return;
+        }
+
+        // Arrow keys: move between writable slots
+        if (key === "ArrowLeft" || key === "ArrowRight") {
+          e.preventDefault();
+          let i = input.selectionStart ?? 0;
+          if (key === "ArrowLeft") {
+            i = Math.max(0, i - 1);
+            while (i > 0 && !WRITABLE.includes(i)) i--;
+          } else {
+            i = Math.min(11, i + 1);
+            while (i < 11 && !WRITABLE.includes(i)) i++;
+          }
+          input.setSelectionRange(i, i + 1);
+          return;
+        }
+
+        // everything else inside the editor is blocked (keeps it “deck-like”)
+        e.preventDefault();
+      });
+
+      // Ensure format if something pasted
+      input.addEventListener("input", () => {
+        input.value = normalizeMask(input.value);
+      });
+
+      // Start edit on chip click
+      tcChip.addEventListener("click", beginEdit);
+
+      // Clicking away should CANCEL and show live TC (no seek)
+      input.addEventListener("blur", () => endEdit(false));
+    }
+  }
 
   const iconPlay = btnPlayPause?.querySelector('[data-state="play"]');
   const iconPause = btnPlayPause?.querySelector('[data-state="pause"]');
 
-  const scrub = document.getElementById("scrub");
-  const timeCur = document.getElementById("timeCur");
-  const timeDur = document.getElementById("timeDur");
+  const scrub = document.getElementById("scrubGlobal");
 
   const btnMute = document.getElementById("btnMute");
   const vol = document.getElementById("vol");
 
   const btnFS = document.getElementById("btnFS");
+
+  const btnTheater = document.getElementById("btnTheater");
+  const layoutRoot = document.querySelector(".player-layout");
+  const playerMain = document.querySelector("section.player-main");
+  const theaterEnterIcon = btnTheater?.querySelector('[data-state="enter"]');
+  const theaterExitIcon = btnTheater?.querySelector('[data-state="exit"]');
+
+  const THEATER_KEY = "playerTheaterMode";
+
+  function setTheater(on) {
+    if (!layoutRoot) return;
+    layoutRoot.classList.toggle("is-theater", !!on);
+
+    // swap button glyphs
+    if (theaterEnterIcon && theaterExitIcon) {
+      theaterEnterIcon.style.display = on ? "none" : "";
+      theaterExitIcon.style.display = on ? "" : "none";
+    }
+  }
+
+  // restore last state
+  setTheater(sessionStorage.getItem(THEATER_KEY) === "1");
+
+  // wire button
+  btnTheater?.addEventListener("click", () => {
+    const now = !layoutRoot.classList.contains("is-theater");
+    setTheater(now);
+    sessionStorage.setItem(THEATER_KEY, now ? "1" : "0");
+  });
+
   const frame = document.getElementById("playerFrame"); // for fullscreen target
 
-  // --- helpers ---
-  const fmt = (secs) => {
-    if (!Number.isFinite(secs)) return "00:00";
-    secs = Math.max(0, Math.floor(secs));
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  };
+  // --- Controls idle/show logic ---
+  let idleTimer = 0;
+  const IDLE_MS = 1800;
 
+  function wakeControls() {
+    if (!frame) return;
+    frame.classList.remove("controls-idle");
+    clearTimeout(idleTimer);
+    idleTimer = window.setTimeout(() => {
+      frame.classList.add("controls-idle");
+    }, IDLE_MS);
+  }
+
+  // wake on interactions within the frame
+  ["mousemove", "pointerdown", "touchstart", "wheel", "keydown"].forEach(
+    (ev) => {
+      frame.addEventListener(ev, wakeControls, { passive: true });
+    }
+  );
+
+  // start the timer once video metadata is ready (or immediately if you like)
+  wakeControls();
+
+  // --- helpers ---
   function updatePlayIcons() {
     if (!iconPlay || !iconPause) return;
     if (vid.paused) {
@@ -49,14 +308,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!Number.isFinite(vid.duration) || vid.duration <= 0) return;
     const ratio = vid.currentTime / vid.duration;
     scrub.value = String(Math.round(ratio * 1000));
-    if (timeCur) timeCur.textContent = fmt(vid.currentTime);
+    const pct = Math.round(ratio * 100);
+    scrub.style.setProperty("--p", pct + "%");
   }
 
+  // minimal stub (we no longer show MM:SS, but handlers still call it)
   function syncDuration() {
-    if (timeDur)
-      timeDur.textContent = Number.isFinite(vid.duration)
-        ? fmt(vid.duration)
-        : "00:00";
+    /* no-op */
   }
 
   // --- Play/Pause ---
@@ -87,6 +345,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const ratio = Math.max(0, Math.min(1, (+scrub.value || 0) / 1000));
     vid.currentTime = ratio * vid.duration;
   });
+
   // update from video
   vid.addEventListener("timeupdate", syncScrubFromVideo);
   vid.addEventListener("seeked", syncScrubFromVideo);
@@ -119,10 +378,14 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // --- Click video to toggle play/pause ---
-  vid.addEventListener("click", () => {
-    if (vid.paused) vid.play();
-    else vid.pause();
-  });
+  vid.addEventListener(
+    "click",
+    () => {
+      if (vid.paused) vid.play();
+      else vid.pause();
+    },
+    true
+  ); // capture phase as well
 
   // --- Volume / Mute ---
   if (vol) {
@@ -151,22 +414,38 @@ document.addEventListener("DOMContentLoaded", () => {
     (btnMute.textContent = vid.muted || vid.volume === 0 ? "🔇" : "🔊");
 
   // --- Fullscreen ---
-  btnFS?.addEventListener("click", async () => {
+  btnFS?.addEventListener("click", () => {
     const el = frame || vid;
-    if (!document.fullscreenElement) {
-      try {
-        await el.requestFullscreen?.();
-      } catch {}
+
+    const enter =
+      el.requestFullscreen ||
+      el.webkitRequestFullscreen ||
+      el.msRequestFullscreen;
+
+    const exit =
+      document.exitFullscreen ||
+      document.webkitExitFullscreen ||
+      document.msExitFullscreen;
+
+    if (
+      !document.fullscreenElement &&
+      !document.webkitFullscreenElement &&
+      !document.msFullscreenElement
+    ) {
+      enter?.call(el);
     } else {
-      try {
-        await document.exitFullscreen?.();
-      } catch {}
+      exit?.call(document);
     }
   });
-  document.addEventListener("fullscreenchange", () => {
-    btnFS &&
-      (btnFS.title = document.fullscreenElement
-        ? "Exit Fullscreen"
-        : "Fullscreen");
-  });
+
+  function onFSChange() {
+    const active =
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.msFullscreenElement;
+    if (btnFS) btnFS.title = active ? "Exit Fullscreen" : "Fullscreen";
+  }
+  document.addEventListener("fullscreenchange", onFSChange);
+  document.addEventListener("webkitfullscreenchange", onFSChange);
+  document.addEventListener("MSFullscreenChange", onFSChange);
 });

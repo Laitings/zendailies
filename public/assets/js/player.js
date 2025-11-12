@@ -22,6 +22,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const layout = document.querySelector(".player-layout");
   const resizer = document.getElementById("sidebarResizer");
+  const innerResizer = document.getElementById("innerResizer");
+
+  const mainSection = document.querySelector("section.player-main"); // inner grid in theater
+  const isTheater = () => layout.classList.contains("is-theater");
+
+  // Which CSS variable are we driving right now?
+  function currentVarName() {
+    return isTheater() ? "--meta-width" : "--clipcol-width";
+  }
+
+  const theaterBtn = document.getElementById("theaterToggleBtn");
+  const theaterIcon = document.getElementById("theaterToggleIcon");
 
   if (
     !btnToggleView ||
@@ -32,7 +44,6 @@ document.addEventListener("DOMContentLoaded", function () {
     !clipScrollInner ||
     !dayScrollInner ||
     !layout ||
-    !resizer ||
     !daySwitchBtn ||
     !currentDayNode
   ) {
@@ -42,6 +53,31 @@ document.addEventListener("DOMContentLoaded", function () {
   // Read project UUID from the page (set by PHP)
   const zdRoot = document.querySelector(".player-layout");
   const ZD_PROJECT_UUID = zdRoot?.dataset.projectUuid || "";
+
+  const THEATER_KEY = "playerTheaterMode";
+  function setTheater(on) {
+    if (!zdRoot) return;
+    zdRoot.classList.toggle("is-theater", !!on);
+    // Swap header icon only if it exists
+    if (theaterIcon) {
+      theaterIcon.src = on
+        ? "/assets/icons/theater-exit.svg"
+        : "/assets/icons/theater.svg";
+    }
+  }
+
+  // Restore from session
+  const theaterSaved = sessionStorage.getItem(THEATER_KEY);
+  setTheater(theaterSaved === "1");
+
+  // Wire the button
+  if (theaterBtn) {
+    theaterBtn.addEventListener("click", () => {
+      const nowOn = !zdRoot.classList.contains("is-theater");
+      setTheater(nowOn);
+      sessionStorage.setItem(THEATER_KEY, nowOn ? "1" : "0");
+    });
+  }
 
   // Day grid: navigate when a day is clicked
   document.addEventListener("click", (e) => {
@@ -167,6 +203,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (overlay) overlay.style.display = ""; // show centered overlay
         if (rowtext) rowtext.style.display = "none"; // hide row title
+
+        const overlayMeta = card.querySelector(".day-overlay-meta");
+        const rowMeta = card.querySelector(".day-rowmeta");
+        if (overlayMeta) overlayMeta.style.display = ""; // show on thumb
+        if (rowMeta) rowMeta.style.display = "none"; // hide row meta
       } else {
         // LIST MODE: cards behave like 2-col rows
         card.style.display = "grid";
@@ -181,6 +222,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (overlay) overlay.style.display = "none"; // hide overlay in list rows
         if (rowtext) rowtext.style.display = "block"; // show row title
+
+        const overlayMeta = card.querySelector(".day-overlay-meta");
+        const rowMeta = card.querySelector(".day-rowmeta");
+        if (overlayMeta) overlayMeta.style.display = "none"; // hide on thumb
+        if (rowMeta) rowMeta.style.display = "block"; // show under title
       }
     });
   }
@@ -237,8 +283,21 @@ document.addEventListener("DOMContentLoaded", function () {
   const restoredMode =
     sessionStorage.getItem(keyMode) === "grid" ? "grid" : "list";
 
-  // figure out last pane ("clips"/"days"), default to "clips"
-  const restoredPane = sessionStorage.getItem(keyPane()) || "clips";
+  // allow URL to force initial pane (e.g. ?pane=days)
+  const urlPaneParam = new URLSearchParams(location.search).get("pane");
+  const forcedPane =
+    urlPaneParam && /^(clips|days)$/i.test(urlPaneParam)
+      ? urlPaneParam.toLowerCase()
+      : null;
+
+  // figure out last pane ("clips"/"days"), default to "clips"; URL wins if present
+  const restoredPane =
+    forcedPane || sessionStorage.getItem(keyPane()) || "clips";
+
+  // if URL forced it, persist so the back/forward flow keeps it
+  if (forcedPane) {
+    sessionStorage.setItem(keyPane(), restoredPane);
+  }
 
   // Apply mode classes to both containers first
   clipContainer.classList.remove("list-view", "grid-view");
@@ -319,49 +378,56 @@ document.addEventListener("DOMContentLoaded", function () {
     startW = 0;
 
   function computeMaxAllowedWidth() {
-    // how wide is the full 3-col layout right now?
-    const layoutRect = layout.getBoundingClientRect();
-    const layoutTotal = layoutRect.width;
-
-    // we reserve some space for:
-    // - the resizer track (~10px plus gaps)
-    // - the player column min width
-    const minPlayerWidth = 400; // <- tweak if you want the player section never below this
-    const resizerTrackAndGaps = 18; // 10px track + ~8px column-gap
-
-    // sidebar can't be bigger than what's left after reserving player min width
-    let maxW = layoutTotal - minPlayerWidth - resizerTrackAndGaps;
-
-    // don't let it go negative or tiny
-    if (maxW < 240) {
-      maxW = 240;
+    if (!isTheater()) {
+      // NORMAL: resizer controls the LEFT sidebar (clip/day list)
+      const layoutRect = layout.getBoundingClientRect();
+      const layoutTotal = layoutRect.width;
+      const minPlayerWidth = 400;
+      const resizerTrackAndGaps = 18;
+      let maxW = layoutTotal - minPlayerWidth - resizerTrackAndGaps;
+      if (maxW < 240) maxW = 240;
+      return maxW;
+    } else {
+      // THEATER: measure the whole grid (mainSection is display: contents)
+      const total = layout.getBoundingClientRect().width;
+      const minVideoWidth = 560; // keep the video comfortably wide
+      const resizerTrack = 18;
+      let maxW = total - minVideoWidth - resizerTrack;
+      if (maxW < 280) maxW = 280;
+      return maxW;
     }
-
-    return maxW;
   }
 
-  resizer.addEventListener("mousedown", function (e) {
-    dragging = true;
-    startX = e.clientX;
-    const cs = getComputedStyle(layout);
-    startW =
-      parseInt(cs.getPropertyValue("--clipcol-width")) || defaults[getMode()];
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  });
+  [resizer, innerResizer].forEach((el) =>
+    el?.addEventListener("mousedown", function (e) {
+      dragging = true;
+      startX = e.clientX;
+
+      const cs = getComputedStyle(layout);
+      const varName = currentVarName(); // "--clipcol-width" (normal) or "--meta-width" (theater)
+      const fallback = isTheater() ? 420 : defaults[getMode()];
+      startW = parseInt(cs.getPropertyValue(varName)) || fallback;
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    })
+  );
 
   window.addEventListener("mousemove", function (e) {
     if (!dragging) return;
 
     const dx = e.clientX - startX;
-    let nw = startW + dx;
+    const delta = isTheater() ? -dx : dx; // invert in theater
+    let nw = startW + delta;
 
     // clamp between 240 and dynamic max
     const maxAllowed = computeMaxAllowedWidth();
     if (nw < 240) nw = 240;
     if (nw > maxAllowed) nw = maxAllowed;
 
-    layout.style.setProperty("--clipcol-width", nw + "px");
+    const varName = currentVarName();
+    // Always set on the grid root, because CSS reads it on .player-layout
+    layout.style.setProperty(varName, nw + "px");
   });
 
   window.addEventListener("mouseup", function () {
@@ -370,30 +436,46 @@ document.addEventListener("DOMContentLoaded", function () {
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
 
-    // after letting go, snap again to be safe and persist
-    const cs = getComputedStyle(layout);
-    let finalW =
-      parseInt(cs.getPropertyValue("--clipcol-width")) || defaults[getMode()];
-    const maxAllowed = computeMaxAllowedWidth();
-    if (finalW < 240) finalW = 240;
-    if (finalW > maxAllowed) finalW = maxAllowed;
+    document.addEventListener("keydown", (e) => {
+      if (
+        e.key.toLowerCase() === "t" &&
+        !e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey
+      ) {
+        theaterBtn?.click();
+      }
+    });
 
-    layout.style.setProperty("--clipcol-width", finalW + "px");
+    // after letting go, snap again to be safe and persist
+    const varName = currentVarName();
+    const cs = getComputedStyle(layout);
+    let finalW = parseInt(cs.getPropertyValue(varName)) || defaults[getMode()];
+    const maxAllowed = computeMaxAllowedWidth();
+    if (finalW < (isTheater() ? 280 : 240)) finalW = isTheater() ? 280 : 240;
+    if (finalW > maxAllowed) finalW = maxAllowed;
+    layout.style.setProperty(varName, finalW + "px");
+
+    // persist per-mode key you already use; ok to reuse the same keys
     sessionStorage.setItem(keyW(getMode()), String(finalW));
   });
 
   // double-click divider to reset width for current mode
   resizer.addEventListener("dblclick", function () {
-    const m = getMode();
-    layout.style.setProperty("--clipcol-width", defaults[m] + "px");
-    sessionStorage.setItem(keyW(m), String(defaults[m]));
+    const varName = currentVarName(); // "--clipcol-width" or "--meta-width"
+    const def = isTheater() ? 420 : defaults[getMode()];
+    layout.style.setProperty(varName, def + "px");
+    // Persist only the clip column width (we don't currently store meta width):
+    if (!isTheater()) {
+      sessionStorage.setItem(keyW(getMode()), String(def));
+    }
   });
 });
 
 // ---- Player timecode overlay (with drop-frame support) ----
 (function () {
   const vid = document.getElementById("zdVideo");
-  const chip = document.getElementById("tcOverlay");
+  const chip = document.getElementById("tcChip");
   if (!vid || !chip) return;
 
   const fps = parseFloat(vid.dataset.fps || "25") || 25;

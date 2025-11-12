@@ -98,7 +98,7 @@
 <div class="zd-page">
     <div class="zd-page-header">
         <h1>Users</h1>
-        <a href="/admin/users/create" class="zd-btn zd-btn-primary">New User</a>
+        <a href="/admin/users/create" class="zd-btn zd-btn-primary">+ New User</a>
     </div>
 
     <?php if (empty($users)): ?>

@@ -8,6 +8,133 @@ use PDO;
 
 final class ClipPlayerController
 {
+    private function fetchDaysWithThumbs(\PDO $pdo, string $projectUuid, string $visibilitySql, ?string $viewerParam): array
+    {
+        // All days for project (order newest first)
+        $allDaysStmt = $pdo->prepare("
+        SELECT 
+            BIN_TO_UUID(d.id,1) AS day_uuid,
+            d.shoot_date,
+            d.title
+        FROM days d
+        WHERE d.project_id = UUID_TO_BIN(:p,1)
+        ORDER BY d.shoot_date DESC, d.created_at DESC
+        LIMIT 500
+    ");
+        $allDaysStmt->execute([':p' => $projectUuid]);
+        $rawDays = $allDaysStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+        if (!$rawDays) return [];
+
+        // For each day, pick first visible clip in that day, then newest poster
+        $thumbSql = "
+            SELECT 
+                c.id AS clip_bin,
+                (
+                    SELECT a.storage_path
+                    FROM clip_assets a
+                    WHERE a.clip_id = c.id
+                    AND a.asset_type = 'poster'
+                    ORDER BY a.created_at DESC
+                    LIMIT 1
+                ) AS poster_path,
+                (
+                    SELECT CAST(REPLACE(cm.meta_value, ',', '.') AS DECIMAL(10,3))
+                    FROM clip_metadata cm
+                    WHERE cm.clip_id = c.id
+                    AND cm.meta_key IN ('fps','FPS','Camera FPS','Frame Rate','FrameRate','CameraFPS')
+                    ORDER BY FIELD(cm.meta_key,'fps','FPS','Camera FPS','Frame Rate','FrameRate','CameraFPS')
+                    LIMIT 1
+                ) AS clip_fps
+            FROM clips c
+            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
+            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
+            WHERE c.project_id = UUID_TO_BIN(:p,1)
+            AND c.day_id     = UUID_TO_BIN(:d,1)
+            $visibilitySql
+            ORDER BY c.created_at ASC
+            LIMIT 1
+        ";
+
+        $thumbStmt = $pdo->prepare($thumbSql);
+
+        // Per-day stats (ACL-aware): clip count + total duration (ms)
+        $statsSql = "
+            SELECT
+                COUNT(*)                          AS cnt,
+                COALESCE(SUM(c.duration_ms), 0)   AS tot_ms
+            FROM clips c
+            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
+            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
+            WHERE c.project_id = UUID_TO_BIN(:p,1)
+            AND c.day_id     = UUID_TO_BIN(:d,1)
+            $visibilitySql
+        ";
+        $statsStmt = $pdo->prepare($statsSql);
+
+
+        $daysOut = [];
+        foreach ($rawDays as $rowDay) {
+            $thumbStmt->bindValue(':p', $projectUuid);
+            $thumbStmt->bindValue(':d', $rowDay['day_uuid']);
+            if ($viewerParam !== null) {
+                $thumbStmt->bindValue(':viewer_person_uuid', $viewerParam);
+            }
+            $thumbStmt->execute();
+            $thumbRow = $thumbStmt->fetch(\PDO::FETCH_ASSOC);
+
+            $statsStmt->bindValue(':p', $projectUuid);
+            $statsStmt->bindValue(':d', $rowDay['day_uuid']);
+            if ($viewerParam !== null) {
+                $statsStmt->bindValue(':viewer_person_uuid', $viewerParam);
+            }
+            $statsStmt->execute();
+            $stats = $statsStmt->fetch(\PDO::FETCH_ASSOC) ?: ['cnt' => 0, 'tot_ms' => 0];
+
+            $totMs = (int)($stats['tot_ms'] ?? 0);
+
+            // choose FPS for the day: first visible clip's FPS, else 25
+            $dayFps = null;
+            if (!empty($thumbRow) && isset($thumbRow['clip_fps']) && $thumbRow['clip_fps'] !== null) {
+                $dayFps = (float)$thumbRow['clip_fps'];
+            }
+            if (!$dayFps || $dayFps <= 0) {
+                $dayFps = 25.0;
+            }
+
+            // Convert totMs to frames using the chosen FPS.
+            // Frame index FF is 0..(fpsInt-1), fpsInt is the nominal integer (23.976→24, 29.97→30).
+            $fpsInt = (int)round($dayFps);
+            if ($fpsInt < 1) $fpsInt = 25;
+
+            $totalFrames   = (int)round(($totMs / 1000.0) * $dayFps);
+            $frames        = $totalFrames % $fpsInt;
+            $totalSeconds  = intdiv($totalFrames, $fpsInt);
+            $ss            = $totalSeconds % 60;
+            $totalMinutes  = intdiv($totalSeconds, 60);
+            $mm            = $totalMinutes % 60;
+            $hh            = intdiv($totalMinutes, 60);
+
+            $hmsff = sprintf('%02d:%02d:%02d:%02d', $hh, $mm, $ss, $frames);
+
+
+
+            $daysOut[] = [
+                'day_uuid'    => $rowDay['day_uuid'],
+                'title'       => $rowDay['title'] ?: $rowDay['shoot_date'],
+                'shoot_date'  => $rowDay['shoot_date'],
+                'thumb_url'   => $thumbRow['poster_path'] ?? null,
+                'clip_count'  => (int)($stats['cnt'] ?? 0),
+                'total_hms'   => $hmsff,            // now HH:MM:SS:FF
+                // optionally expose which FPS we used, for debugging or future badges
+                // 'day_fps_used' => $dayFps,
+            ];
+        }
+
+        return $daysOut;
+    }
+
+
     public function redirectToFirst(string $projectUuid, string $dayUuid): void
     {
         if (!$projectUuid || !$dayUuid) {
@@ -240,67 +367,8 @@ final class ClipPlayerController
         $cmtStmt->execute([':c' => $clipUuid]);
         $comments = $cmtStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // >>> ADDED: fetch ALL days in this project for the Day Picker
-        // We'll later attach a thumb to each.
-        $allDaysStmt = $pdo->prepare("
-            SELECT 
-                BIN_TO_UUID(d.id,1) AS day_uuid,
-                d.shoot_date,
-                d.title
-            FROM days d
-            WHERE d.project_id = UUID_TO_BIN(:p,1)
-            ORDER BY d.shoot_date ASC, d.created_at ASC
-            LIMIT 500
-        ");
-        $allDaysStmt->execute([':p' => $projectUuid]);
-        $rawDays = $allDaysStmt->fetchAll(PDO::FETCH_ASSOC);
+        $daysOut = $this->fetchDaysWithThumbs($pdo, $projectUuid, $visibilitySql, $viewerParam);
 
-        $daysOut = [];
-        if ($rawDays) {
-
-            // Prepare a statement to get ONE poster thumb per day,
-            // respecting the same ACL (visibilitySql).
-            // Strategy: pick the first visible clip in that day, then its newest poster.
-            $thumbSql = "
-                SELECT 
-                    (
-                        SELECT a.storage_path
-                        FROM clip_assets a
-                        WHERE a.clip_id = c.id
-                          AND a.asset_type = 'poster'
-                        ORDER BY a.created_at DESC
-                        LIMIT 1
-                    ) AS poster_path
-                FROM clips c
-                LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-                LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-                WHERE c.project_id = UUID_TO_BIN(:p,1)
-                  AND c.day_id     = UUID_TO_BIN(:d,1)
-                  $visibilitySql
-                ORDER BY c.created_at ASC
-                LIMIT 1
-            ";
-            $thumbStmt = $pdo->prepare($thumbSql);
-
-            foreach ($rawDays as $rowDay) {
-                $thumbStmt->bindValue(':p', $projectUuid);
-                $thumbStmt->bindValue(':d', $rowDay['day_uuid']);
-                if ($viewerParam !== null) {
-                    $thumbStmt->bindValue(':viewer_person_uuid', $viewerParam);
-                }
-                $thumbStmt->execute();
-                $thumbRow = $thumbStmt->fetch(PDO::FETCH_ASSOC);
-
-                $daysOut[] = [
-                    'day_uuid'   => $rowDay['day_uuid'],
-                    'title'      => $rowDay['title'] ?: $rowDay['shoot_date'],
-                    'shoot_date' => $rowDay['shoot_date'],
-                    'thumb_url'  => $thumbRow['poster_path'] ?? null,
-                    // you can also flag current day if you want later, e.g.:
-                    // 'is_current' => ($rowDay['day_uuid'] === $dayUuid),
-                ];
-            }
-        }
 
         // >>> ADDED: placeholder thumb path for days with no clips
         $placeholderThumbUrl = '/assets/img/empty_day_placeholder.png';
@@ -323,6 +391,75 @@ final class ClipPlayerController
             'current_day_label'     => $currentDayLabel,
             'days'                  => $daysOut,
             'placeholder_thumb_url' => $placeholderThumbUrl,
+        ]);
+    }
+
+    public function overview(string $projectUuid): void
+    {
+        if (session_status() === \PHP_SESSION_NONE) session_start();
+        $pdo = \App\Support\DB::pdo();
+
+        // Session context (same as show)
+        $account     = $_SESSION['account'] ?? [];
+        $isSuperuser = !empty($account['is_superuser']);
+        $personUuid  = $_SESSION['person_uuid'] ?? null;
+
+        // Project
+        $projStmt = $pdo->prepare("
+        SELECT BIN_TO_UUID(p.id,1) AS project_uuid, p.title, p.code, p.status
+        FROM projects p
+        WHERE p.id = UUID_TO_BIN(:p,1)
+        LIMIT 1
+    ");
+        $projStmt->execute([':p' => $projectUuid]);
+        $project = $projStmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$project) {
+            http_response_code(404);
+            echo 'Project not found';
+            return;
+        }
+
+        // Project-admin check (same pattern as show)
+        $isProjectAdmin = 0;
+        if (!$isSuperuser && $personUuid) {
+            $admStmt = $pdo->prepare("
+            SELECT pm.is_project_admin
+            FROM project_members pm
+            WHERE pm.project_id = UUID_TO_BIN(:p,1)
+              AND pm.person_id  = UUID_TO_BIN(:person,1)
+            LIMIT 1
+        ");
+            $admStmt->execute([':p' => $projectUuid, ':person' => $personUuid]);
+            $isProjectAdmin = (int)($admStmt->fetchColumn() ?: 0);
+        }
+
+        // ACL fragment (same as show)
+        $visibilitySql = '';
+        $viewerParam   = null;
+        if (!$isSuperuser && !$isProjectAdmin) {
+            $visibilitySql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid,1))";
+            $viewerParam   = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
+        }
+
+        // Build the same days list with thumbs via helper
+        $daysOut = $this->fetchDaysWithThumbs($pdo, $projectUuid, $visibilitySql, $viewerParam);
+
+        // Reuse the SAME view; no clip/day selected. JS handles ?pane=days
+        \App\Support\View::render('admin/player/show', [
+            'project'               => $project,
+            'day'                   => null,
+            'clip'                  => null,
+            'proxy_url'             => null,
+            'poster_url'            => null,
+            'metadata'              => [],
+            'comments'              => [],
+            'project_uuid'          => $projectUuid,
+            'day_uuid'              => null,
+            'clip_list'             => [],
+            'current_clip'          => null,
+            'current_day_label'     => 'Days',
+            'days'                  => $daysOut,
+            'placeholder_thumb_url' => '/assets/img/empty_day_placeholder.png',
         ]);
     }
 }
