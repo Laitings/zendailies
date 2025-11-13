@@ -478,7 +478,12 @@ document.addEventListener("DOMContentLoaded", function () {
   const chip = document.getElementById("tcChip");
   if (!vid || !chip) return;
 
-  const fps = parseFloat(vid.dataset.fps || "25") || 25;
+  const fpsNum = Number(vid.dataset.fpsnum) || 0;
+  const fpsDen = Number(vid.dataset.fpsden) || 0;
+  const fps =
+    fpsNum > 0 && fpsDen > 0
+      ? fpsNum / fpsDen
+      : Number((vid.dataset.fps || "").replace(",", ".")) || 25;
   const startTC = (vid.dataset.tcStart || "00:00:00:00").trim();
 
   // Auto-detect drop-frame: true for ≈29.97 or ≈59.94

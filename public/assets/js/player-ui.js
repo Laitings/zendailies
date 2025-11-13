@@ -7,9 +7,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnStepBack = document.getElementById("btnStepBack");
   const btnStepFwd = document.getElementById("btnStepFwd");
 
-  // FPS for frame stepping (declare BEFORE any TC logic uses it)
-  const fps = parseFloat(vid.dataset.fps || "25") || 25;
-  const frameDur = 1 / fps;
+  // === FPS (single source of truth) ===
+  const fpsNum = Number(vid.dataset.fpsnum) || 0;
+  const fpsDen = Number(vid.dataset.fpsden) || 0;
+  const fpsExact =
+    fpsNum > 0 && fpsDen > 0
+      ? fpsNum / fpsDen
+      : Number((vid.dataset.fps || "").replace(",", ".")) || 24; // hard fallback for safety
+  const fpsInt = Math.round(fpsExact);
+  console.debug("FPS dataset ?", {
+    fps: vid.dataset.fps,
+    fpsNum: vid.dataset.fpsnum,
+    fpsDen: vid.dataset.fpsden,
+    fpsExact,
+  });
+
+  const frameDur = 1 / fpsExact; // for time stepping
+  const isDrop =
+    Math.abs(fpsExact - 29.97) < 0.02 || Math.abs(fpsExact - 59.94) < 0.02;
+  const SEP = isDrop ? ";" : ":";
+  const EPS = 1e-6; // rounding guard
+  const timeToFrame = (t) => Math.floor((t || 0) * fpsExact + EPS);
+  const frameToTime = (n) => n / fpsExact;
 
   // === Timecode inline editor ===
   {
@@ -17,45 +36,46 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!tcChip) {
       // nothing to wire
     } else {
-      const fps = Math.round(parseFloat(vid.dataset.fps || "25") || 25);
-      const drop = Math.abs(fps - 30) < 0.2 || Math.abs(fps - 60) < 0.2; // treat 29.97/59.94 as drop
-      const SEP = drop ? ";" : ":";
-
       // ---- TC helpers (same math as your overlay) ----
       const pad2 = (n) => String(n).padStart(2, "0");
 
       function tcToFramesND(tc) {
-        const m = /^(\d{2}):(\d{2}):(\d{2})[:;](\d{2})$/.exec(tc);
+        const m = /^(\d{2}):(\d{2}):(\d{2})[:;](\d{2})$/.exec(tc || "");
         if (!m) return 0;
         const [_, hh, mm, ss, ff] = m.map(Number);
-        return ((hh * 60 + mm) * 60 + ss) * fps + Math.min(fps - 1, ff);
+        return ((hh * 60 + mm) * 60 + ss) * fpsInt + Math.min(fpsInt - 1, ff);
       }
+
       function framesToTcND(fr) {
         let f = Math.max(0, Math.round(fr));
-        const ff = f % fps;
-        f = (f - ff) / fps;
+        const ff = f % fpsInt;
+        f = (f - ff) / fpsInt;
         const ss = f % 60;
         f = (f - ss) / 60;
         const mm = f % 60;
         const hh = (f - mm) / 60;
         return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}:${pad2(ff)}`;
       }
+
       function tcToFramesDF(tc) {
-        const m = /^(\d{2}):(\d{2}):(\d{2})[:;](\d{2})$/.exec(tc);
+        const m = /^(\d{2}):(\d{2}):(\d{2})[:;](\d{2})$/.exec(tc || "");
         if (!m) return 0;
         const [_, hh, mm, ss, ff] = m.map(Number);
-        const df = Math.round(fps / 15); // 2 for 29.97, 4 for 59.94
+        const df = Math.round(fpsInt / 15); // 2 for 29.97, 4 for 59.94
         const totalMin = hh * 60 + mm;
         const dropped = df * (totalMin - Math.floor(totalMin / 10));
         return (
-          ((hh * 60 + mm) * 60 + ss) * fps + Math.min(fps - 1, ff) - dropped
+          ((hh * 60 + mm) * 60 + ss) * fpsInt +
+          Math.min(fpsInt - 1, ff) -
+          dropped
         );
       }
+
       function framesToTcDF(fr) {
-        const df = Math.round(fps / 15);
-        const FPH = fps * 3600,
-          FP10 = fps * 600,
-          FPM = fps * 60;
+        const df = Math.round(fpsInt / 15);
+        const FPH = fpsInt * 3600,
+          FP10 = fpsInt * 600,
+          FPM = fpsInt * 60;
         let f = Math.max(0, Math.round(fr));
         const d =
           Math.floor(f / (FP10 - df * 9)) * 9 * df +
@@ -65,19 +85,19 @@ document.addEventListener("DOMContentLoaded", () => {
         a -= hh * FPH;
         const mm = Math.floor(a / FPM);
         a -= mm * FPM;
-        const ss = Math.floor(a / fps);
-        const ff = a % fps;
+        const ss = Math.floor(a / fpsInt);
+        const ff = a % fpsInt;
         return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}${SEP}${pad2(ff)}`;
       }
 
-      const parseTC = (tc) => (drop ? tcToFramesDF(tc) : tcToFramesND(tc));
-      const fmtTC = (fr) => (drop ? framesToTcDF(fr) : framesToTcND(fr));
+      const parseTC = (tc) => (isDrop ? tcToFramesDF(tc) : tcToFramesND(tc));
+      const fmtTC = (fr) => (isDrop ? framesToTcDF(fr) : framesToTcND(fr));
 
       const startTC = (vid.dataset.tcStart || "00:00:00:00").trim();
       const startFrames = parseTC(startTC);
 
       function currentChipTC() {
-        const curAbs = startFrames + Math.round((vid.currentTime || 0) * fps);
+        const curAbs = startFrames + timeToFrame(vid.currentTime || 0);
         return fmtTC(curAbs);
       }
 
@@ -113,7 +133,8 @@ document.addEventListener("DOMContentLoaded", () => {
           ff = raw.slice(6, 8);
         const mmC = pad2(Math.min(59, +mm));
         const ssC = pad2(Math.min(59, +ss));
-        const ffC = pad2(Math.min(fps - 1, +ff));
+        const ffC = pad2(Math.min(fpsInt - 1, +ff));
+
         return `${pad2(+hh)}:${mmC}:${ssC}${SEP}${ffC}`;
       }
 
@@ -133,7 +154,8 @@ document.addEventListener("DOMContentLoaded", () => {
           const entered = input.value;
           const absFrames = parseTC(entered);
           let rel = absFrames - startFrames;
-          let sec = rel / fps;
+          let sec = rel / fpsExact;
+
           if (Number.isFinite(vid.duration)) {
             sec = Math.max(0, Math.min(vid.duration - 0.001, sec));
           } else {

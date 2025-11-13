@@ -9,7 +9,7 @@ use App\Http\Controllers\Admin\DayConverterController;
 use App\Http\Controllers\Admin\ClipPlayerController;
 use App\Http\Controllers\Admin\DayCsvImportController;
 use App\Http\Controllers\Admin\PlayerRedirectController;
-
+use App\Http\Controllers\Admin\MaintenanceController;
 
 /** @var \App\Http\Router $router */
 /** @var \App\Http\Controllers\AuthController $authController */
@@ -22,6 +22,8 @@ $projectDaysController    = new ProjectDaysController();
 $projectClipsController   = new ProjectClipsController();
 $clipPlayerController    = new ClipPlayerController();
 $playerRedirectController = new PlayerRedirectController();
+$maintenanceController   = new MaintenanceController();
+
 
 // ---------- Diagnostics ----------
 $router->get('/ping', function () {
@@ -72,7 +74,8 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     $projectDaysController,
     $projectClipsController,
     $clipPlayerController,
-    $playerRedirectController
+    $playerRedirectController,
+    $maintenanceController
 ) {
     // Home
     $r->get('/', [$homeController, 'index']);
@@ -93,6 +96,8 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
 
     // Shooting days
     $r->get('/admin/projects/{projectUuid}/days', [$projectDaysController, 'index']);
+    // Backfill
+    $r->get('/admin/tools/backfill-fps', [$maintenanceController, 'backfillFps']);
     // Project-level Player entry → open Player day overview (grid of days)
     $r->get('/admin/projects/{projectUuid}/player', [$clipPlayerController, 'overview']);
     // Show create form
@@ -106,6 +111,7 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     // Edit day
     $r->get('/admin/projects/{projectUuid}/days/{dayUuid}/edit', [\App\Http\Controllers\Admin\ProjectDaysController::class, 'editForm']);
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/edit', [\App\Http\Controllers\Admin\ProjectDaysController::class, 'edit']);
+
 
 
     // Clips under a day

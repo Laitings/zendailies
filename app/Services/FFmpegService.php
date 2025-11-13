@@ -184,4 +184,59 @@ final class FFmpegService
 
         return $out;
     }
+
+    /**
+     * getFpsInfo — returns precise FPS info with rational form.
+     * Uses ffprobe json and prefers the video stream's r_frame_rate.
+     * Returns: ['fps' => float, 'fps_num' => int, 'fps_den' => int] or null on failure.
+     */
+    public static function getFpsInfo(string $absPath): ?array
+    {
+        if (!is_file($absPath)) {
+            return null;
+        }
+
+        $ffprobe = getenv('FFPROBE_BIN') ?: 'ffprobe';
+        $cmd = sprintf(
+            '%s -v quiet -print_format json -show_streams %s',
+            escapeshellarg($ffprobe),
+            escapeshellarg($absPath)
+        );
+
+        $raw = @shell_exec($cmd);
+        if (!$raw) return null;
+
+        $json = json_decode($raw, true);
+        if (!is_array($json) || empty($json['streams'])) return null;
+
+        $video = null;
+        foreach ($json['streams'] as $s) {
+            if (($s['codec_type'] ?? '') === 'video') {
+                $video = $s;
+                break;
+            }
+        }
+        if (!$video) return null;
+
+        // Prefer r_frame_rate, fallback to avg_frame_rate
+        $rate = $video['r_frame_rate'] ?? ($video['avg_frame_rate'] ?? null); // e.g. "24000/1001"
+        if (!$rate || strpos($rate, '/') === false) return null;
+
+        [$n, $d] = explode('/', $rate, 2);
+        $num = (int)$n;
+        $den = (int)$d;
+        if ($num <= 0 || $den <= 0) return null;
+
+        // Compute float with 3 decimals like backfill did
+        $fps = round($num / $den, 3);
+
+        // Normalize common NTSC fractions to canonical ints (already ints above)
+        // (No extra mapping needed; r_frame_rate gives exact 24000/1001 etc.)
+
+        return [
+            'fps'     => $fps,
+            'fps_num' => $num,
+            'fps_den' => $den,
+        ];
+    }
 }

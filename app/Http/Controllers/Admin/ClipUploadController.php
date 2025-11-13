@@ -320,6 +320,25 @@ final class ClipUploadController
                 // 1) Probe the file you just saved
                 $core = \App\Services\FFmpegService::probeCoreMetadata($proxyAbsPath);
 
+                // [NEW] Precise FPS into clips (float + rational)
+                $fpsInfo = \App\Services\FFmpegService::getFpsInfo($proxyAbsPath);
+                if ($fpsInfo) {
+                    $stFps = $pdo->prepare("
+                    UPDATE clips
+                    SET fps = :fps,
+                        fps_num = :num,
+                        fps_den = :den
+                    WHERE id = uuid_to_bin(:c,1)
+                    LIMIT 1
+                ");
+                    $stFps->execute([
+                        ':fps' => $fpsInfo['fps'],
+                        ':num' => $fpsInfo['fps_num'],
+                        ':den' => $fpsInfo['fps_den'],
+                        ':c'   => $clipUuid,
+                    ]);
+                }
+
                 // 2) Update clips table (duration_ms, tc_start)
                 if (!empty($core)) {
                     $stUpd = $pdo->prepare("
@@ -355,6 +374,9 @@ final class ClipUploadController
                             'duration_ms'  => $core['duration_ms'] ?? null,
                             'tc_start'     => $core['tc_start'] ?? null,
                             'fps'          => $core['fps'] ?? null,
+                            'fps_num'       => $fpsInfo['fps_num'] ?? null,
+                            'fps_den'       => $fpsInfo['fps_den'] ?? null
+
                         ]);
                     } catch (\Throwable $ignore) {
                     }

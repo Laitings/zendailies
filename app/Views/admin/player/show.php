@@ -541,9 +541,41 @@ $this->extend('layout/main');
 
                     <?php if ($proxy_url) : ?>
                         <div class="zd-player-frame" id="playerFrame">
+                            <?php
+                            // Prefer exact rational from DB, then decimal, then metadata, finally 25
+                            $fpsNum = isset($clip['fps_num']) ? (int)$clip['fps_num'] : 0;
+                            $fpsDen = isset($clip['fps_den']) ? (int)$clip['fps_den'] : 0;
 
-                            <video id="zdVideo" data-fps="<?= htmlspecialchars((string)($clip['fps'] ?? '25')) ?>" data-tc-start="<?= htmlspecialchars($clip['tc_start'] ?? '00:00:00:00') ?>" <?= $poster_url ? 'poster="' . htmlspecialchars($poster_url) . '"' : '' ?>>
+                            if ($fpsNum > 0 && $fpsDen > 0) {
+                                $fpsStr = rtrim(rtrim(number_format($fpsNum / $fpsDen, 3, '.', ''), '0'), '.'); // e.g. "23.976"
+                            } else {
+                                $fpsRaw = $clip['fps'] ?? ($metadata['video']['fps'] ?? $metadata['fps'] ?? null);
+                                $fpsStr = $fpsRaw !== null ? str_replace(',', '.', (string)$fpsRaw) : '25';
+                                // If DB had decimal but no num/den, try infer common fractions
+                                if ($fpsStr === '23.976') {
+                                    $fpsNum = 24000;
+                                    $fpsDen = 1001;
+                                } elseif ($fpsStr === '29.97') {
+                                    $fpsNum = 30000;
+                                    $fpsDen = 1001;
+                                } elseif ($fpsStr === '59.94') {
+                                    $fpsNum = 60000;
+                                    $fpsDen = 1001;
+                                }
+                            }
 
+                            // Debug (View Source only)
+                            echo "\n<!-- DEBUG fps: {$fpsStr} (num={$fpsNum}, den={$fpsDen}) -->\n";
+
+                            ?>
+
+                            <video
+                                id="zdVideo"
+                                data-fps="<?= htmlspecialchars($fpsStr) ?>"
+                                data-fpsnum="<?= $fpsNum ?: '' ?>"
+                                data-fpsden="<?= $fpsDen ?: '' ?>"
+                                data-tc-start="<?= htmlspecialchars($clip['tc_start'] ?? '00:00:00:00') ?>"
+                                <?= $poster_url ? 'poster="' . htmlspecialchars($poster_url) . '"' : '' ?>>
                                 <source src="<?= htmlspecialchars($proxy_url) ?>" type="video/mp4">
                                 Your browser does not support the video tag.
                             </video>

@@ -303,6 +303,7 @@ final class ClipPlayerController
                 BIN_TO_UUID(c.day_id,1)     AS day_uuid,
                 c.scene, c.slate, c.take, c.camera, c.reel,
                 c.file_name, c.tc_start, c.tc_end, c.duration_ms,
+                c.fps, c.fps_num, c.fps_den,
                 c.rating, CAST(c.is_select AS UNSIGNED) AS is_select, c.created_at
             FROM clips c
             JOIN days d ON d.id = c.day_id
