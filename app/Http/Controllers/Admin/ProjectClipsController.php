@@ -204,23 +204,63 @@ final class ProjectClipsController
 
         // Data (page subset)
         $sql = "
-        SELECT
-            BIN_TO_UUID(c.id,1) AS clip_uuid,
-            c.scene, c.slate, c.take, c.take_int, c.camera, c.reel,
-            c.file_name, c.tc_start, c.tc_end, c.duration_ms,
-            c.rating, c.is_select, c.created_at,
-            MAX(CASE WHEN a.asset_type='poster' THEN a.storage_path END) AS poster_path,
-            MAX(CASE WHEN a.asset_type='proxy'  THEN a.storage_path END) AS proxy_path
-        FROM clips c
-        JOIN days d ON d.id = c.day_id
-        LEFT JOIN clip_assets a ON a.clip_id = c.id
-        LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-        LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-        WHERE " . implode(' AND ', $where) . $visibilitySql . "
-        GROUP BY c.id
-        ORDER BY " . implode(', ', $orderParts) . "
-        LIMIT :limit OFFSET :offset
-    ";
+                SELECT
+                    BIN_TO_UUID(c.id,1) AS clip_uuid,
+                    c.scene,
+                    c.slate,
+                    c.take,
+                    c.take_int,
+                    c.camera,
+                    c.reel,
+                    c.file_name,
+                    c.tc_start,
+                    c.tc_end,
+                    c.duration_ms,
+                    c.rating,
+                    c.is_select,
+                    c.created_at,
+
+                    -- Poster / proxy_web paths (as before)
+                    MAX(CASE WHEN a.asset_type='poster' THEN a.storage_path END) AS poster_path,
+                    MAX(CASE WHEN a.asset_type='proxy_web'  THEN a.storage_path END) AS proxy_path,
+
+                    -- How many proxies currently exist for this clip
+                    (
+                        SELECT COUNT(*)
+                        FROM clip_assets a2
+                        WHERE a2.clip_id = c.id
+                        AND a2.asset_type = 'proxy_web'
+                    ) AS proxy_count,
+
+                    -- Latest encode job state for this clip (if any)
+                    (
+                        SELECT ej.state
+                        FROM encode_jobs ej
+                        WHERE ej.clip_id = c.id
+                        ORDER BY ej.id DESC
+                        LIMIT 1
+                    ) AS job_state,
+
+                    -- Latest encode job progress (0-100)
+                    (
+                        SELECT ej.progress_pct
+                        FROM encode_jobs ej
+                        WHERE ej.clip_id = c.id
+                        ORDER BY ej.id DESC
+                        LIMIT 1
+                    ) AS job_progress
+
+                FROM clips c
+                JOIN days d ON d.id = c.day_id
+                LEFT JOIN clip_assets a ON a.clip_id = c.id
+                LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
+                LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
+                WHERE " . implode(' AND ', $where) . $visibilitySql . "
+                GROUP BY c.id
+                ORDER BY " . implode(', ', $orderParts) . "
+                LIMIT :limit OFFSET :offset
+            ";
+
         $stmt = $pdo->prepare($sql);
 
         // bind normal params
@@ -927,7 +967,7 @@ final class ProjectClipsController
         }
         $clipBin = $clipRow['clip_bin'];
 
-        // Collect all asset paths for this clip (proxy/poster/original/sprite/waveform…)
+        // Collect all asset paths for this clip (proxy_web/poster/original/sprite/waveform…)
         $stmtA = $pdo->prepare("
         SELECT asset_type, storage_path
         FROM clip_assets

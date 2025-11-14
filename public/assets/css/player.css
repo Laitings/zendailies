@@ -47,10 +47,13 @@
 #zdVideo,
 .zd-controls,
 #scrubGlobal,
+.zd-vol,
+.zd-vol-popup,
 #vol,
 #btnPlayPause,
 #btnStepBack,
 #btnStepFwd,
+#btnMute,
 #btnTheater,
 #btnFS {
   pointer-events: auto;
@@ -182,6 +185,15 @@
   padding: 8px;
   backdrop-filter: blur(2px);
   transition: transform 0.18s ease, opacity 0.18s ease;
+  overflow: visible; /* allow volume popup to appear outside the bar */
+}
+
+/* Right-aligned controls group (volume + theater + fullscreen) */
+.zd-controls-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* When idle, slide controls down out of view a bit */
@@ -205,6 +217,20 @@
   border-radius: 8px;
   cursor: pointer;
 }
+/* Keep play/pause button width stable so controls don't shift */
+#btnPlayPause {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px; /* tweak if you want more/less space */
+}
+
+/* Make both icons occupy the same visual width */
+#btnPlayPause span[data-state] {
+  display: inline-block;
+  width: 1.4em; /* ensures ▶ and ⏸ use same space */
+  text-align: center;
+}
 
 .zd-btn:hover {
   filter: brightness(1.1);
@@ -227,28 +253,129 @@
   white-space: nowrap;
 }
 
+/* Volume control: icon + vertical slider popup */
 .zd-vol {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  z-index: 1000;
 }
 
-#vol {
-  width: 90px;
+/* Popup panel behind the vertical slider */
+.zd-vol-popup {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 2px); /* Overlap slightly with button to bridge the gap */
+  transform: translateX(-50%);
+  width: 28px;
+  height: 90px; /* Make height explicit to match slider length */
+  padding: 12px 0 14px 0; /* Extra padding at bottom to bridge to button */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(5, 7, 12, 0.97);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.7);
+  z-index: 1001; /* Higher than scrub bar (z-index: 5) */
+
+  opacity: 0;
+  visibility: hidden; /* Use visibility to prevent any interaction */
+  pointer-events: none; /* Critical: blocks interaction when hidden */
+  transition: opacity 0.15s ease, visibility 0s linear 0.15s; /* Delay visibility change */
 }
-/* ===== Global scrub line above the controls ===== */
-.zd-scrub-global {
+
+/* Show popup ONLY when hovering the button itself */
+#btnMute:hover + .zd-vol-popup,
+.zd-vol-popup:hover {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto; /* Enable interaction when visible */
+  transition: opacity 0.15s ease, visibility 0s linear 0s; /* No delay when showing */
+}
+
+/* Vertical volume slider base */
+#vol {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 72px; /* This becomes the visual height after rotation */
+  height: 18px; /* This becomes the visual width after rotation */
+  transform: rotate(-90deg);
+  transform-origin: center;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* Kill the blue focus ring on the volume slider */
+#vol:focus,
+#vol:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Firefox extra focus outline fix */
+#vol::-moz-focus-outer {
+  border: 0;
+}
+
+/* WebKit track (Chrome/Edge) */
+#vol::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #2a3342; /* dark track */
+  border-radius: 999px;
+}
+
+/* WebKit thumb */
+#vol::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent); /* blue thumb */
+  border: 1px solid var(--border);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
+  margin-top: -4px; /* center on track */
+}
+
+/* Firefox track */
+#vol::-moz-range-track {
+  height: 4px;
+  background: #2a3342;
+  border-radius: 999px;
+}
+
+/* Firefox thumb */
+#vol::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 1px solid var(--border);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+
+/* Scrub bar lives inside .zd-controls, but visually above it */
+.zd-controls .zd-scrub-global {
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: calc(var(--controls-h) + 14px);
-  z-index: 5; /* above .zd-controls (which is 4) */
+  bottom: calc(70% + 2px); /* 10px above the control bar, tweak if needed */
+  z-index: 5; /* above buttons, below volume popup */
   -webkit-appearance: none;
   appearance: none;
-  height: 14px; /* bigger hit target */
+  height: 14px;
   background: transparent;
   pointer-events: auto;
 }
+/* Track background (full width behind scrub) 
+.zd-controls .zd-scrub-global {
+  background: rgba(0, 0, 0, 0.25);  
+  border-radius: 4px;
+} */
 
 /* Scrub line follows the same idle/show animation as the controls */
 .zd-player-frame .zd-scrub-global {

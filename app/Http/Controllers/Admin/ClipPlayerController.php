@@ -326,24 +326,38 @@ final class ClipPlayerController
             return;
         }
 
-        // Assets: pick latest proxy and poster
+        // Assets: pick latest proxy_web and poster
+        // Assets: pick latest proxy_web or original for playback, plus poster
         $assetStmt = $pdo->prepare("
             SELECT asset_type, storage_path, byte_size, width, height, codec, created_at
             FROM clip_assets
             WHERE clip_id = UUID_TO_BIN(:c,1)
-              AND asset_type IN ('proxy','poster')
+            AND asset_type IN ('proxy_web','original','poster')
             ORDER BY created_at DESC
         ");
+
         $assetStmt->execute([':c' => $clipUuid]);
         $assets = $assetStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $proxyUrl  = null;
+        $proxyUrl  = null;  // “playable” file: proxy_web if exists, else original
         $posterUrl = null;
+
         foreach ($assets as $a) {
-            if ($a['asset_type'] === 'proxy'  && $proxyUrl  === null) $proxyUrl  = $a['storage_path'];
-            if ($a['asset_type'] === 'poster' && $posterUrl === null) $posterUrl = $a['storage_path'];
-            if ($proxyUrl && $posterUrl) break;
+            if ($proxyUrl === null && $a['asset_type'] === 'proxy_web') {
+                $proxyUrl = $a['storage_path'];
+            } elseif ($proxyUrl === null && $a['asset_type'] === 'original') {
+                $proxyUrl = $a['storage_path'];
+            }
+
+            if ($posterUrl === null && $a['asset_type'] === 'poster') {
+                $posterUrl = $a['storage_path'];
+            }
+
+            if ($proxyUrl && $posterUrl) {
+                break;
+            }
         }
+
 
         // Metadata (key/value)
         $metaStmt = $pdo->prepare("

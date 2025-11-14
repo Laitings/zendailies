@@ -10,7 +10,7 @@ use App\Support\DB;
  * Route: POST /admin/maintenance/backfill-fps
  * Behavior:
  *   - Finds clips with missing/zero fps.
- *   - Resolves a file path from clip_assets (prefer proxy, fallback original).
+ *   - Resolves a file path from clip_assets (prefer proxy_web, fallback original).
  *   - Runs ffprobe to get frame rate.
  *   - Updates clips.fps / fps_num / fps_den.
  * Output: plain text summary.
@@ -39,7 +39,7 @@ SELECT
     COALESCE(
         (SELECT a.storage_path
            FROM clip_assets a
-          WHERE a.clip_id = c.id AND a.asset_type = 'proxy'
+          WHERE a.clip_id = c.id AND a.asset_type = 'proxy_web'
           ORDER BY a.created_at DESC
           LIMIT 1),
         (SELECT a.storage_path

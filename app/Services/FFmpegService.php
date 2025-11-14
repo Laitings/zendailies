@@ -18,7 +18,7 @@ final class FFmpegService
     /**
      * Generate a poster JPG at $dest. Returns ['ok'=>bool, 'err'=>string|null]
      */
-    public function generatePoster(string $input, string $output, int $seekSeconds, int $targetWidth = 640): array
+    function generatePoster(string $input, string $output, int $seekSeconds, int $targetWidth = 640): array
     {
         // Ensure dir exists (controller already does this, but safe)
         $dir = dirname($output);
@@ -30,76 +30,105 @@ final class FFmpegService
         // (use even heights for yuv420p)
         $scale = "scale='min(" . (int)$targetWidth . ",iw)':'-2'";
 
-        // IMPORTANT: place -ss **after** -i for accurate seek on MP4/H.264,
-        // otherwise ffmpeg may snap to keyframe 0 (the clapper).
-        // We also add -noaccurate_seek OFF behavior implicitly by using -ss after -i.
-        // Use -frames:v 1 to grab exactly one frame.
-        $cmd = [
-            $this->ffmpeg,
-            '-hide_banner',
-            '-loglevel',
-            'error',
-            '-y',
-            '-nostdin',
+        // We will try at the requested seek first, and if that fails (e.g. clip too short),
+        // we fall back once to 0 seconds (first frame).
+        $attemptSeek   = max(0, $seekSeconds);
+        $attempt       = 0;
+        $lastErrorText = null;
 
-            // input
-            '-i',
-            $input,
+        while ($attempt < 2) {
+            $attempt++;
 
-            // accurate seek
-            '-ss',
-            (string)max(0, $seekSeconds),
+            $cmd = [
+                $this->ffmpeg,
+                '-hide_banner',
+                '-loglevel',
+                'error',
+                '-y',
+                '-nostdin',
 
-            // filters + single frame
-            '-vf',
-            $scale,
-            '-frames:v',
-            '1',
+                // input
+                '-i',
+                $input,
 
-            // quality for JPEG
-            '-q:v',
-            '1',
+                // accurate seek
+                '-ss',
+                (string)$attemptSeek,
 
-            // output
-            $output,
-        ];
+                // filters + single frame
+                '-vf',
+                $scale,
+                '-frames:v',
+                '1',
 
-        // Escape arguments safely
-        $esc = array_map(static function ($a) {
-            // Avoid adding quotes twice
-            return preg_match('/^[a-zA-Z0-9_\-\.\/:]+$/', $a) ? $a : escapeshellarg($a);
-        }, $cmd);
+                // quality for JPEG
+                '-q:v',
+                '1',
 
-        $command = implode(' ', $esc);
+                // be nice to the CPU: posters are cheap, 1 thread is plenty
+                '-threads',
+                '1',
 
-        $descriptorSpec = [
-            1 => ['pipe', 'w'], // stdout
-            2 => ['pipe', 'w'], // stderr
-        ];
+                // output
+                $output,
+            ];
 
-        $proc = proc_open($command, $descriptorSpec, $pipes);
-        if (!\is_resource($proc)) {
-            return ['ok' => false, 'err' => 'Failed to start ffmpeg'];
+            // Escape arguments safely
+            $esc = array_map(static function ($a) {
+                // Avoid adding quotes twice
+                return preg_match('/^[a-zA-Z0-9_\-\.\/:]+$/', $a) ? $a : escapeshellarg($a);
+            }, $cmd);
+
+            $command = implode(' ', $esc);
+
+            $descriptorSpec = [
+                1 => ['pipe', 'w'], // stdout
+                2 => ['pipe', 'w'], // stderr
+            ];
+
+            $proc = proc_open($command, $descriptorSpec, $pipes);
+            if (!\is_resource($proc)) {
+                // If we can't even start ffmpeg, no point retrying with seek=0
+                return ['ok' => false, 'err' => 'Failed to start ffmpeg'];
+            }
+
+            $stdout = stream_get_contents($pipes[1]);
+            $stderr = stream_get_contents($pipes[2]);
+            foreach ($pipes as $p) {
+                if (\is_resource($p)) {
+                    fclose($p);
+                }
+            }
+            $exit = proc_close($proc);
+
+            // Success path: exit 0 and a non-empty file
+            if ($exit === 0 && @is_file($output) && @filesize($output) > 0) {
+                return ['ok' => true];
+            }
+
+            // Record error text for potential final return
+            $lastErrorText = trim($stderr ?: $stdout) ?: ("ffmpeg exited " . $exit);
+
+            // If we already tried at 0 seconds, or caller asked for 0 from the start,
+            // then don't loop again – just fail with the error we have.
+            if ($attemptSeek === 0) {
+                break;
+            }
+
+            // Prepare fall-back attempt: try from first frame (0 seconds)
+            $attemptSeek = 0;
+            @unlink($output);
         }
 
-        $stdout = stream_get_contents($pipes[1]);
-        $stderr = stream_get_contents($pipes[2]);
-        foreach ($pipes as $p) {
-            if (\is_resource($p)) fclose($p);
-        }
-        $exit = proc_close($proc);
-
-        if ($exit !== 0) {
-            return ['ok' => false, 'err' => trim($stderr ?: $stdout) ?: ("ffmpeg exited " . $exit)];
-        }
-
-        // Double-check that an image was produced
+        // Double-check in case ffmpeg didn't complain but wrote nothing
         if (!@is_file($output) || @filesize($output) <= 0) {
-            return ['ok' => false, 'err' => 'No output written'];
+            $lastErrorText = $lastErrorText ?: 'No output written';
+            return ['ok' => false, 'err' => $lastErrorText];
         }
 
         return ['ok' => true];
     }
+
 
     /**
      * Run ffprobe and extract only what we care about for ingest:

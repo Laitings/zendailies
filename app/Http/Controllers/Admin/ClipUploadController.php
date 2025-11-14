@@ -242,7 +242,7 @@ final class ClipUploadController
                 // Register asset (proxy)
                 $stmtAsset = $pdo->prepare("
                     INSERT INTO clip_assets (clip_id, asset_type, storage_path, byte_size)
-                    VALUES (:clip, 'proxy', :path, :size)
+                    VALUES (:clip, 'original', :path, :size)
                 ");
                 $stmtAsset->bindParam(':clip', $clipBin, \PDO::PARAM_LOB);
                 $stmtAsset->bindValue(':path', $publicPath);
@@ -258,21 +258,50 @@ final class ClipUploadController
             }
 
             // ---------- 6) Resolve UUID + Poster generation (best-effort) ----------
-            $proxyAbsPath = $target;
+            $sourceAbsPath = $target;
 
             $stmtUuid = $pdo->prepare("SELECT BIN_TO_UUID(:id,1) AS uuid");
             $stmtUuid->bindParam(':id', $clipBin, \PDO::PARAM_LOB);
             $stmtUuid->execute();
             $clipUuid = $stmtUuid->fetchColumn() ?: null;
 
-            error_log('[DEBUG] Poster generation starting for clip ' . ($clipUuid ?? 'NULL') . ' using ' . ($proxyAbsPath ?? 'NULL'));
+            // === ENCODE QUEUE: enqueue a proxy transcode job (queued state) ===
+            $srcFs = $sourceAbsPath;
+            $baseName = pathinfo($safeName, PATHINFO_FILENAME);
+            $targetFs = $absDir . '/' . $baseName . '_web.mp4';
+
+            $stJob = $pdo->prepare("
+                INSERT INTO encode_jobs
+                    (clip_id, source_path, target_path, preset, state, priority, progress_pct, attempts, created_at, updated_at)
+                VALUES
+                    (uuid_to_bin(:clip_uuid,1), :src, :dst, :preset, 'queued', :prio, 0, 0, NOW(), NOW())
+            ");
+            $stJob->execute([
+                ':clip_uuid' => $clipUuid,
+                ':src'       => $srcFs,
+                ':dst'       => $targetFs,
+                ':preset'    => 'proxy_h264_720p',
+                ':prio'      => 100,
+            ]);
+
+            try {
+                $this->audit($pdo, 'clip', $clipUuid, 'encode_enqueued', [
+                    'source' => $srcFs,
+                    'target' => $targetFs,
+                    'preset' => 'proxy_h264_720p',
+                ]);
+            } catch (\Throwable $ignore) {
+            }
+
+
+            error_log('[DEBUG] Poster generation starting for clip ' . ($clipUuid ?? 'NULL') . ' using ' . ($sourceAbsPath ?? 'NULL'));
 
             // --- AUTO POSTER (best-effort, never breaks the request) ---
             try {
                 // Build poster paths next to the saved proxy
-                $posterAbsPath   = preg_replace('/\.(mp4|mov|mxf)$/i', '', $proxyAbsPath) . '.poster.jpg';
-                if ($posterAbsPath === $proxyAbsPath) {
-                    $posterAbsPath = $proxyAbsPath . '.poster.jpg';
+                $posterAbsPath   = preg_replace('/\.(mp4|mov|mxf)$/i', '', $sourceAbsPath) . '.poster.jpg';
+                if ($posterAbsPath === $sourceAbsPath) {
+                    $posterAbsPath = $sourceAbsPath . '.poster.jpg';
                 }
 
                 // Public URL/path for DB
@@ -283,7 +312,7 @@ final class ClipUploadController
 
                 // Use existing FFmpegService::generatePoster(input, output, seekSeconds, width)
                 $ff  = new FFmpegService();
-                $res = $ff->generatePoster($proxyAbsPath, $posterAbsPath, 10, 640);
+                $res = $ff->generatePoster($sourceAbsPath, $posterAbsPath, 10, 640);
                 if (!($res['ok'] ?? false)) {
                     error_log('[ClipUpload] generatePoster failed for ' . ($clipUuid ?? 'NULL') . ': ' . ($res['err'] ?? 'unknown'));
                 } else {
@@ -318,10 +347,10 @@ final class ClipUploadController
             // --- Auto pull core metadata on upload (duration_ms, tc_start, fps) ---
             try {
                 // 1) Probe the file you just saved
-                $core = \App\Services\FFmpegService::probeCoreMetadata($proxyAbsPath);
+                $core = \App\Services\FFmpegService::probeCoreMetadata($sourceAbsPath);
 
                 // [NEW] Precise FPS into clips (float + rational)
-                $fpsInfo = \App\Services\FFmpegService::getFpsInfo($proxyAbsPath);
+                $fpsInfo = \App\Services\FFmpegService::getFpsInfo($sourceAbsPath);
                 if ($fpsInfo) {
                     $stFps = $pdo->prepare("
                     UPDATE clips
@@ -370,7 +399,7 @@ final class ClipUploadController
                     // 4) Optional audit (non-fatal)
                     try {
                         $this->audit($pdo, 'clip', $clipUuid, 'pull_metadata@upload', [
-                            'source'       => $proxyAbsPath,
+                            'source'       => $sourceAbsPath,
                             'duration_ms'  => $core['duration_ms'] ?? null,
                             'tc_start'     => $core['tc_start'] ?? null,
                             'fps'          => $core['fps'] ?? null,

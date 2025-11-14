@@ -46,21 +46,56 @@ final class DayConverterController
             return;
         }
 
-        // Clips + asset presence (poster/proxy)
+        // Clips + asset presence (poster/proxy_web)
+        // Clips + asset presence (poster/proxy_web) + latest encode job state
         $sqlClips = "
         SELECT
-            bin_to_uuid(c.id,1) AS clip_uuid,
-            c.scene, c.slate, c.take, c.camera, c.file_name,
-            c.duration_ms, c.ingest_state, c.updated_at
+            BIN_TO_UUID(c.id,1) AS clip_uuid,
+            c.scene,
+            c.slate,
+            c.take,
+            c.camera,
+            c.file_name,
+            c.duration_ms,
+            c.ingest_state,
+            c.updated_at,
+
+            -- How many proxies exist (0 = none)
+            (
+                SELECT COUNT(*)
+                FROM clip_assets a2
+                WHERE a2.clip_id = c.id
+                  AND a2.asset_type = 'proxy_web'
+            ) AS proxy_count,
+
+            -- Latest encode job state for this clip (if any)
+            (
+                SELECT ej.state
+                FROM encode_jobs ej
+                WHERE ej.clip_id = c.id
+                ORDER BY ej.id DESC
+                LIMIT 1
+            ) AS job_state,
+
+            -- Latest encode job progress (0-100)
+            (
+                SELECT ej.progress_pct
+                FROM encode_jobs ej
+                WHERE ej.clip_id = c.id
+                ORDER BY ej.id DESC
+                LIMIT 1
+            ) AS job_progress
+
         FROM clips c
-        WHERE c.project_id = uuid_to_bin(:p_uuid,1)
-          AND c.day_id     = uuid_to_bin(:d_uuid,1)
+        WHERE c.project_id = UUID_TO_BIN(:p_uuid,1)
+          AND c.day_id     = UUID_TO_BIN(:d_uuid,1)
         ORDER BY c.created_at ASC";
+
         $stClips = $pdo->prepare($sqlClips);
         $stClips->execute([':p_uuid' => $projectUuid, ':d_uuid' => $dayUuid]);
         $clips = $stClips->fetchAll(PDO::FETCH_ASSOC);
 
-        // Map: clip_uuid => ['poster'=>bool,'poster_path'=>string|null,'proxy'=>bool]
+        // Map: clip_uuid => ['poster'=>bool,'poster_path'=>string|null,'proxy_web'=>bool]
         $assets = $this->fetchAssetPresence($pdo, array_column($clips, 'clip_uuid'));
 
         // CSRF: per-day token bucket
@@ -141,7 +176,7 @@ final class DayConverterController
                 return;
             }
 
-            // Resolve source input (prefer proxy later; for now, use external ref or original/proxy if you already store it)
+            // Resolve source input (prefer proxy_web later; for now, use external ref or original/proxy if you already store it)
             $source = $this->resolveBestInputForPoster($pdo, $clipUuid);
             if (!$source) {
                 http_response_code(422);
@@ -240,7 +275,7 @@ final class DayConverterController
 
                 $pdo->beginTransaction();
 
-                // Store the PUBLIC path, like your 'proxy' entries
+                // Store the PUBLIC path, like your 'proxy_web' entries
                 $this->upsertAsset($pdo, $clipUuid, 'poster', $href, $size, null, $w, $h, 'image/jpeg');
 
                 // Optionally bump ingest_state → 'ready' only when scene/slate/take are all present (DB constraint: clips_chk_1)
@@ -559,29 +594,40 @@ final class DayConverterController
 
         $sql = "
             SELECT
-              bin_to_uuid(a.clip_id,1) AS clip_uuid,
+              BIN_TO_UUID(a.clip_id,1) AS clip_uuid,
               a.asset_type,
               a.storage_path
             FROM clip_assets a
             WHERE a.clip_id IN ($marks)
-              AND a.asset_type IN ('poster','proxy')
+              AND a.asset_type IN ('poster','proxy_web')
         ";
         $st = $pdo->prepare($sql);
         $st->execute($clipUuids);
+
         $out = [];
-        while ($row = $st->fetch(PDO::FETCH_ASSOC)) {
-            $cu = $row['clip_uuid'];
+        while ($row = $st->fetch(\PDO::FETCH_ASSOC)) {
+            $cu   = $row['clip_uuid'];
             $type = $row['asset_type'];
-            if (!isset($out[$cu])) $out[$cu] = ['poster' => false, 'poster_path' => null, 'proxy' => false];
+
+            if (!isset($out[$cu])) {
+                $out[$cu] = [
+                    'poster'      => false,
+                    'poster_path' => null,
+                    'proxy_web'       => false, // this means "has proxy_web"
+                ];
+            }
+
             if ($type === 'poster') {
-                $out[$cu]['poster'] = true;
+                $out[$cu]['poster']      = true;
                 $out[$cu]['poster_path'] = $row['storage_path'];
-            } elseif ($type === 'proxy') {
-                $out[$cu]['proxy'] = true;
+            } elseif ($type === 'proxy_web') {
+                $out[$cu]['proxy_web'] = true;
             }
         }
+
         return $out;
     }
+
 
     private function assetExists(PDO $pdo, string $clipUuid, string $type): bool
     {
@@ -593,47 +639,66 @@ final class DayConverterController
 
     private function resolveBestInputForPoster(PDO $pdo, string $clipUuid): ?string
     {
-        // Prefer a proxy asset if you already have one
-        $sqlProxy = "SELECT storage_path FROM clip_assets WHERE clip_id = uuid_to_bin(:c_uuid,1) AND asset_type='proxy' LIMIT 1";
-        $stP = $pdo->prepare($sqlProxy);
-        $stP->execute([':c_uuid' => $clipUuid]);
-        $p = $stP->fetch(PDO::FETCH_ASSOC);
-        if ($p) {
-            // [ADD] Map proxy public path (/data/...) to filesystem path under ZEN_STOR_DIR
-            $pubBase  = rtrim((string)getenv('ZEN_STOR_PUBLIC_BASE'), '/'); // e.g., /data
-            $storBase = rtrim((string)getenv('ZEN_STOR_DIR'), '/');         // e.g., /var/www/html/data
-            $public   = (string)($p['storage_path'] ?? '');
+        $pubBase  = rtrim((string)getenv('ZEN_STOR_PUBLIC_BASE'), '/'); // e.g., /data/zendailies/uploads
+        $storBase = rtrim((string)getenv('ZEN_STOR_DIR'), '/');         // e.g., /var/www/html/data/zendailies/uploads
 
-            // If storage_path is already absolute on disk, accept it as-is.
+        // 1) Prefer worker-generated web proxy, then original upload
+        $preferredTypes = ['proxy_web', 'original'];
+
+        foreach ($preferredTypes as $type) {
+            $sql = "
+                SELECT storage_path
+                FROM clip_assets
+                WHERE clip_id = UUID_TO_BIN(:c_uuid,1)
+                  AND asset_type = :t
+                ORDER BY created_at DESC
+                LIMIT 1
+            ";
+            $st = $pdo->prepare($sql);
+            $st->execute([
+                ':c_uuid' => $clipUuid,
+                ':t'      => $type,
+            ]);
+            $row = $st->fetch(\PDO::FETCH_ASSOC);
+            if (!$row || empty($row['storage_path'])) {
+                continue;
+            }
+
+            $public = (string)$row['storage_path'];
+
+            // If storage_path is already an absolute file path and exists, use it directly
             if ($public !== '' && @is_file($public)) {
                 return $public;
             }
 
-            // If it’s a public path (starts with /data), map to storage root.
+            // If it's a public path under ZEN_STOR_PUBLIC_BASE, map to filesystem under ZEN_STOR_DIR
             if ($public !== '' && $pubBase !== '' && strpos($public, $pubBase . '/') === 0) {
                 $fs = $storBase . substr($public, strlen($pubBase));
                 if (@is_file($fs)) {
                     return $fs;
                 }
             }
-
-            // If it looks like HLS (playlist), we can’t grab a frame from a manifest;
-            // fall through to external refs / original.
-
         }
 
-        // Try external refs (original/proxy path registered at ingest)
-        $sqlExt = "SELECT file_path FROM clip_external_refs WHERE clip_id = uuid_to_bin(:c_uuid,1) ORDER BY created_at DESC LIMIT 1";
+        // 2) Fallback: external refs (e.g. camera drive / NAS paths)
+        $sqlExt = "
+            SELECT file_path
+            FROM clip_external_refs
+            WHERE clip_id = UUID_TO_BIN(:c_uuid,1)
+            ORDER BY created_at DESC
+            LIMIT 1
+        ";
         $stE = $pdo->prepare($sqlExt);
         $stE->execute([':c_uuid' => $clipUuid]);
-        $e = $stE->fetch(PDO::FETCH_ASSOC);
-        if ($e && is_string($e['file_path']) && $e['file_path'] !== '' && file_exists($e['file_path'])) {
+        $e = $stE->fetch(\PDO::FETCH_ASSOC);
+        if ($e && is_string($e['file_path']) && $e['file_path'] !== '' && @file_exists($e['file_path'])) {
             return $e['file_path'];
         }
 
-        // If you store a local path for sources somewhere else, add resolution here
+        // 3) Nothing usable found
         return null;
     }
+
 
     private function midpointSeconds(int $durationMs): int
     {
@@ -701,7 +766,7 @@ final class DayConverterController
     private function upsertAsset(
         \PDO $pdo,
         string $clipUuid,
-        string $type,           // 'poster' | 'proxy' | etc
+        string $type,           // 'poster' | 'proxy_web' | etc
         string $relPath,        // storage_path relative to public base (e.g. /data/zendailies/uploads/.../poster.jpg)
         ?int $byteSize,
         ?string $checksum,      // sha1 (or null)

@@ -197,6 +197,7 @@ if ($__fb) {
                         <th><?= zd_sort_link('file',     'File',   $filters) ?></th>
                         <th><?= zd_sort_link('tc_start', 'TC In',  $filters) ?></th>
                         <th><?= zd_sort_link('duration', 'Dur',    $filters) ?></th>
+                        <th>Proxy / Job</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -262,6 +263,65 @@ if ($__fb) {
                                     data-fps="<?= isset($r['fps']) && $r['fps'] !== null ? (int)$r['fps'] : '' ?>">
                                 </td>
 
+                                <!-- proxy_web / Encode job status -->
+                                <td data-field="proxy_job">
+                                    <?php
+                                    $proxyCount  = (int)($r['proxy_count'] ?? 0);
+                                    $jobStateRaw = $r['job_state'] ?? null;
+                                    $jobProgress = $r['job_progress'] ?? null;
+
+                                    $hasProxy = $proxyCount > 0;
+
+                                    $jobState = $jobStateRaw !== null
+                                        ? strtolower((string)$jobStateRaw)
+                                        : null;
+                                    $hasJob   = $jobState !== null;
+
+                                    // --- Proxy label semantics ---
+                                    //  - Proxy ✓          => at least one proxy_web asset
+                                    //  - Proxy converting => encode job queued/running but no proxy yet
+                                    //  - Proxy none       => no proxy_web and no encode job
+                                    if ($hasProxy) {
+                                        $proxyLabel = 'Proxy ✓';
+                                    } elseif ($hasJob && ($jobState === 'queued' || $jobState === 'running')) {
+                                        $proxyLabel = 'Proxy converting';
+                                    } else {
+                                        $proxyLabel = 'Proxy none';
+                                    }
+
+                                    // --- Job label semantics ---
+                                    //  - No job         => no encode_jobs row
+                                    //  - Queued         => state = queued
+                                    //  - Running (xx%)  => state = running (+ optional %)
+                                    //  - Done / Failed / Canceled => final states
+                                    if (!$hasJob) {
+                                        $jobLabel = 'No job';
+                                    } elseif ($jobState === 'queued') {
+                                        $jobLabel = 'Queued';
+                                    } elseif ($jobState === 'running') {
+                                        if ($jobProgress !== null && $jobProgress !== '') {
+                                            $jobLabel = 'Running (' . (int)$jobProgress . '%)';
+                                        } else {
+                                            $jobLabel = 'Running';
+                                        }
+                                    } elseif ($jobState === 'done') {
+                                        $jobLabel = 'Done';
+                                    } elseif ($jobState === 'failed') {
+                                        $jobLabel = 'Failed';
+                                    } elseif ($jobState === 'canceled') {
+                                        $jobLabel = 'Canceled';
+                                    } else {
+                                        // Fallback for any odd state strings
+                                        $jobLabel = (string)$jobStateRaw;
+                                    }
+                                    ?>
+                                    <span class="zd-meta">
+                                        <?= htmlspecialchars($proxyLabel, ENT_QUOTES, 'UTF-8') ?>
+                                        ·
+                                        <?= htmlspecialchars($jobLabel, ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+
+                                </td>
                                 <!-- Actions -->
                                 <td style="white-space:nowrap">
                                     <!-- Play -->

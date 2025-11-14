@@ -42,6 +42,7 @@ Converter · <?= htmlspecialchars($project['title']) ?> · <?= htmlspecialchars(
                 <tr>
                     <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Poster</th>
                     <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Proxy</th>
+                    <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Encode job</th>
                     <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Scene</th>
                     <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Slate</th>
                     <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Take</th>
@@ -55,7 +56,7 @@ Converter · <?= htmlspecialchars($project['title']) ?> · <?= htmlspecialchars(
                 <?php foreach ($clips as $c):
                     $cu = $c['clip_uuid'];
                     // $assets entry may not exist yet; provide a safe default
-                    $a  = $assets[$cu] ?? ['poster' => false, 'poster_path' => null, 'proxy' => false];
+                    $a  = $assets[$cu] ?? ['poster' => false, 'poster_path' => null, 'proxy_web' => false];
 
                     // Build poster URL safely:
                     // - If DB path already starts with /data/, use as-is.
@@ -86,7 +87,33 @@ Converter · <?= htmlspecialchars($project['title']) ?> · <?= htmlspecialchars(
                                 <span style="opacity:.7">×</span>
                             <?php endif; ?>
                         </td>
-                        <td style="padding:8px;border-bottom:1px solid var(--border)"><?= $a['proxy'] ? '✓' : '×' ?></td>
+                        <td style="padding:8px;border-bottom:1px solid var(--border)"><?= $a['proxy_web'] ? '✓' : '×' ?></td>
+                        <td style="padding:8px;border-bottom:1px solid var(--border)">
+                            <?php
+                            $jobStateRaw = $c['job_state'] ?? null;
+                            $jobProgress = $c['job_progress'] ?? null;
+
+                            $jobLabel = 'No job';
+                            if ($jobStateRaw !== null) {
+                                $jobState = strtolower((string)$jobStateRaw);
+                                if ($jobState === 'queued') {
+                                    $jobLabel = 'Queued';
+                                } elseif ($jobState === 'running') {
+                                    $jobLabel = 'Running' . ($jobProgress !== null ? ' (' . (int)$jobProgress . '%)' : '');
+                                } elseif ($jobState === 'done') {
+                                    $jobLabel = 'Done';
+                                } elseif ($jobState === 'failed') {
+                                    $jobLabel = 'Failed';
+                                } elseif ($jobState === 'canceled') {
+                                    $jobLabel = 'Canceled';
+                                } else {
+                                    $jobLabel = $jobStateRaw;
+                                }
+                            }
+                            ?>
+                            <span class="za-badge"><?= htmlspecialchars($jobLabel, ENT_QUOTES, 'UTF-8') ?></span>
+                        </td>
+
                         <td style="padding:8px;border-bottom:1px solid var(--border)"><?= htmlspecialchars($c['scene'] ?? '') ?></td>
                         <td style="padding:8px;border-bottom:1px solid var(--border)"><?= htmlspecialchars($c['slate'] ?? '') ?></td>
                         <td style="padding:8px;border-bottom:1px solid var(--border)"><?= htmlspecialchars($c['take'] ?? '') ?></td>
@@ -96,7 +123,7 @@ Converter · <?= htmlspecialchars($project['title']) ?> · <?= htmlspecialchars(
                         <td style="padding:8px;border-bottom:1px solid var(--border)">
                             <button class="za-btn btnPoster" data-force="0">Generate poster</button>
                             <button class="za-btn-muted btnPoster" data-force="1" style="margin-left:6px;">Force</button>
-                            <!-- (Optional) <button class="za-btn btnProxy" style="margin-left:6px;">Build proxy</button> -->
+                            <button class="za-btn btnProxy" style="margin-left:6px;">Build proxy</button>
                             <span class="row-status" style="margin-left:8px;font-size:12px;opacity:.8"></span>
                         </td>
                     </tr>

@@ -410,30 +410,54 @@ document.addEventListener("DOMContentLoaded", () => {
   ); // capture phase as well
 
   // --- Volume / Mute ---
+  // --- Volume / Mute ---
+  // Remember last non-zero volume so unmute feels natural
+  let lastVol = vid.volume && vid.volume > 0 ? vid.volume : 0.5;
+
   if (vol) {
     vol.value = String(vid.volume);
+
     vol.addEventListener("input", () => {
-      const v = Math.max(0, Math.min(1, parseFloat(vol.value)));
-      vid.volume = Number.isFinite(v) ? v : 1;
-      if (vid.volume === 0) vid.muted = true;
-      if (vid.volume > 0 && vid.muted) vid.muted = false;
-      btnMute &&
-        (btnMute.textContent = vid.muted || vid.volume === 0 ? "🔇" : "🔊");
+      const raw = parseFloat(vol.value);
+      const v = Math.max(0, Math.min(1, Number.isFinite(raw) ? raw : 1));
+
+      vid.volume = v;
+      if (v > 0) {
+        lastVol = v;
+        vid.muted = false;
+      } else {
+        vid.muted = true;
+      }
+
+      if (btnMute) {
+        btnMute.textContent = vid.muted || vid.volume === 0 ? "🔇" : "🔊";
+      }
     });
   }
+
   btnMute?.addEventListener("click", () => {
-    vid.muted = !vid.muted;
-    if (!vid.muted && vol) {
-      if (parseFloat(vol.value) === 0) {
-        vol.value = "0.5";
-        vid.volume = 0.5;
-      }
+    // Toggle muted state
+    const nowMuted = !vid.muted;
+    vid.muted = nowMuted;
+
+    if (!nowMuted) {
+      // Unmuting: restore last non-zero volume (or fallback 0.5)
+      const restored = lastVol > 0 ? lastVol : 0.5;
+      vid.volume = restored;
+      if (vol) vol.value = String(restored);
+    } else {
+      // Muting: don't force slider to 0, but icon reflects muted state
     }
-    btnMute.textContent = vid.muted || vid.volume === 0 ? "🔇" : "🔊";
+
+    if (btnMute) {
+      btnMute.textContent = vid.muted || vid.volume === 0 ? "🔇" : "🔊";
+    }
   });
-  // initialize icon
-  btnMute &&
-    (btnMute.textContent = vid.muted || vid.volume === 0 ? "🔇" : "🔊");
+
+  // initialize mute icon correctly on load
+  if (btnMute) {
+    btnMute.textContent = vid.muted || vid.volume === 0 ? "🔇" : "🔊";
+  }
 
   // --- Fullscreen ---
   btnFS?.addEventListener("click", () => {

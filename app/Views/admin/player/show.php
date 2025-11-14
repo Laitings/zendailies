@@ -522,10 +522,12 @@ $this->extend('layout/main');
                         <div class="zd-scene-left">
                             <span><?= htmlspecialchars($sceneLine) ?></span>
                             <?php if (!empty($clip['file_name'])): ?>
-                                <span class="zd-clip-filename"> -
+                                <span class="zd-clip-filename">
+                                    <?= $sceneLine !== '' ? ' - ' : '' ?>
                                     <?= htmlspecialchars($clip['file_name']) ?>
                                 </span>
                             <?php endif; ?>
+
                         </div>
 
                         <?php if (!empty($clip['is_select']) && (int)$clip['is_select'] === 1): ?>
@@ -579,12 +581,14 @@ $this->extend('layout/main');
                                 <source src="<?= htmlspecialchars($proxy_url) ?>" type="video/mp4">
                                 Your browser does not support the video tag.
                             </video>
-                            <input type="range"
-                                id="scrubGlobal"
-                                class="zd-scrub-global"
-                                min="0" max="1000" step="1" value="0"
-                                aria-label="Timeline" title="Timeline">
+
                             <div class="zd-controls" role="group" aria-label="Player controls">
+                                <input type="range"
+                                    id="scrubGlobal"
+                                    class="zd-scrub-global"
+                                    min="0" max="1000" step="1" value="0"
+                                    aria-label="Timeline" title="Timeline">
+                                <!-- Left group: transport + TC -->
                                 <button class="zd-btn" id="btnPlayPause" title="Play/Pause" aria-label="Play/Pause">
                                     <span data-state="play">▶</span><span data-state="pause" style="display:none;">⏸</span>
                                 </button>
@@ -592,18 +596,31 @@ $this->extend('layout/main');
                                 <button class="zd-btn" id="btnStepFwd" title="Step 1 frame forward" aria-label="Step forward 1 frame">1f ▶</button>
                                 <button id="tcChip" class="zd-tc-chip" type="button" title="Click to enter TC">00:00:00:00</button>
 
+                                <!-- Right group: aligned to right -->
+                                <div class="zd-controls-right">
+                                    <div class="zd-vol">
+                                        <button class="zd-btn" id="btnMute" title="Mute" aria-label="Mute">🔊</button>
+                                        <div class="zd-vol-popup">
+                                            <input
+                                                type="range"
+                                                id="vol"
+                                                min="0"
+                                                max="1"
+                                                step="0.01"
+                                                value="1"
+                                                aria-label="Volume">
+                                        </div>
+                                    </div>
 
-                                <div class="zd-vol">
-                                    <button class="zd-btn" id="btnMute" title="Mute" aria-label="Mute">🔊</button>
-                                    <input type="range" id="vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+                                    <button class="zd-btn" id="btnTheater" title="Theater mode" aria-label="Theater mode">
+                                        <span class="theater-icon" data-state="enter"></span>
+                                        <span class="theater-icon theater-exit" data-state="exit" style="display:none;"></span>
+                                    </button>
+
+                                    <button class="zd-btn" id="btnFS" title="Fullscreen" aria-label="Fullscreen">⛶</button>
                                 </div>
-                                <button class="zd-btn" id="btnTheater" title="Theater mode" aria-label="Theater mode">
-                                    <span class="theater-icon" data-state="enter"></span>
-                                    <span class="theater-icon theater-exit" data-state="exit" style="display:none;"></span>
-                                </button>
-
-                                <button class="zd-btn" id="btnFS" title="Fullscreen" aria-label="Fullscreen">⛶</button>
                             </div>
+
 
                             <canvas id="lutCanvas" class="lut-canvas"></canvas>
                         </div>
