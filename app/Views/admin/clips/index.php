@@ -17,6 +17,10 @@
 $projectUuidSafe = htmlspecialchars($project_uuid ?? '');
 $dayUuidSafe     = htmlspecialchars($day_uuid ?? '');
 
+// TODO: when we add published_at on days and pass it in day_info,
+// this will reflect the real publish state. For now it's always false.
+$dayIsPublished = !empty($day_info['published_at'] ?? null);
+
 $this->extend('layout/main');
 
 $this->start('head'); ?>
@@ -49,6 +53,64 @@ function zd_sort_link(string $key, string $label, array $filters): string
 <link rel="stylesheet" href="/assets/css/admin.clips.css?v=<?= rawurlencode((string)@filemtime($_SERVER['DOCUMENT_ROOT'] . '/assets/css/admin.clips.css')) ?>">
 <script type="module" defer src="/assets/js/admin.clips.js?v=<?= rawurlencode((string)@filemtime($_SERVER['DOCUMENT_ROOT'] . '/assets/js/admin.clips.js')) ?>"></script>
 
+<style>
+    /* Publish day modal (dark admin look) */
+    .zd-publish-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2100;
+    }
+
+    .zd-publish-backdrop[hidden] {
+        display: none;
+    }
+
+    .zd-publish-modal {
+        background: #111318;
+        border: 1px solid #1f2430;
+        border-radius: 12px;
+        padding: 16px 18px;
+        width: min(440px, 92vw);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+    }
+
+    .zd-publish-head h2 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        color: #e9eef3;
+    }
+
+    .zd-publish-body {
+        font-size: 14px;
+        color: #e9eef3;
+    }
+
+    .zd-publish-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 16px;
+        font-size: 14px;
+        color: #e9eef3;
+    }
+
+    .zd-publish-note {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #9aa7b2;
+    }
+
+    .zd-publish-footer {
+        margin-top: 16px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+</style>
 
 
 <?php $this->end(); ?>
@@ -61,6 +123,11 @@ $__fb = $_SESSION['import_feedback'] ?? null;
 if ($__fb) {
     unset($_SESSION['import_feedback']);
 } // show once
+$__publish_fb = $_SESSION['publish_feedback'] ?? null;
+if ($__publish_fb) {
+    unset($_SESSION['publish_feedback']);
+}
+
 ?>
 
 <?php $this->start('content'); ?>
@@ -82,7 +149,14 @@ if ($__fb) {
             <span class="muted">
                 - <?= (int)$total ?> clip<?= ($total == 1 ? '' : 's') ?>
             </span>
+
+            <?php if ($dayIsPublished): ?>
+                <span class="zd-chip zd-chip-ok" style="margin-left: 8px;">
+                    Public
+                </span>
+            <?php endif; ?>
         </h1>
+
 
         <p class="zd-meta"
             id="zd-runtime-block"
@@ -94,16 +168,46 @@ if ($__fb) {
         </p>
 
     </div>
-    <div class="zd-actions" style="display:flex; gap:8px; align-items:center">
+    <div class="zd-actions" style="display:flex; gap:12px; align-items:center">
 
-        <a class="za-btn za-btn-primary" href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/upload">
+        <!-- Add clips -->
+        <a class="zd-btn zd-btn-primary"
+            href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/upload">
             + Add clips
         </a>
 
-        <a class="za-btn za-btn-danger" href="/admin/projects/<?= htmlspecialchars($project['project_uuid'] ?? $project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/delete" style="margin-left:12px">
+        <!-- Publish -->
+        <?php if (!$dayIsPublished): ?>
+            <button type="button"
+                class="zd-btn zd-btn-primary"
+                id="zd-publish-open">
+                Publish
+            </button>
+        <?php else: ?>
+            <button type="button"
+                class="zd-btn"
+                id="zd-unpublish-open">
+                Unpublish
+            </button>
+
+        <?php endif; ?>
+
+
+        <!-- Delete -->
+        <a class="zd-btn zd-btn-danger"
+            href="/admin/projects/<?= htmlspecialchars($project['project_uuid'] ?? $project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/delete">
             Delete day
         </a>
+
     </div>
+    <?php if (!empty($__publish_fb['published'])): ?>
+        <div class="zd-flash-ok">
+            Day published<?= !empty($__publish_fb['send_email']) ? ' (Email planned)' : '' ?>.
+        </div>
+    <?php endif; ?>
+
+
+
     <div class="zd-bulk-actions" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; font-size:13px; color:#9aa7b2;">
         <div style="display:flex; flex-direction:column; line-height:1.3; min-width:140px;">
             <div id="zd-selected-count">0 selected</div>
@@ -388,9 +492,150 @@ if ($__fb) {
     </div>
 </div>
 
+<!-- Publish day modal -->
+<div class="zd-publish-backdrop" id="zd-publish-backdrop" hidden>
+    <div class="zd-publish-modal">
+        <div class="zd-publish-head">
+            <h2 id="zd-modal-title">Publish day</h2>
+        </div>
+
+        <div class="zd-publish-body">
+            <p id="zd-modal-message">Are you sure you want to publish this day?</p>
+
+            <div id="zd-modal-email-block">
+                <label class="zd-publish-checkbox">
+                    <input type="checkbox" id="zd-publish-send-email" value="1">
+                    <span>Send email to users with link to this day</span>
+                </label>
+            </div>
+
+            <div id="zd-modal-publish-extra">
+                <p style="margin-top: 0.5rem;">
+                    When published, this day becomes visible to regular users on the project.
+                </p>
+                <p style="margin-top: 0.75rem; font-size: 0.85rem; opacity: 0.7;">
+                    (Email sending will be implemented later – this checkbox is just stored for now.)
+                </p>
+            </div>
+        </div>
+
+
+        <div class="zd-publish-footer">
+            <button type="button"
+                class="zd-btn"
+                id="zd-publish-cancel">
+                Cancel
+            </button>
+            <button type="button"
+                class="zd-btn"
+                id="zd-publish-confirm">
+                Publish
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden forms for real publish and unpublish POST  -->
+<form id="zd-publish-form"
+    method="post"
+    action="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/publish"
+    style="display:none;">
+    <input type="hidden" name="_csrf" value="<?= \App\Support\Csrf::token() ?>">
+    <input type="hidden" name="send_email" id="zd-publish-send-email-field" value="0">
+</form>
+
+<form id="zd-unpublish-form"
+    method="post"
+    action="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/unpublish"
+    style="display:none;">
+    <input type="hidden" name="_csrf" value="<?= \App\Support\Csrf::token() ?>">
+</form>
+
+
 
 <?php $this->end(); /* end of content section */ ?>
 
 <?php $this->start('scripts'); ?>
 <?= $this->includeWithin('partials/import_csv_modal', ['feedback' => $__fb]) ?>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const backdrop = document.getElementById("zd-publish-backdrop");
+
+        const btnOpenPublish = document.getElementById("zd-publish-open");
+        const btnOpenUnpublish = document.getElementById("zd-unpublish-open");
+
+        const btnCancel = document.getElementById("zd-publish-cancel");
+        const btnConfirm = document.getElementById("zd-publish-confirm");
+
+        const sendEmailBlock = document.getElementById("zd-modal-email-block");
+        const sendEmailInput = document.getElementById("zd-publish-send-email");
+        const titleEl = document.getElementById("zd-modal-title");
+        const messageEl = document.getElementById("zd-modal-message");
+        const publishExtra = document.getElementById("zd-modal-publish-extra");
+
+
+        const publishForm = document.getElementById("zd-publish-form");
+        const unpublishForm = document.getElementById("zd-unpublish-form");
+        const sendField = document.getElementById("zd-publish-send-email-field");
+
+        let currentMode = "publish";
+
+        function openModal(mode) {
+            currentMode = mode;
+
+            if (mode === "publish") {
+                titleEl.textContent = "Publish day";
+                messageEl.textContent = "Are you sure you want to publish this day?";
+                btnConfirm.textContent = "Publish";
+
+                sendEmailBlock.style.display = "block";
+                publishExtra.style.display = "block";
+
+            } else {
+                titleEl.textContent = "Unpublish day";
+                messageEl.textContent = "Unpublish this day? It will no longer be visible to regular users.";
+                btnConfirm.textContent = "Unpublish";
+
+                sendEmailBlock.style.display = "none";
+                publishExtra.style.display = "none";
+            }
+
+
+            backdrop.hidden = false;
+        }
+
+        function closeModal() {
+            backdrop.hidden = true;
+        }
+
+        if (btnOpenPublish) {
+            btnOpenPublish.addEventListener("click", () => openModal("publish"));
+        }
+        if (btnOpenUnpublish) {
+            btnOpenUnpublish.addEventListener("click", () => openModal("unpublish"));
+        }
+
+        if (btnCancel) {
+            btnCancel.addEventListener("click", closeModal);
+        }
+
+        backdrop.addEventListener("click", (e) => {
+            if (e.target === backdrop) closeModal();
+        });
+
+        if (btnConfirm) {
+            btnConfirm.addEventListener("click", () => {
+                if (currentMode === "publish") {
+                    sendField.value = sendEmailInput.checked ? "1" : "0";
+                    publishForm.submit();
+                } else {
+                    unpublishForm.submit();
+                }
+            });
+        }
+    });
+</script>
+
+
 <?php $this->end(); ?>

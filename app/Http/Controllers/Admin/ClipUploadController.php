@@ -213,33 +213,78 @@ final class ClipUploadController
             // ---------- 4) Move file ----------
             // ... existing code that sets $publicPath ...
 
-            // ---------- 5) DB inserts ----------
+            // ---------- 5) DB inserts (create or replace by filename) ----------
             $pdo->beginTransaction();
             try {
-                // Insert provisional clip
-                $stmtClip = $pdo->prepare("
-                    INSERT INTO clips (project_id, day_id, file_name, ingest_state)
-                    VALUES (:proj, :day, :file_name, 'provisional')
-                ");
-                $stmtClip->bindParam(':proj', $ids['project_bin'], \PDO::PARAM_LOB);
-                $stmtClip->bindParam(':day',  $ids['day_bin'],     \PDO::PARAM_LOB);
-                $stmtClip->bindValue(':file_name', $origName);
-                $stmtClip->execute();
-
-                // Fetch the inserted clip id (binary)
-                $stmtFind = $pdo->prepare("
-                    SELECT id FROM clips
-                    WHERE project_id=:proj AND day_id=:day AND file_name=:file_name
+                // 5a) Check if a clip already exists for this project/day + file_name
+                $stmtExisting = $pdo->prepare("
+                    SELECT id
+                    FROM clips
+                    WHERE project_id = :proj
+                    AND day_id     = :day
+                    AND file_name  = :file_name
                     ORDER BY created_at DESC
                     LIMIT 1
                 ");
-                $stmtFind->bindParam(':proj', $ids['project_bin'], \PDO::PARAM_LOB);
-                $stmtFind->bindParam(':day',  $ids['day_bin'],     \PDO::PARAM_LOB);
-                $stmtFind->bindValue(':file_name', $origName);
-                $stmtFind->execute();
-                $clipBin = $stmtFind->fetchColumn();
+                $stmtExisting->bindParam(':proj', $ids['project_bin'], \PDO::PARAM_LOB);
+                $stmtExisting->bindParam(':day',  $ids['day_bin'],     \PDO::PARAM_LOB);
+                $stmtExisting->bindValue(':file_name', $origName);
+                $stmtExisting->execute();
+                $clipBin = $stmtExisting->fetchColumn() ?: null;
 
-                // Register asset (proxy)
+                if ($clipBin) {
+                    // Existing clip: treat this upload as a replacement of the original media
+
+                    // Remove old original/proxy assets for this clip
+                    $stmtDelAssets = $pdo->prepare("
+                        DELETE FROM clip_assets
+                        WHERE clip_id = :clip
+                        AND asset_type IN ('original','proxy_web')
+                    ");
+                    $stmtDelAssets->bindParam(':clip', $clipBin, \PDO::PARAM_LOB);
+                    $stmtDelAssets->execute();
+
+                    // Cancel any pending encode jobs for this clip (they refer to the old file)
+                    $stmtCancelJobs = $pdo->prepare("
+                        UPDATE encode_jobs
+                        SET state = 'canceled',
+                            cancel_requested = 1,
+                            updated_at = NOW()
+                        WHERE clip_id = :clip
+                        AND state IN ('queued','running')
+                    ");
+                    $stmtCancelJobs->bindParam(':clip', $clipBin, \PDO::PARAM_LOB);
+                    $stmtCancelJobs->execute();
+                } else {
+                    // No existing clip with this filename → create a new provisional clip
+                    $stmtClip = $pdo->prepare("
+                        INSERT INTO clips (project_id, day_id, file_name, ingest_state)
+                        VALUES (:proj, :day, :file_name, 'provisional')
+                    ");
+                    $stmtClip->bindParam(':proj', $ids['project_bin'], \PDO::PARAM_LOB);
+                    $stmtClip->bindParam(':day',  $ids['day_bin'],     \PDO::PARAM_LOB);
+                    $stmtClip->bindValue(':file_name', $origName);
+                    $stmtClip->execute();
+
+                    // Fetch the inserted clip id (binary)
+                    $stmtFind = $pdo->prepare("
+                        SELECT id FROM clips
+                        WHERE project_id=:proj AND day_id=:day AND file_name=:file_name
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    ");
+                    $stmtFind->bindParam(':proj', $ids['project_bin'], \PDO::PARAM_LOB);
+                    $stmtFind->bindParam(':day',  $ids['day_bin'],     \PDO::PARAM_LOB);
+                    $stmtFind->bindValue(':file_name', $origName);
+                    $stmtFind->execute();
+                    $clipBin = $stmtFind->fetchColumn();
+                }
+
+                if (!$clipBin) {
+                    throw new \RuntimeException('Failed to resolve clip id after upload');
+                }
+
+                // Register (new) original asset for this clip
                 $stmtAsset = $pdo->prepare("
                     INSERT INTO clip_assets (clip_id, asset_type, storage_path, byte_size)
                     VALUES (:clip, 'original', :path, :size)
@@ -256,6 +301,7 @@ final class ClipUploadController
                 ob_end_clean();
                 $this->respond(500, ['ok' => false, 'error' => 'DB error: ' . $e->getMessage()]);
             }
+
 
             // ---------- 6) Resolve UUID + Poster generation (best-effort) ----------
             $sourceAbsPath = $target;

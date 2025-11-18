@@ -46,6 +46,35 @@ final class ProjectClipsController
 
         $pdo = DB::pdo();
 
+        // === Guard: regular users cannot access unpublished days ===
+        $dayStmt = $pdo->prepare("
+            SELECT 
+                d.id,
+                d.published_at
+            FROM days d
+            WHERE d.project_id = UUID_TO_BIN(:p, 1)
+              AND d.id        = UUID_TO_BIN(:d, 1)
+            LIMIT 1
+        ");
+        $dayStmt->execute([
+            ':p' => $projectUuid,
+            ':d' => $dayUuid,
+        ]);
+        $dayRow = $dayStmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$dayRow) {
+            http_response_code(404);
+            echo 'Day not found';
+            return;
+        }
+
+        if (!$isSuperuser && !$isProjectAdmin && empty($dayRow['published_at'])) {
+            http_response_code(403);
+            echo 'This day is not published.';
+            return;
+        }
+
+
         // Project header info
         $projStmt = $pdo->prepare("
         SELECT BIN_TO_UUID(p.id,1) AS project_uuid, p.title, p.code, p.status
@@ -180,7 +209,12 @@ final class ProjectClipsController
 
         // Day info
         $dayStmt = $pdo->prepare("
-        SELECT d.shoot_date, d.title
+        SELECT 
+            BIN_TO_UUID(d.id,1) AS day_uuid,
+            d.title,
+            d.shoot_date,
+            d.notes,
+            d.published_at
         FROM days d
         WHERE d.id = UUID_TO_BIN(:d,1)
           AND d.project_id = UUID_TO_BIN(:p,1)
@@ -966,6 +1000,19 @@ final class ProjectClipsController
             return;
         }
         $clipBin = $clipRow['clip_bin'];
+
+        // Cancel any pending encode jobs for this clip so proxies won't be recreated
+        $stmtCancelJobs = $pdo->prepare("
+        UPDATE encode_jobs
+           SET state = 'canceled',
+               cancel_requested = 1,
+               updated_at = NOW()
+         WHERE clip_id = :clip
+           AND state IN ('queued','running')
+    ");
+        $stmtCancelJobs->bindParam(':clip', $clipBin, \PDO::PARAM_LOB);
+        $stmtCancelJobs->execute();
+
 
         // Collect all asset paths for this clip (proxy_web/poster/original/sprite/waveform…)
         $stmtA = $pdo->prepare("

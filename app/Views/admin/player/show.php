@@ -41,6 +41,17 @@ $this->extend('layout/main');
         color: var(--text);
     }
 
+    /* Compact sort select in the sidebar header */
+    .zd-sort-select {
+        font-size: 12px;
+        padding: 4px 8px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
+        max-width: 140px;
+    }
+
     /* Meta below title in list mode */
     .day-rowmeta {
         margin-top: 2px;
@@ -300,6 +311,23 @@ $this->extend('layout/main');
 
 <?php $clip_count = is_array($clip_list ?? null) ? count($clip_list) : 0; ?>
 
+<?php
+$hasSelected = false;
+$hasComments = false;
+
+if (!empty($clip_list) && is_array($clip_list)) {
+    foreach ($clip_list as $it) {
+        if (!empty($it['is_select'])) {
+            $hasSelected = true;
+        }
+        if (!empty($it['comment_count'])) {
+            $hasComments = true;
+        }
+    }
+}
+?>
+
+
 <div class="zd-bleed">
 
     <div class="player-layout"
@@ -325,15 +353,55 @@ $this->extend('layout/main');
                     </span>
 
                 </div>
-
                 <div style="display:flex;align-items:center;gap:6px;">
+
+                    <!-- Sort group (hidden in day mode) -->
+                    <div id="clipSortGroup" style="display:flex;align-items:center;gap:4px;">
+                        <span style="font-size:12px;color:var(--muted);">Sort by</span>
+
+                        <select id="clipSortMode" class="zd-sort-select" title="Sort clips">
+                            <option value="scene">Scene</option>
+                            <option value="name">Clip name</option>
+
+                            <?php if ($hasSelected): ?>
+                                <option value="select">Selected clips</option>
+                            <?php endif; ?>
+
+                            <?php if ($hasComments): ?>
+                                <option value="comments">Comments</option>
+                            <?php endif; ?>
+                        </select>
+                    </div>
+
+
+
+                    <!-- Sort direction toggle -->
+                    <button id="sortDirBtn"
+                        class="icon-btn"
+                        type="button"
+                        title="Toggle sort direction"
+                        aria-label="Toggle sort direction"
+                        data-dir="asc">
+                        <svg viewBox="0 0 24 24" class="icon zd-sort-icon" aria-hidden="true">
+                            <!-- Up arrow -->
+                            <path d="M12 4l-4 4h8z" />
+                            <!-- Down arrow -->
+                            <path d="M12 20l4-4H8z" />
+                        </svg>
+                    </button>
+
+                    <!-- View toggle -->
                     <button id="viewToggleBtn" class="icon-btn" title="Switch view" aria-label="Switch view">
                         <img id="viewToggleIcon" src="/assets/icons/grid.svg" alt="" class="icon">
                     </button>
 
-
-                    <a href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips" style="font-size:12px;text-decoration:none;color:#3aa0ff">← back</a>
+                    <a href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips"
+                        style="font-size:12px;text-decoration:none;color:#3aa0ff">
+                        ← back
+                    </a>
                 </div>
+
+
             </div>
 
 
@@ -346,6 +414,7 @@ $this->extend('layout/main');
 
                     <div id="clipListContainer" class="list-view" style="position:relative;overflow:visible;">
 
+
                         <?php if (empty($clip_list)) : ?>
                             <div class="zd-meta">No clips on this day.</div>
                         <?php else : ?>
@@ -357,7 +426,11 @@ $this->extend('layout/main');
                             ?>
                                 <a class="clip-item <?= $isActive ? 'is-active' : '' ?>"
                                     href="<?= $href ?>"
-                                    data-is-select="<?= (int)($it['is_select'] ?? 0) ?>">
+                                    data-is-select="<?= (int)($it['is_select'] ?? 0) ?>"
+                                    data-label="<?= htmlspecialchars($clipLabel, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-filename="<?= htmlspecialchars($it['file_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                    data-comment-count="<?= (int)($it['comment_count'] ?? 0) ?>">
+
 
                                     <?php
                                     $scene = trim((string)($it['scene'] ?? ''));
@@ -381,41 +454,113 @@ $this->extend('layout/main');
                                         }
                                     }
                                     $clipLabel = $titleParts[0] ?? '';
+
+                                    // Base filename (no extension)
+                                    $fileNameFull = trim((string)($it['file_name'] ?? ''));
+                                    $fileNameBase = $fileNameFull !== '' ? preg_replace('/\.[^.]+$/', '', $fileNameFull) : '';
+
+                                    // Do we have any scene/slate/take info?
+                                    $hasSceneInfo = ($scene !== '' || $slate !== '' || $take !== '');
                                     ?>
 
 
+
+                                    <?php
+                                    $commentCount = (int)($it['comment_count'] ?? 0);
+                                    ?>
                                     <?php if (!empty($it['poster_path'])) : ?>
                                         <div class="thumb-wrap">
                                             <img src="<?= htmlspecialchars($it['poster_path']) ?>" alt="">
-                                            <?php if ((int)($it['is_select'] ?? 0) === 1): ?>
-                                                <div class="zd-flag-star" aria-label="Good take">
-                                                    <svg viewBox="0 0 24 24" role="img" focusable="false" width="16" height="16">
-                                                        <path fill="#ffd54a" d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
-                                                    </svg>
+
+                                            <?php if ($commentCount > 0 || (int)($it['is_select'] ?? 0) === 1): ?>
+                                                <div class="zd-flag-strip">
+                                                    <?php if ($commentCount > 0): ?>
+                                                        <div class="zd-flag-comment" aria-label="<?= $commentCount ?> comment<?= $commentCount === 1 ? '' : 's' ?>">
+                                                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                                <path
+                                                                    d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6.5L9 21l0-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"
+                                                                    fill="#ffffff"
+                                                                    stroke="#000000"
+                                                                    stroke-width="1.8"
+                                                                    stroke-linejoin="round" />
+                                                            </svg>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <?php if ((int)($it['is_select'] ?? 0) === 1): ?>
+                                                        <div class="zd-flag-star" aria-label="Good take">
+                                                            <svg viewBox="0 0 24 24" role="img" focusable="false" width="16" height="16">
+                                                                <path d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
+                                                            </svg>
+                                                        </div>
+                                                    <?php endif; ?>
+
+
                                                 </div>
                                             <?php endif; ?>
                                         </div>
+
                                     <?php else : ?>
                                         <div class="thumb-wrap">
-                                            <div class="no-thumb"></div>
-                                            <?php if ($clipLabel !== '') : ?>
-                                                <div class="clip-badge"><?= htmlspecialchars($clipLabel) ?></div>
-                                            <?php endif; ?>
-                                            <?php if ((int)($it['is_select'] ?? 0) === 1): ?>
-                                                <div class="zd-flag-star" aria-label="Good take">
-                                                    <svg viewBox="0 0 24 24" role="img" focusable="false" width="16" height="16">
-                                                        <path fill="#ffd54a" d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
-                                                    </svg>
-                                                </div>
-                                            <?php endif; ?>
+                                            <div class="thumb-wrap">
+                                                <div class="no-thumb"></div>
 
-                                        </div>
-                                    <?php endif; ?>
+                                                <?php if ($clipLabel !== '') : ?>
+                                                    <div class="clip-badge"><?= htmlspecialchars($clipLabel) ?></div>
+                                                <?php endif; ?>
 
-                                    <div class="clip-text">
-                                        <?php if ($clipLabel !== ''): ?>
-                                            <div class="clip-title">
-                                                <span><?= htmlspecialchars($clipLabel) ?></span>
+                                                <?php if ($commentCount > 0 || (int)($it['is_select'] ?? 0) === 1): ?>
+                                                    <div class="zd-flag-strip">
+                                                        <?php if ($commentCount > 0): ?>
+                                                            <div class="zd-flag-comment">
+                                                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                                    <path
+                                                                        d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6.5L9 21l0-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"
+                                                                        fill="#ffffff"
+                                                                        stroke="#000000"
+                                                                        stroke-width="1.8"
+                                                                        stroke-linejoin="round" />
+                                                                </svg>
+                                                            </div>
+                                                        <?php endif; ?>
+
+                                                        <?php if ((int)($it['is_select'] ?? 0) === 1): ?>
+                                                            <div class="zd-flag-star">
+                                                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                                    <path
+                                                                        d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
+                                                                </svg>
+                                                            </div>
+                                                        <?php endif; ?>
+
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+
+                                        <?php endif; ?>
+
+
+                                        <div class="clip-text">
+                                            <?php
+                                            // Row title: prefer scene/slate/take label, otherwise file name (without extension)
+                                            $rowTitleRaw  = $clipLabel !== '' ? $clipLabel : $fileNameBase;
+                                            $rowTitle     = trim((string)$rowTitleRaw);
+                                            $commentCount = (int)($it['comment_count'] ?? 0);
+                                            ?>
+                                            <div class="clip-title clip-title-right">
+                                                <span><?= htmlspecialchars($rowTitle, ENT_QUOTES, 'UTF-8') ?></span>
+
+                                                <?php if ($commentCount > 0): ?>
+                                                    <span class="zd-inline-comment" title="<?= $commentCount ?> comments">
+                                                        <svg class="zd-icon-comment" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10z"
+                                                                fill="#ffffff"
+                                                                stroke="#000000"
+                                                                stroke-width="1.8"
+                                                                stroke-linejoin="round" />
+                                                        </svg>
+                                                    </span>
+                                                <?php endif; ?>
+
                                                 <?php if ((int)($it['is_select'] ?? 0) === 1): ?>
                                                     <span class="zd-inline-star" title="Good take" aria-label="Good take">
                                                         <svg viewBox="0 0 24 24" role="img" focusable="false">
@@ -424,15 +569,14 @@ $this->extend('layout/main');
                                                     </span>
                                                 <?php endif; ?>
                                             </div>
-                                        <?php endif; ?>
-                                        <?php if (!empty($it['file_name'])): ?>
 
-                                            <div class="zd-meta">
-                                                <div class="zd-filename"><?= htmlspecialchars($it['file_name']) ?></div>
-                                            </div>
-                                        <?php endif; ?>
+                                            <?php if ($hasSceneInfo && $fileNameBase !== ''): ?>
+                                                <div class="zd-meta">
+                                                    <div class="zd-filename"><?= htmlspecialchars($fileNameBase, ENT_QUOTES, 'UTF-8') ?></div>
+                                                </div>
+                                            <?php endif; ?>
 
-                                    </div>
+                                        </div>
                                 </a>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -498,9 +642,9 @@ $this->extend('layout/main');
 
                 <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;">
                     <?php
-                    $scene = trim((string)($clip['scene'] ?? ''));
-                    $slate = trim((string)($clip['slate'] ?? ''));
-                    $take  = trim((string)($clip['take']  ?? ''));
+                    $scene  = trim((string)($clip['scene'] ?? ''));
+                    $slate  = trim((string)($clip['slate'] ?? ''));
+                    $take   = trim((string)($clip['take']  ?? ''));
                     $camera = trim((string)($clip['camera'] ?? ''));
 
                     $sceneLine = '';
@@ -517,16 +661,21 @@ $this->extend('layout/main');
                     if ($camera !== '') {
                         $sceneLine .= " · Cam {$camera}";
                     }
+
+                    // Base filename for header (no extension)
+                    $fileNameFull = trim((string)($clip['file_name'] ?? ''));
+                    $fileNameBase = $fileNameFull !== '' ? preg_replace('/\.[^.]+$/', '', $fileNameFull) : '';
                     ?>
                     <div class="zd-scene-line">
                         <div class="zd-scene-left">
                             <span><?= htmlspecialchars($sceneLine) ?></span>
-                            <?php if (!empty($clip['file_name'])): ?>
+                            <?php if ($fileNameBase !== ''): ?>
                                 <span class="zd-clip-filename">
                                     <?= $sceneLine !== '' ? ' - ' : '' ?>
-                                    <?= htmlspecialchars($clip['file_name']) ?>
+                                    <?= htmlspecialchars($fileNameBase, ENT_QUOTES, 'UTF-8') ?>
                                 </span>
                             <?php endif; ?>
+
 
                         </div>
 
@@ -625,8 +774,17 @@ $this->extend('layout/main');
                             <canvas id="lutCanvas" class="lut-canvas"></canvas>
                         </div>
                     <?php else : ?>
-                        <div style="padding:24px;color:#d62828;">No proxy available for this clip yet.</div>
+                        <?php if ($clip === null): ?>
+                            <div style="padding:24px;color:var(--muted);">
+                                Select a day to view clips.
+                            </div>
+                        <?php else: ?>
+                            <div style="padding:24px;color:#d62828;">
+                                No proxy available for this clip yet.
+                            </div>
+                        <?php endif; ?>
                     <?php endif; ?>
+
 
 
                 </div> <!-- end of the player card -->
@@ -712,20 +870,23 @@ $this->extend('layout/main');
             <div class="player-meta">
                 <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;">
 
-                    <details class="zd-metadata-group" open>
+                    <details class="zd-metadata-group" data-meta-section="basic" open>
                         <summary class="zd-metadata-summary">Basic Metadata</summary>
                         <div class="zd-metadata-content">
                             <?php
                             // Build the 8 basic fields in desired order
                             $basic = [
-                                'Duration' => $duration_tc,
-                                'FPS'      => ($fpsVal !== null ? rtrim(rtrim(number_format($fpsVal, 3, '.', ''), '0'), '.') : null),
                                 'TC In'    => $clip['tc_start'] ?? null,
-                                'TC Out'   => $clip['tc_end']   ?? null,
-                                'Resolution' => $frameSize,
-                                'Codec'      => $codec,
                                 'Camera'     => $clip['camera'] ?? null,
+                                'TC Out'   => $clip['tc_end']   ?? null,
                                 'Reel'       => $clip['reel']   ?? null,
+                                'Duration' => $duration_tc,
+                                'Resolution' => $frameSize,
+                                'FPS'      => ($fpsVal !== null ? rtrim(rtrim(number_format($fpsVal, 3, '.', ''), '0'), '.') : null),
+
+                                'Codec'      => $codec,
+
+
                             ];
 
                             // Filter out empties to avoid blank cells
@@ -749,7 +910,8 @@ $this->extend('layout/main');
                     </details>
 
 
-                    <details class="zd-metadata-group" style="margin-top: 8px;">
+                    <details class="zd-metadata-group" data-meta-section="extended" style="margin-top: 8px;">
+
                         <summary class="zd-metadata-summary">Extended Metadata</summary>
                         <div class="zd-metadata-content">
                             <table class="zd-meta-table">
@@ -788,20 +950,118 @@ $this->extend('layout/main');
 
 
                 <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;">
-                    <div style="font-weight:600;color:var(--text);margin-bottom:8px;">Comments</div>
+                    <?php
+                    $commentCount = is_array($comments) ? count($comments) : 0;
+                    $commentLabel = '';
+                    if ($commentCount === 1) {
+                        $commentLabel = '1 comment';
+                    } elseif ($commentCount > 1) {
+                        $commentLabel = $commentCount . ' comments';
+                    }
+                    ?>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="font-weight:600;color:var(--text);">Comments</div>
+
+                        <?php if ($commentLabel !== ''): ?>
+                            <div style="font-size:11px;color:var(--muted);">
+                                <?= htmlspecialchars($commentLabel) ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+
+                    <form method="post" class="zd-comment-form" style="margin-bottom:12px;display:flex;flex-direction:column;gap:8px;">
+                        <input type="hidden" name="_csrf" value="<?= htmlspecialchars(\App\Support\Csrf::token(), ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" name="parent_comment_uuid" id="comment_parent_uuid" value="">
+
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <label for="comment_start_tc" style="font-size:11px;color:var(--muted);min-width:88px;">Timecode (opt.)</label>
+                            <input
+                                type="text"
+                                name="start_tc"
+                                id="comment_start_tc"
+                                placeholder="HH:MM:SS:FF"
+                                maxlength="11"
+                                pattern="^\d{2}:\d{2}:\d{2}:\d{2}$"
+                                autocomplete="off"
+                                style="flex:0 0 130px;font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);" />
+                            <button type="button" id="btnCommentUseTc" style="font-size:11px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--subtle);color:var(--text);cursor:pointer;">
+                                Use current
+                            </button>
+                        </div>
+
+                        <div>
+                            <textarea
+                                name="comment_body"
+                                id="comment_body"
+                                rows="2"
+                                placeholder="Add a note for this clip…"
+                                required
+                                style="width:100%;resize:vertical;font-size:13px;padding:6px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);"></textarea>
+                        </div>
+
+                        <div style="display:flex;justify-content:flex-end;">
+                            <button type="submit" style="font-size:12px;font-weight:500;padding:6px 12px;border-radius:4px;border:1px solid var(--accent);background:var(--accent);color:#000;cursor:pointer;">
+                                Add comment
+                            </button>
+                        </div>
+                    </form>
 
                     <?php if (!empty($comments)) : ?>
-                        <div style="display:flex;flex-direction:column;gap:8px;">
+                        <div style="display:flex;flex-direction:column;gap:6px;">
                             <?php foreach ($comments as $c) : ?>
-                                <div style="border:1px solid var(--border);border-radius:8px;padding:8px;">
-                                    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">
-                                        <?= htmlspecialchars($c['created_at']) ?>
-                                        <?php if (!empty($c['start_tc']) || !empty($c['end_tc'])) : ?>
-                                            · <?= htmlspecialchars(($c['start_tc'] ?? '') . ' – ' . ($c['end_tc'] ?? '')) ?>
-                                        <?php endif; ?>
+                                <?php
+                                $isReply = !empty($c['is_reply']);
+                                $depth   = (int)($c['depth'] ?? 0);
+                                $indent  = $isReply ? min(24 + $depth * 12, 80) : 0;
+                                ?>
+                                <div
+                                    class="zd-comment-item"
+                                    data-comment-uuid="<?= htmlspecialchars($c['comment_uuid'] ?? ($c['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                    style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-left:<?= $indent ?>px;background:<?= $isReply ? 'rgba(255,255,255,0.02)' : 'transparent' ?>;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:11px;color:var(--muted);">
+                                        <div>
+                                            <?php if (!empty($c['start_tc'])) : ?>
+                                                <button
+                                                    type="button"
+                                                    class="zd-comment-tc"
+                                                    data-tc="<?= htmlspecialchars($c['start_tc'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    style="font-family:monospace;font-size:11px;padding:2px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--accent);cursor:pointer;margin-right:6px;">
+                                                    <?= htmlspecialchars($c['start_tc'], ENT_QUOTES, 'UTF-8') ?>
+                                                </button>
+                                            <?php endif; ?>
+
+                                            <span style="font-weight:500;color:var(--text);">
+                                                <?= htmlspecialchars($c['author_name'] ?? 'Unknown', ENT_QUOTES, 'UTF-8') ?>
+                                            </span>
+
+                                            <?php if (!empty($c['created_at'])) : ?>
+                                                <span style="margin-left:6px;">
+                                                    <?= htmlspecialchars(date('Y-m-d H:i', strtotime($c['created_at'])), ENT_QUOTES, 'UTF-8') ?>
+                                                </span>
+                                            <?php endif; ?>
+
+                                            <?php if ($isReply && !empty($c['parent_uuid'])) : ?>
+                                                <span style="margin-left:6px;font-style:italic;color:var(--muted);">
+                                                    ↳ Reply
+                                                </span>
+                                            <?php endif; ?>
+                                        </div>
+
+                                        <div>
+                                            <button
+                                                type="button"
+                                                class="zd-comment-reply-btn"
+                                                data-comment-uuid="<?= htmlspecialchars($c['comment_uuid'] ?? ($c['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-author-name="<?= htmlspecialchars($c['author_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                                style="font-size:11px;border:none;background:none;color:var(--accent);cursor:pointer;padding:2px 4px;">
+                                                Reply
+                                            </button>
+                                        </div>
                                     </div>
+
                                     <div style="font-size:13px;color:var(--text);white-space:pre-wrap;">
-                                        <?= htmlspecialchars($c['body']) ?>
+                                        <?= nl2br(htmlspecialchars($c['body'] ?? '', ENT_QUOTES, 'UTF-8')) ?>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
@@ -810,6 +1070,7 @@ $this->extend('layout/main');
                         <div style="font-size:12px;color:var(--muted);">No comments yet.</div>
                     <?php endif; ?>
                 </div>
+
             </div>
 
         </section>

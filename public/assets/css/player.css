@@ -1,19 +1,17 @@
 /* =========================================================
-   PLAYER PAGE STYLES
+   CSS VARIABLES
    ========================================================= */
 
-/* ===== CSS Variables ===== */
 :root {
   --player-maxw: 1000px;
   --player-maxh: 92vh;
-  --controls-h: 48px; /* unified controls height */
+  --controls-h: 48px;
 }
 
 /* =========================================================
-   VIDEO PLAYER & OVERLAYS
+   VIDEO PLAYER CONTAINER
    ========================================================= */
 
-/* Main player container */
 .zd-player-wrap {
   width: 100%;
   max-width: var(--player-maxw);
@@ -30,20 +28,18 @@
   overflow: hidden;
 }
 
-/* Z-index layering (bottom to top):
+/* Z-index layers: 1=video, 2=LUT, 3=timecode, 4=controls, 5=scrubber, 1000+=volume */
 
-   1. Video (base layer)
-   2. LUT canvas overlay
-   3. Timecode overlay + frame controls
-   4. Player controls bar
-*/
+/* =========================================================
+   POINTER EVENTS CONTROL
+   ========================================================= */
 
-/* Make all overlays ignore clicks by default */
+/* Disable pointer events on all overlays by default */
 .zd-player-frame * {
   pointer-events: none;
 }
 
-/* Re-enable for the interactive bits */
+/* Re-enable for interactive elements */
 #zdVideo,
 .zd-controls,
 #scrubGlobal,
@@ -59,7 +55,10 @@
   pointer-events: auto;
 }
 
-/* Video element - bottom layer */
+/* =========================================================
+   VIDEO ELEMENT
+   ========================================================= */
+
 #zdVideo,
 .zd-player-frame > video {
   position: absolute;
@@ -72,12 +71,15 @@
   z-index: 1;
 }
 
-/* Hide default browser video controls */
+/* Hide browser's native controls */
 #zdVideo::-webkit-media-controls {
   display: none !important;
 }
 
-/* LUT Canvas overlay - layer 2 */
+/* =========================================================
+   LUT CANVAS OVERLAY
+   ========================================================= */
+
 .lut-canvas {
   position: absolute;
   inset: 0;
@@ -87,20 +89,23 @@
   object-position: center;
   display: block;
   z-index: 2;
-  pointer-events: none; /* Never block clicks */
+  pointer-events: none;
 }
 
-/* TC chip styled like a button, with fixed monospace width */
+/* =========================================================
+   TIMECODE CHIP & INPUT
+   ========================================================= */
+
 .zd-tc-chip {
   appearance: none;
   border: 1px solid var(--border);
-  background: var(--panel); /* matches your buttons */
+  background: var(--panel);
   color: var(--text);
   padding: 6px 10px;
   border-radius: 8px;
   cursor: text;
   font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  min-width: 118px; /* fits "00:00:00:00" neatly */
+  min-width: 118px;
   text-align: center;
 }
 
@@ -109,7 +114,6 @@
   outline-offset: 2px;
 }
 
-/* The inline editor that temporarily replaces the chip */
 .zd-tc-input {
   border: 1px solid var(--border);
   background: var(--panel);
@@ -127,7 +131,7 @@
   outline-offset: 2px;
 }
 
-/* When controls hide on idle, the chip/input should go with them */
+/* Timecode hides with controls */
 .zd-player-frame.controls-idle .zd-tc-chip,
 .zd-player-frame.controls-idle .zd-tc-input {
   transform: translateY(56px);
@@ -135,12 +139,17 @@
   pointer-events: none;
   transition: transform 0.18s ease, opacity 0.18s ease;
 }
+
 .zd-player-frame:hover .zd-tc-chip,
 .zd-player-frame:hover .zd-tc-input {
   transform: translateY(0);
   opacity: 1;
   pointer-events: auto;
 }
+
+/* =========================================================
+   FRAME CONTROLS (STEP BUTTONS)
+   ========================================================= */
 
 .frame-controls button {
   background: rgba(0, 0, 0, 0.55);
@@ -167,28 +176,30 @@
   outline-offset: 2px;
 }
 
-/* Custom player controls bar - layer 4 (topmost) */
+/* =========================================================
+   PLAYER CONTROLS BAR
+   ========================================================= */
+
 .zd-controls {
-  position: absolute; /* <-- keep it anchored inside the frame */
+  position: absolute;
   left: 12px;
   right: 12px;
-  bottom: 12px; /* bottom-anchored */
+  bottom: 12px;
   z-index: 4;
   display: flex;
   align-items: center;
   gap: 10px;
-
-  height: var(--controls-h); /* use your unified height */
+  height: var(--controls-h);
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 8px;
   backdrop-filter: blur(2px);
   transition: transform 0.18s ease, opacity 0.18s ease;
-  overflow: visible; /* allow volume popup to appear outside the bar */
+  overflow: visible;
 }
 
-/* Right-aligned controls group (volume + theater + fullscreen) */
+/* Right-aligned controls group */
 .zd-controls-right {
   margin-left: auto;
   display: flex;
@@ -196,17 +207,20 @@
   gap: 8px;
 }
 
-/* When idle, slide controls down out of view a bit */
+/* Controls hide animation */
 .zd-player-frame.controls-idle .zd-controls {
   transform: translateY(56px);
   opacity: 0;
 }
 
-/* Hovering the frame always reveals controls immediately */
-.zd-player-frame:hover .zd-controls {
+.zd-player-frame:not(.controls-idle):hover .zd-controls {
   transform: translateY(0);
   opacity: 1;
 }
+
+/* =========================================================
+   CONTROL BUTTONS
+   ========================================================= */
 
 .zd-btn {
   appearance: none;
@@ -217,24 +231,28 @@
   border-radius: 8px;
   cursor: pointer;
 }
-/* Keep play/pause button width stable so controls don't shift */
-#btnPlayPause {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 40px; /* tweak if you want more/less space */
-}
-
-/* Make both icons occupy the same visual width */
-#btnPlayPause span[data-state] {
-  display: inline-block;
-  width: 1.4em; /* ensures ▶ and ⏸ use same space */
-  text-align: center;
-}
 
 .zd-btn:hover {
   filter: brightness(1.1);
 }
+
+/* Stabilize play/pause button width */
+#btnPlayPause {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+}
+
+#btnPlayPause span[data-state] {
+  display: inline-block;
+  width: 1.4em;
+  text-align: center;
+}
+
+/* =========================================================
+   TIME DISPLAY
+   ========================================================= */
 
 .zd-scrub-wrap {
   display: grid;
@@ -253,7 +271,10 @@
   white-space: nowrap;
 }
 
-/* Volume control: icon + vertical slider popup */
+/* =========================================================
+   VOLUME CONTROL
+   ========================================================= */
+
 .zd-vol {
   position: relative;
   display: flex;
@@ -261,15 +282,15 @@
   z-index: 1000;
 }
 
-/* Popup panel behind the vertical slider */
+/* Volume popup panel */
 .zd-vol-popup {
   position: absolute;
   left: 50%;
-  bottom: calc(100% - 2px); /* Overlap slightly with button to bridge the gap */
+  bottom: calc(100% - 2px);
   transform: translateX(-50%);
   width: 28px;
-  height: 90px; /* Make height explicit to match slider length */
-  padding: 12px 0 14px 0; /* Extra padding at bottom to bridge to button */
+  height: 90px;
+  padding: 12px 0 14px 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -277,77 +298,73 @@
   background: rgba(5, 7, 12, 0.97);
   border: 1px solid var(--border);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.7);
-  z-index: 1001; /* Higher than scrub bar (z-index: 5) */
-
+  z-index: 1001;
   opacity: 0;
-  visibility: hidden; /* Use visibility to prevent any interaction */
-  pointer-events: none; /* Critical: blocks interaction when hidden */
-  transition: opacity 0.15s ease, visibility 0s linear 0.15s; /* Delay visibility change */
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease, visibility 0s linear 0.15s;
 }
 
-/* Show popup ONLY when hovering the button itself */
+/* Show popup on hover */
 #btnMute:hover + .zd-vol-popup,
 .zd-vol-popup:hover {
   opacity: 1;
   visibility: visible;
-  pointer-events: auto; /* Enable interaction when visible */
-  transition: opacity 0.15s ease, visibility 0s linear 0s; /* No delay when showing */
+  pointer-events: auto;
+  transition: opacity 0.15s ease, visibility 0s linear 0s;
 }
 
-/* Vertical volume slider base */
+/* Vertical volume slider */
 #vol {
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
   border: none;
-  width: 72px; /* This becomes the visual height after rotation */
-  height: 18px; /* This becomes the visual width after rotation */
+  width: 72px;
+  height: 18px;
   transform: rotate(-90deg);
   transform-origin: center;
   cursor: pointer;
   pointer-events: auto;
 }
 
-/* Kill the blue focus ring on the volume slider */
+/* Remove focus outline */
 #vol:focus,
 #vol:focus-visible {
   outline: none !important;
   box-shadow: none !important;
 }
 
-/* Firefox extra focus outline fix */
 #vol::-moz-focus-outer {
   border: 0;
 }
 
-/* WebKit track (Chrome/Edge) */
+/* WebKit slider styles */
 #vol::-webkit-slider-runnable-track {
   height: 4px;
-  background: #2a3342; /* dark track */
+  background: #2a3342;
   border-radius: 999px;
 }
 
-/* WebKit thumb */
 #vol::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--accent); /* blue thumb */
+  background: var(--accent);
   border: 1px solid var(--border);
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
-  margin-top: -4px; /* center on track */
+  margin-top: -4px;
 }
 
-/* Firefox track */
+/* Firefox slider styles */
 #vol::-moz-range-track {
   height: 4px;
   background: #2a3342;
   border-radius: 999px;
 }
 
-/* Firefox thumb */
 #vol::-moz-range-thumb {
   width: 12px;
   height: 12px;
@@ -358,45 +375,39 @@
   cursor: pointer;
 }
 
-/* Scrub bar lives inside .zd-controls, but visually above it */
+/* =========================================================
+   SCRUBBER BAR
+   ========================================================= */
+
 .zd-controls .zd-scrub-global {
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: calc(70% + 2px); /* 10px above the control bar, tweak if needed */
-  z-index: 5; /* above buttons, below volume popup */
+  bottom: calc(70% + 2px);
+  z-index: 5;
   -webkit-appearance: none;
   appearance: none;
   height: 14px;
   background: transparent;
   pointer-events: auto;
-}
-/* Track background (full width behind scrub) 
-.zd-controls .zd-scrub-global {
-  background: rgba(0, 0, 0, 0.25);  
-  border-radius: 4px;
-} */
-
-/* Scrub line follows the same idle/show animation as the controls */
-.zd-player-frame .zd-scrub-global {
+  cursor: pointer;
   transition: transform 0.18s ease, opacity 0.18s ease;
 }
 
-/* When idle, slide + fade the scrub line just like the controls */
+/* Scrubber hide animation */
 .zd-player-frame.controls-idle .zd-scrub-global {
   transform: translateY(56px);
   opacity: 0;
-  pointer-events: none; /* avoid stray hits while hidden */
+  pointer-events: none;
 }
 
-/* Hovering the frame reveals it immediately (same as controls) */
-.zd-player-frame:hover .zd-scrub-global {
+.zd-player-frame:not(.controls-idle):hover .zd-scrub-global {
   transform: translateY(0);
   opacity: 1;
   pointer-events: auto;
 }
 
-/* WebKit track */
+/* WebKit scrubber styles */
 .zd-scrub-global::-webkit-slider-runnable-track {
   height: 3px;
   background: linear-gradient(
@@ -407,36 +418,36 @@
     rgba(255, 255, 255, 0.18) 100%
   );
   border-radius: 3px;
+  cursor: pointer;
 }
 
-/* WebKit thumb */
 .zd-scrub-global::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 12px;
   height: 12px;
-  margin-top: -4px; /* centers thumb on 3px track */
+  margin-top: -4px;
   border-radius: 50%;
   background: var(--text);
   border: 1px solid var(--border);
   cursor: pointer;
 }
 
-/* Firefox track */
+/* Firefox scrubber styles */
 .zd-scrub-global::-moz-range-track {
   height: 3px;
   background: rgba(255, 255, 255, 0.18);
   border-radius: 3px;
+  cursor: pointer;
 }
 
-/* Firefox progress (the filled part) */
 .zd-scrub-global::-moz-range-progress {
   height: 3px;
   background: var(--accent);
   border-radius: 3px;
+  cursor: pointer;
 }
 
-/* Firefox thumb */
 .zd-scrub-global::-moz-range-thumb {
   width: 12px;
   height: 12px;
@@ -446,28 +457,8 @@
   cursor: pointer;
 }
 
-/* Make the entire scrub area “clickable” (hand cursor) across engines */
-.zd-scrub-global {
-  cursor: pointer;
-}
-.zd-scrub-global::-webkit-slider-runnable-track {
-  cursor: pointer;
-}
-.zd-scrub-global::-webkit-slider-thumb {
-  cursor: pointer;
-}
-.zd-scrub-global::-moz-range-track {
-  cursor: pointer;
-}
-.zd-scrub-global::-moz-range-progress {
-  cursor: pointer;
-}
-.zd-scrub-global::-moz-range-thumb {
-  cursor: pointer;
-}
-
 /* =========================================================
-   LAYOUT CONTAINERS
+   PAGE LAYOUT
    ========================================================= */
 
 .zd-bleed {
@@ -476,7 +467,7 @@
   overflow-x: clip;
 }
 
-/* 3-Column Layout: [Sidebar | Resizer | Player] */
+/* 3-Column Grid: Sidebar | Resizer | Player */
 .player-layout {
   display: grid;
   grid-template-columns: var(--clipcol-width, 360px) 10px 1fr;
@@ -495,6 +486,7 @@
   contain: none;
 }
 
+/* Sidebar resizer */
 .sidebar-resizer {
   width: 6px;
   height: 100%;
@@ -510,7 +502,7 @@
 }
 
 /* =========================================================
-   SCROLL CONTAINERS
+   SCROLLABLE CONTAINERS
    ========================================================= */
 
 .clipScrollOuter,
@@ -535,7 +527,10 @@
   scrollbar-color: #2a3342 #0b0c10;
 }
 
-/* Scrollbar Styles */
+/* =========================================================
+   SCROLLBAR STYLES
+   ========================================================= */
+
 html,
 body,
 #clipListContainer,
@@ -616,7 +611,7 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 /* =========================================================
-   CLIP ITEMS - BASE STYLES
+   CLIP ITEMS - BASE
    ========================================================= */
 
 #clipListContainer .clip-item {
@@ -647,7 +642,7 @@ body::-webkit-scrollbar-thumb:hover,
   outline: none;
 }
 
-/* Blue outline for active/focused clips */
+/* Active/focused outline */
 #clipListContainer .clip-item::after {
   content: "";
   position: absolute;
@@ -656,7 +651,7 @@ body::-webkit-scrollbar-thumb:hover,
   border-radius: 10px;
   pointer-events: none;
   z-index: 2;
-  transform: translateZ(0); /* Prevent clipping during transforms */
+  transform: translateZ(0);
 }
 
 #clipListContainer .clip-item.is-active::after,
@@ -671,8 +666,7 @@ body::-webkit-scrollbar-thumb:hover,
 
 #clipListContainer.list-view .clip-item {
   display: grid;
-  grid-template-columns: 64px 1fr;
-  grid-auto-rows: min-content;
+  grid-template-columns: 100px 1fr;
   gap: 0 10px;
   align-items: center;
   padding: 8px;
@@ -684,10 +678,10 @@ body::-webkit-scrollbar-thumb:hover,
   grid-row: 1 / span 2;
 }
 
-#clipListContainer.list-view .clip-item img,
+#clipListContainer.list-view .clip-item .thumb-wrap > img:first-child,
 #clipListContainer.list-view .clip-item .no-thumb {
-  width: 64px !important;
-  height: 36px !important;
+  width: 100px !important;
+  height: 56px !important;
   min-width: 64px;
   min-height: 36px;
   object-fit: cover;
@@ -714,6 +708,9 @@ body::-webkit-scrollbar-thumb:hover,
   overflow: hidden;
   text-overflow: ellipsis;
   margin: 0 0 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 #clipListContainer.list-view .zd-meta {
@@ -739,7 +736,6 @@ body::-webkit-scrollbar-thumb:hover,
   overflow: hidden;
 }
 
-/* Use display: contents to make children participate as direct flex items */
 #clipListContainer.grid-view .clip-text {
   display: contents;
 }
@@ -756,16 +752,17 @@ body::-webkit-scrollbar-thumb:hover,
   padding: 6px 8px 2px 8px;
 }
 
-/* Thumbnail in the middle */
+/* Thumbnail in middle */
 #clipListContainer.grid-view .thumb-wrap {
   order: 1;
   width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: 10px;
   overflow: hidden;
+  position: relative;
 }
 
-#clipListContainer.grid-view .clip-item img,
+#clipListContainer.grid-view .clip-item .thumb-wrap > img:first-child,
 #clipListContainer.grid-view .clip-item .no-thumb {
   display: block;
   width: 100% !important;
@@ -773,7 +770,7 @@ body::-webkit-scrollbar-thumb:hover,
   aspect-ratio: 16 / 9;
   object-fit: cover;
   border-bottom: 1px solid var(--border);
-  border-radius: 10px 10px 0 0;
+  border-radius: 10px;
   background: #000;
   position: relative;
   z-index: 0;
@@ -784,11 +781,184 @@ body::-webkit-scrollbar-thumb:hover,
   order: 2;
   font-size: 11px;
   color: var(--muted);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   padding: 2px 8px 6px 8px;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+#clipListContainer.grid-view .zd-meta .zd-filename {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 100%;
+  text-align: center;
+  word-break: normal;
+}
+
+/* Sort button icon styling — match grid/list buttons */
+.zd-sort-icon {
+  width: 20px;
+  height: 20px;
+  fill: #ffffff;
+  /* match .icon--light treatment */
+  filter: brightness(1.2);
+}
+
+/* =========================================================
+   GOOD TAKE STARS & COMMENT ICONS
+   ========================================================= */
+
+.thumb-wrap {
+  position: relative;
+}
+
+/* Strip that holds star + bubble on top-right */
+.zd-flag-strip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Individual icons inside the strip */
+.zd-flag-star {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zd-flag-comment {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Star icon */
+.zd-flag-star svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: #ffd54a;
+  stroke: #000; /* thin black outline */
+  stroke-width: 1.4; /* adjust thickness here */
+  stroke-linejoin: round;
+}
+
+/* Comment icon */
+.zd-flag-comment svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Inline star in title */
+.zd-inline-star {
+  flex-shrink: 0;
+}
+
+.zd-inline-star svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: #ffd54a;
+}
+
+/* Inline comment bubble in title */
+.zd-inline-comment {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.zd-inline-comment svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+/* Right-align star + bubble in list view titles */
+.clip-title-right {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.clip-title-right > span:first-child {
+  flex: 1;
+}
+
+.zd-inline-star,
+.zd-inline-comment {
+  margin-left: 0px;
+  flex-shrink: 0;
+}
+
+/* Optical alignment fix: slightly adjust vertical positioning */
+.zd-flag-comment svg {
+  transform: translateY(1px); /* raise bubble a bit */
+}
+
+.zd-flag-star svg {
+  transform: translateY(-1px); /* lower star a bit */
+}
+
+/* ===== View-specific behavior ===== */
+
+/* LIST VIEW:
+   - Only use inline icons in the title, no corner strip on tiny thumbs.
+*/
+#clipListContainer.list-view .thumb-wrap .zd-flag-strip {
+  display: none;
+}
+
+/* GRID VIEW:
+   - Use corner strip on the thumbnail.
+   - Hide inline icons next to the title.
+*/
+#clipListContainer.grid-view .clip-title .zd-inline-star,
+#clipListContainer.grid-view .clip-title .zd-inline-comment {
+  display: none;
+}
+
+#clipListContainer.grid-view .thumb-wrap .zd-flag-strip {
+  display: flex;
+}
+
+/* ===== View-specific behavior ===== */
+
+/* LIST VIEW:
+   - Use inline star + bubble next to title.
+   - Hide corner flags on the tiny thumb (to avoid clutter).
+*/
+#clipListContainer.list-view .thumb-wrap .zd-flag-star,
+#clipListContainer.list-view .thumb-wrap .zd-flag-comment {
+  display: none;
+}
+
+/* GRID VIEW:
+   - Use flags on thumbnail corners.
+   - Hide inline star + bubble next to title.
+*/
+#clipListContainer.grid-view .clip-title .zd-inline-star,
+#clipListContainer.grid-view .clip-title .zd-inline-comment {
+  display: none;
+}
+
+#clipListContainer.grid-view .thumb-wrap .zd-flag-star,
+#clipListContainer.grid-view .thumb-wrap .zd-flag-comment {
+  display: flex;
 }
 
 /* =========================================================
@@ -885,24 +1055,24 @@ body::-webkit-scrollbar-thumb:hover,
   text-overflow: ellipsis;
 }
 
-/* Styles for the new collapsible metadata sections */
+/* =========================================================
+   METADATA SECTIONS
+   ========================================================= */
+
 .zd-metadata-summary {
   font-weight: 600;
   color: var(--text);
   margin-bottom: 8px;
   cursor: pointer;
   list-style: none;
-  /* Hide default triangle */
 }
 
 .zd-metadata-summary::-webkit-details-marker {
   display: none;
-  /* Hide default triangle (Chrome) */
 }
 
 .zd-metadata-summary::before {
   content: "▶ ";
-  /* Collapsed state */
   font-size: 10px;
   margin-right: 4px;
   color: var(--muted);
@@ -910,15 +1080,13 @@ body::-webkit-scrollbar-thumb:hover,
 
 details[open] > .zd-metadata-summary::before {
   content: "▼ ";
-  /* Expanded state */
 }
 
 .zd-metadata-content {
   padding-left: 18px;
-  /* Indent content under summary */
 }
 
-/* Simple table style for metadata */
+/* Metadata table */
 .zd-meta-table {
   width: 100%;
   border-collapse: collapse;
@@ -927,7 +1095,6 @@ details[open] > .zd-metadata-summary::before {
 
 .zd-meta-table tr:last-child td {
   border-bottom: none;
-  /* No border on last row */
 }
 
 .zd-meta-table td {
@@ -947,114 +1114,35 @@ details[open] > .zd-metadata-summary::before {
   word-break: break-all;
 }
 
-/* --- Good-take stars --- */
-.thumb-wrap {
+/* =========================================================
+   FULLSCREEN MODE
+   ========================================================= */
+
+/* Lock 16:9 aspect ratio in fullscreen without stretching */
+#playerFrame:fullscreen {
   position: relative;
+  background: #000;
 }
 
-.zd-flag-star {
+/* Center video and LUT canvas without distortion */
+#playerFrame:fullscreen #zdVideo,
+#playerFrame:fullscreen .lut-canvas {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 20px;
-  height: 20px;
-  opacity: 0.95;
-  pointer-events: none;
-  z-index: 5;
-  /* ensure it sits above the image */
-}
-
-.zd-flag-star svg {
-  display: block;
-  width: 100%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   height: 100%;
-  fill: #ffd54a;
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
-/* Make list-view title and star sit on one line */
-.clip-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
+/* =========================================================
+   CURSOR HIDING
+   ========================================================= */
 
-/* Slightly smaller inline star in list rows */
-.clip-title .zd-inline-star svg {
-  width: 16px;
-  height: 16px;
-  fill: #ffd54a;
-  display: block;
-}
-
-/* scene/slate–take line container to place a star at the right edge */
-.zd-scene-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  /* text left, star right */
-  gap: 8px;
-}
-
-/* Ensure overlay container is positioned */
-#clipListContainer .thumb-wrap {
-  position: relative;
-}
-
-/* Keep overlay star above the image */
-.zd-flag-star {
-  z-index: 5;
-}
-
-/* inline star next to scene/slate–take (list view) */
-#clipListContainer.list-view .clip-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.zd-inline-star {
-  flex-shrink: 0;
-}
-
-.zd-inline-star svg {
-  width: 24px;
-  height: 24px;
-  display: block;
-  fill: #ffd54a;
-}
-
-/* In GRID view: keep the star on the thumbnail, hide inline */
-#clipListContainer.grid-view .clip-title .zd-inline-star {
-  display: none;
-}
-
-/* In LIST view: keep inline star, hide the thumbnail star */
-#clipListContainer.list-view .thumb-wrap .zd-flag-star {
-  display: none;
-}
-
-/* Center the filename and ellipsize from the END */
-#clipListContainer.grid-view .zd-meta {
-  order: 2;
-  font-size: 11px;
-  color: var(--muted);
-  padding: 2px 8px 6px 8px;
-  width: 100%; /* Take full width of parent */
-  min-width: 0; /* Allow shrinking */
-  display: flex; /* Use flex to center */
-  justify-content: center; /* Center the filename */
-}
-
-#clipListContainer.grid-view .zd-meta .zd-filename {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  min-width: 0; /* Critical for ellipsis */
-  max-width: 100%; /* Respect container bounds */
-  text-align: center; /* Center short text */
-}
-
-/* (Optional) keep the dash with the first word when breaking is possible elsewhere */
-#clipListContainer.grid-view .zd-meta .zd-filename {
-  word-break: normal;
+.zd-player-frame.hide-cursor,
+.zd-player-frame.hide-cursor * {
+  cursor: none !important;
 }

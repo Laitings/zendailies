@@ -227,3 +227,24 @@ td[data-edit="take"] .zd-inline-input {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Normalize header action buttons on Clips page */
+.zd-actions .zd-btn,
+.zd-actions .zd-btn:link,
+.zd-actions .zd-btn:visited {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px; /* controls height & width */
+  border-radius: 8px; /* pill shape */
+  font-size: 14px;
+  line-height: 1.1;
+  border: none;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+/* Make sure anchors don't get weird default link styles */
+.zd-actions a.zd-btn {
+  text-decoration: none;
+}

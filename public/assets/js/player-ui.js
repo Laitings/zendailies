@@ -109,6 +109,59 @@ document.addEventListener("DOMContentLoaded", () => {
       vid.addEventListener("loadedmetadata", paint);
       paint();
 
+      // === Comment "Use current" + click-to-jump (same TC as chip) ===
+      const commentTcInput = document.getElementById("comment_start_tc");
+      const btnCommentUseTc = document.getElementById("btnCommentUseTc");
+
+      // Use the same FPS / drop-frame settings as the chip
+      const commentFps = fpsExact || 24;
+
+      function commentTcToSeconds(tc) {
+        if (!tc) return 0;
+
+        // Absolute frames of comment TC
+        const absFrames = parseTC(tc);
+        // Offset from clip start
+        let offsetFrames = absFrames - startFrames;
+        if (!Number.isFinite(offsetFrames) || offsetFrames < 0) {
+          offsetFrames = 0;
+        }
+
+        return offsetFrames / commentFps;
+      }
+
+      // "Use current" fills the field with the chip's current TC
+      if (commentTcInput && btnCommentUseTc) {
+        btnCommentUseTc.addEventListener("click", () => {
+          const tc = currentChipTC(); // startTC + offset, DF aware
+          commentTcInput.value = tc;
+          commentTcInput.focus();
+          commentTcInput.select();
+        });
+      }
+
+      // Clicking a comment TC jumps the player
+      document.querySelectorAll(".zd-comment-tc").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const tc = btn.dataset.tc;
+          if (!tc) return;
+
+          const seconds = commentTcToSeconds(tc);
+          // Seek to the middle of the frame window to avoid landing on previous frame
+          vid.currentTime = seconds + frameDur * 0.5;
+          vid.pause();
+        });
+      });
+
+      if (commentTcInput && btnCommentUseTc) {
+        btnCommentUseTc.addEventListener("click", () => {
+          const tc = currentChipTC(); // already includes startTC + offset, with DF handling
+          commentTcInput.value = tc;
+          commentTcInput.focus();
+          commentTcInput.select();
+        });
+      }
+
       // --- build a single input next to the chip (hidden until edit) ---
       const input = document.createElement("input");
       input.type = "text";
@@ -296,10 +349,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function wakeControls() {
     if (!frame) return;
+
+    // Show controls + cursor immediately on activity
     frame.classList.remove("controls-idle");
+    frame.classList.remove("hide-cursor");
+
     clearTimeout(idleTimer);
     idleTimer = window.setTimeout(() => {
+      if (!frame) return;
+      // After idle: hide controls and cursor
       frame.classList.add("controls-idle");
+      frame.classList.add("hide-cursor");
     }, IDLE_MS);
   }
 
@@ -494,4 +554,51 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("fullscreenchange", onFSChange);
   document.addEventListener("webkitfullscreenchange", onFSChange);
   document.addEventListener("MSFullscreenChange", onFSChange);
+
+  // === Comment timecode + reply wiring ===
+  const commentTcInput = document.getElementById("comment_start_tc");
+  const btnCommentUseTc = document.getElementById("btnCommentUseTc");
+  const commentParentInput = document.getElementById("comment_parent_uuid");
+  const commentBodyInput = document.getElementById("comment_body");
+
+  if (btnCommentUseTc && commentTcInput) {
+    btnCommentUseTc.addEventListener("click", () => {
+      const tc = secondsToTcForComments(vid.currentTime || 0, commentFps);
+      commentTcInput.value = tc;
+      commentTcInput.focus();
+      commentTcInput.select();
+    });
+  }
+
+  document.querySelectorAll(".zd-comment-tc").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tc = btn.dataset.tc;
+      if (!tc) return;
+      const seconds = tcToSecondsForComments(tc, commentFps);
+      // Seek to the middle of the frame window to avoid landing on previous frame
+      vid.currentTime = seconds + frameDur * 0.5;
+      vid.pause();
+    });
+  });
+
+  document.querySelectorAll(".zd-comment-reply-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!commentParentInput) return;
+      const uuid = btn.dataset.commentUuid || "";
+      const author = btn.dataset.authorName || "";
+      commentParentInput.value = uuid;
+      if (commentBodyInput && !commentBodyInput.value) {
+        commentBodyInput.placeholder = author
+          ? "Replying to " + author + "…"
+          : "Replying…";
+      }
+      if (commentBodyInput) {
+        commentBodyInput.focus();
+        commentBodyInput.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      }
+    });
+  });
 });

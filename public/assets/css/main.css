@@ -419,6 +419,10 @@ a {
   box-sizing: border-box;
 }
 
+.zd-main {
+  padding-bottom: 48px; /* or whatever matches the footer height */
+}
+
 .zd-title {
   font-size: 1.6rem;
   font-weight: 600;
@@ -823,4 +827,19 @@ select {
 /* If you use a page head block */
 .zd-clips-head {
   margin-top: 4px;
+}
+
+/* Override the generic card button styles for icon buttons */
+.zd-card button.icon-btn {
+  background: transparent;
+  color: inherit;
+  border: none;
+  padding: 6px;
+  width: auto;
+  font-weight: normal;
+}
+
+/* Fix the hover state to match the pencil/trash icons */
+.zd-card button.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
 }

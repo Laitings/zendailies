@@ -108,6 +108,16 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     $r->get('/admin/projects/{projectUuid}/days/{dayUuid}/delete', [$projectDaysController, 'deleteConfirm']);
     // Perform delete
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/delete', [\App\Http\Controllers\Admin\ProjectDaysController::class, 'destroy']);
+    // Publish and unpublish day
+    $r->post(
+        '/admin/projects/{projectUuid}/days/{dayUuid}/publish',
+        [App\Http\Controllers\Admin\ProjectDaysController::class, 'publish']
+    );
+    $r->post(
+        '/admin/projects/{projectUuid}/days/{dayUuid}/unpublish',
+        [App\Http\Controllers\Admin\ProjectDaysController::class, 'unpublish']
+    );
+
     // Edit day
     $r->get('/admin/projects/{projectUuid}/days/{dayUuid}/edit', [\App\Http\Controllers\Admin\ProjectDaysController::class, 'editForm']);
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/edit', [\App\Http\Controllers\Admin\ProjectDaysController::class, 'edit']);
@@ -120,6 +130,8 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     $r->get('/admin/projects/{projectUuid}/days/{dayUuid}/player', [$playerRedirectController, 'toFirstClip']);
 
     $r->get('/admin/projects/{projectUuid}/days/{dayUuid}/player/{clipUuid}', [$clipPlayerController, 'show']);
+    $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/player/{clipUuid}', [$clipPlayerController, 'show']);
+
 
     // Upload form + handler for adding new clips to a day
     $r->get('/admin/projects/{projectUuid}/days/{dayUuid}/clips/upload', [\App\Http\Controllers\Admin\ClipUploadController::class, 'uploadForm']);

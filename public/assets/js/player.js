@@ -461,6 +461,7 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // double-click divider to reset width for current mode
+  // double-click divider to reset width for current mode
   resizer.addEventListener("dblclick", function () {
     const varName = currentVarName(); // "--clipcol-width" or "--meta-width"
     const def = isTheater() ? 420 : defaults[getMode()];
@@ -469,6 +470,33 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!isTheater()) {
       sessionStorage.setItem(keyW(getMode()), String(def));
     }
+  });
+
+  // -------------------------------------------------
+  // Metadata <details> open/close persistence
+  // -------------------------------------------------
+  const metaSections = document.querySelectorAll(
+    "details.zd-metadata-group[data-meta-section]"
+  );
+
+  metaSections.forEach((det) => {
+    const section = det.dataset.metaSection;
+    if (!section) return;
+
+    const key = `playerMetaOpen:${section}`;
+
+    // Restore saved state (if any)
+    const saved = sessionStorage.getItem(key);
+    if (saved === "1") {
+      det.open = true;
+    } else if (saved === "0") {
+      det.open = false;
+    }
+
+    // On toggle, persist new state
+    det.addEventListener("toggle", () => {
+      sessionStorage.setItem(key, det.open ? "1" : "0");
+    });
   });
 });
 
@@ -629,3 +657,170 @@ document.addEventListener("DOMContentLoaded", function () {
     renderFrame(0);
   }
 })();
+
+// === Clip / Day list sorting: mode + direction ===
+document.addEventListener("DOMContentLoaded", () => {
+  const clipContainer = document.getElementById("clipListContainer");
+  const dayContainer = document.getElementById("dayListContainer");
+  const sortModeEl = document.getElementById("clipSortMode");
+  const sortDirBtn = document.getElementById("sortDirBtn");
+  const sortGroup = document.getElementById("clipSortGroup");
+  const daySwitchBtn = document.getElementById("zd-day-switch-btn");
+
+  if (!sortDirBtn) return; // arrow must exist
+
+  const getClipItems = () =>
+    clipContainer
+      ? Array.from(clipContainer.querySelectorAll(".clip-item"))
+      : [];
+
+  const getDayItems = () =>
+    dayContainer ? Array.from(dayContainer.querySelectorAll(".day-item")) : [];
+
+  // Detect whether we're in "day mode" (day list visible)
+  const isDayMode = () => {
+    const dayOuter = document.querySelector(".dayScrollOuter");
+    if (!dayOuter) return false;
+    // display: none => clips mode, otherwise day mode
+    return dayOuter.style.display !== "none";
+  };
+
+  // Show/hide the sort dropdown group based on mode
+  const updateSortVisibility = () => {
+    if (!sortGroup) return;
+    if (isDayMode()) {
+      sortGroup.style.display = "none";
+    } else {
+      sortGroup.style.display = "flex";
+    }
+  };
+
+  // Decide default direction for each mode (clips only)
+  const defaultDirForMode = (mode) => {
+    if (mode === "select" || mode === "comments") return "desc";
+    return "asc"; // scene/name
+  };
+
+  let sortDir = sortDirBtn.getAttribute("data-dir") || "asc";
+
+  function sortLists() {
+    // If day mode → sort days by label/text only, using current direction
+    if (isDayMode()) {
+      const items = getDayItems();
+      if (!items.length) return;
+
+      items.sort((a, b) => {
+        const aLabel = (a.dataset.dayLabel || "").toLowerCase();
+        const bLabel = (b.dataset.dayLabel || "").toLowerCase();
+        const cmp = aLabel.localeCompare(bLabel);
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+
+      items.forEach((el) => dayContainer.appendChild(el));
+      return;
+    }
+
+    // Clip mode
+    if (!clipContainer || !sortModeEl) return;
+
+    const mode = sortModeEl.value || "scene";
+    const items = getClipItems();
+    if (!items.length) return;
+
+    const compare = (a, b) => {
+      const aData = a.dataset;
+      const bData = b.dataset;
+      let aVal;
+      let bVal;
+
+      switch (mode) {
+        case "name":
+          aVal = (aData.filename || "").toLowerCase();
+          bVal = (bData.filename || "").toLowerCase();
+          break;
+
+        case "select":
+          aVal = Number(aData.isSelect || 0);
+          bVal = Number(bData.isSelect || 0);
+          break;
+
+        case "comments":
+          aVal = Number(aData.commentCount || 0);
+          bVal = Number(bData.commentCount || 0);
+          break;
+
+        case "scene":
+        default:
+          aVal = (aData.label || aData.filename || "").toLowerCase();
+          bVal = (bData.label || bData.filename || "").toLowerCase();
+          break;
+      }
+
+      let result;
+      if (typeof aVal === "string" || typeof bVal === "string") {
+        result = String(aVal).localeCompare(String(bVal));
+      } else {
+        result = aVal - bVal;
+      }
+
+      return sortDir === "asc" ? result : -result;
+    };
+
+    items.sort(compare);
+    items.forEach((el) => clipContainer.appendChild(el));
+  }
+
+  // Change sort mode (clips only)
+  if (sortModeEl) {
+    sortModeEl.addEventListener("change", () => {
+      const mode = sortModeEl.value || "scene";
+      sortDir = defaultDirForMode(mode);
+      sortDirBtn.setAttribute("data-dir", sortDir);
+      sortLists();
+    });
+  }
+
+  // Manual direction toggle (works for both clips and days)
+  sortDirBtn.addEventListener("click", () => {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+    sortDirBtn.setAttribute("data-dir", sortDir);
+    sortLists();
+  });
+
+  // Hook into day/clip toggle button to update visibility after it runs
+  if (daySwitchBtn) {
+    daySwitchBtn.addEventListener("click", () => {
+      // Let existing handler run first, then adjust
+      setTimeout(() => {
+        updateSortVisibility();
+        // Optional: when switching back to clips, re-apply current sort
+        sortLists();
+      }, 0);
+    });
+  }
+
+  // === Initial default when opening a day (clip mode) ===
+  const clipItems = getClipItems();
+  const hasScene = clipItems.some((el) => {
+    const label = (el.dataset.label || "").trim();
+    return label !== "";
+  });
+
+  if (sortModeEl) {
+    const initialMode = hasScene ? "scene" : "name";
+
+    const hasInitialOption = Array.from(sortModeEl.options).some(
+      (opt) => opt.value === initialMode
+    );
+    if (hasInitialOption) {
+      sortModeEl.value = initialMode;
+    }
+
+    sortDir = defaultDirForMode(sortModeEl.value || initialMode);
+    sortDirBtn.setAttribute("data-dir", sortDir);
+  }
+
+  // Initial visibility + initial sort
+  updateSortVisibility();
+  sortLists();
+});

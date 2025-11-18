@@ -4,11 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Support\DB;
 use App\Support\View;
+use App\Support\Csrf;
 use PDO;
 
 final class ClipPlayerController
 {
-    private function fetchDaysWithThumbs(\PDO $pdo, string $projectUuid, string $visibilitySql, ?string $viewerParam): array
+    private function fetchDaysWithThumbs(\PDO $pdo, string $projectUuid, string $dayVisibilitySql, string $aclSql, ?string $viewerParam): array
     {
         // All days for project (order newest first)
         $allDaysStmt = $pdo->prepare("
@@ -18,9 +19,11 @@ final class ClipPlayerController
             d.title
         FROM days d
         WHERE d.project_id = UUID_TO_BIN(:p,1)
-        ORDER BY d.shoot_date DESC, d.created_at DESC
+            {$dayVisibilitySql}
+            ORDER BY d.shoot_date DESC, d.created_at DESC
         LIMIT 500
     ");
+
         $allDaysStmt->execute([':p' => $projectUuid]);
         $rawDays = $allDaysStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
 
@@ -51,7 +54,7 @@ final class ClipPlayerController
             LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
             WHERE c.project_id = UUID_TO_BIN(:p,1)
             AND c.day_id     = UUID_TO_BIN(:d,1)
-            $visibilitySql
+            $aclSql
             ORDER BY c.created_at ASC
             LIMIT 1
         ";
@@ -68,7 +71,7 @@ final class ClipPlayerController
             LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
             WHERE c.project_id = UUID_TO_BIN(:p,1)
             AND c.day_id     = UUID_TO_BIN(:d,1)
-            $visibilitySql
+            $aclSql
         ";
         $statsStmt = $pdo->prepare($statsSql);
 
@@ -166,6 +169,89 @@ final class ClipPlayerController
         exit;
     }
 
+    /**
+     * Load comments for a clip and return them in a flattened tree order:
+     * root comment, its replies, next root, etc.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function loadCommentsThreaded(PDO $pdo, string $clipUuid): array
+    {
+        $sql = "
+            SELECT 
+                BIN_TO_UUID(cm.id,1) AS comment_uuid,
+                CASE 
+                    WHEN cm.parent_id IS NULL THEN NULL 
+                    ELSE BIN_TO_UUID(cm.parent_id,1) 
+                END AS parent_uuid,
+                cm.body,
+                cm.start_tc,
+                cm.created_at,
+                BIN_TO_UUID(p.id,1) AS author_uuid,
+                CONCAT(
+                    COALESCE(p.first_name, ''),
+                    CASE 
+                        WHEN p.first_name IS NOT NULL AND p.last_name IS NOT NULL 
+                        THEN ' ' 
+                        ELSE '' 
+                    END,
+                    COALESCE(p.last_name, '')
+                ) AS author_name
+            FROM comments cm
+            LEFT JOIN persons p ON p.id = cm.author_id
+            WHERE cm.clip_id = UUID_TO_BIN(:c,1)
+            ORDER BY cm.created_at ASC
+            LIMIT 500
+        ";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([':c' => $clipUuid]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        if (!$rows) {
+            return [];
+        }
+
+        $rootKey = '__root__';
+        $childrenOf = [];
+
+        foreach ($rows as $row) {
+            $parentKey = $row['parent_uuid'] ?: $rootKey;
+            if (!isset($childrenOf[$parentKey])) {
+                $childrenOf[$parentKey] = [];
+            }
+            $childrenOf[$parentKey][] = $row;
+        }
+
+        $ordered = [];
+        $this->flattenCommentsTree($childrenOf, $rootKey, 0, $ordered);
+
+        return $ordered;
+    }
+
+    /**
+     * Recursive helper to flatten a comment tree.
+     *
+     * @param array<string,array<int,array<string,mixed>>> $childrenOf
+     * @param array<int,array<string,mixed>>               $out
+     */
+    private function flattenCommentsTree(array $childrenOf, string $parentKey, int $depth, array &$out): void
+    {
+        if (empty($childrenOf[$parentKey])) {
+            return;
+        }
+
+        foreach ($childrenOf[$parentKey] as $row) {
+            $row['depth'] = $depth;
+            $row['is_reply'] = $depth > 0;
+            $out[] = $row;
+            $childKey = $row['comment_uuid'] ?? '';
+            if ($childKey !== '') {
+                $this->flattenCommentsTree($childrenOf, $childKey, $depth + 1, $out);
+            }
+        }
+    }
+
     public function show(string $projectUuid, string $dayUuid, string $clipUuid): void
     {
         if (!$projectUuid || !$dayUuid || !$clipUuid) {
@@ -176,12 +262,34 @@ final class ClipPlayerController
 
         if (session_status() === \PHP_SESSION_NONE) session_start();
 
-        $pdo = DB::pdo();
-
         // Session context
         $account      = $_SESSION['account'] ?? [];
         $isSuperuser  = !empty($account['is_superuser']);
         $personUuid   = $_SESSION['person_uuid'] ?? null;
+
+        $pdo = DB::pdo();
+
+        // === Guard: regular users cannot access unpublished days ===
+        $dayStmt = $pdo->prepare("
+            SELECT 
+                d.id,
+                d.published_at
+            FROM days d
+            WHERE d.project_id = UUID_TO_BIN(:p, 1)
+              AND d.id        = UUID_TO_BIN(:d, 1)
+            LIMIT 1
+        ");
+        $dayStmt->execute([
+            ':p' => $projectUuid,
+            ':d' => $dayUuid,
+        ]);
+        $dayRow = $dayStmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$dayRow) {
+            http_response_code(404);
+            echo 'Day not found';
+            return;
+        }
 
         // Project
         $projStmt = $pdo->prepare("
@@ -231,14 +339,22 @@ final class ClipPlayerController
             $isProjectAdmin = (int)($admStmt->fetchColumn() ?: 0);
         }
 
-        // We will reuse this ACL fragment in multiple queries below
-        $visibilitySql = '';
-        $viewerParam   = null;
+
+        // We will reuse these fragments in multiple queries below
+        $aclSql          = '';
+        $dayVisibilitySql = '';
+        $viewerParam     = null;
 
         if (!$isSuperuser && !$isProjectAdmin) {
-            $visibilitySql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid,1))";
-            $viewerParam   = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
+            // ACL: only see clips not in sensitive group OR explicitly whitelisted
+            $aclSql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid,1))";
+            $viewerParam = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
+
+            // Visibility: regular users only see published days
+            $dayVisibilitySql = " AND d.published_at IS NOT NULL";
         }
+
+
 
         // Day's clip list (with latest poster), respecting sensitive ACL — always load it
         $clipListParams = [
@@ -254,7 +370,13 @@ final class ClipPlayerController
             SELECT
                 BIN_TO_UUID(c.id,1)        AS clip_uuid,
                 c.scene, c.slate, c.take, c.take_int, c.camera,
-                c.file_name, CAST(c.is_select AS UNSIGNED) AS is_select,
+                c.file_name,
+                CAST(c.is_select AS UNSIGNED) AS is_select,
+                (
+                    SELECT COUNT(*)
+                    FROM comments cm
+                    WHERE cm.clip_id = c.id
+                ) AS comment_count,
                 (
                     SELECT storage_path
                     FROM clip_assets a
@@ -269,7 +391,8 @@ final class ClipPlayerController
             LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
             WHERE c.project_id = UUID_TO_BIN(:p,1)
             AND c.day_id     = UUID_TO_BIN(:d,1)
-            $visibilitySql
+            $aclSql
+            $dayVisibilitySql
             ORDER BY
                 c.scene IS NULL, c.scene,
                 c.slate IS NULL, c.slate,
@@ -312,7 +435,8 @@ final class ClipPlayerController
             WHERE c.id         = UUID_TO_BIN(:c,1)
               AND c.project_id = UUID_TO_BIN(:p,1)
               AND c.day_id     = UUID_TO_BIN(:d,1)
-              $visibilitySql
+              $aclSql
+              $dayVisibilitySql
             LIMIT 1
         ";
         $clipStmt = $pdo->prepare($clipSql);
@@ -326,6 +450,71 @@ final class ClipPlayerController
             return;
         }
 
+        // Handle new comment POST (add or reply)
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['comment_body'])) {
+            if (!$personUuid) {
+                http_response_code(403);
+                echo "You must be logged in to comment on clips.";
+                return;
+            }
+
+            Csrf::validateOrAbort($_POST['_csrf'] ?? null);
+
+            $body = trim((string)($_POST['comment_body'] ?? ''));
+            $startTc = trim((string)($_POST['start_tc'] ?? ''));
+            $parentUuid = trim((string)($_POST['parent_comment_uuid'] ?? ''));
+
+            if ($body !== '') {
+                // Validate / normalise timecode: allow empty or HH:MM:SS:FF
+                if ($startTc === '' || !preg_match('/^\d{2}:\d{2}:\d{2}:\d{2}$/', $startTc)) {
+                    $startTc = null;
+                }
+
+                // Validate that parent (if any) belongs to this clip
+                if ($parentUuid !== '') {
+                    $chk = $pdo->prepare("
+                        SELECT 1
+                        FROM comments
+                        WHERE id = UUID_TO_BIN(:parent_uuid,1)
+                          AND clip_id = UUID_TO_BIN(:clip_uuid,1)
+                        LIMIT 1
+                    ");
+                    $chk->execute([
+                        ':parent_uuid' => $parentUuid,
+                        ':clip_uuid'   => $clipUuid,
+                    ]);
+                    if (!$chk->fetchColumn()) {
+                        $parentUuid = null;
+                    }
+                } else {
+                    $parentUuid = null;
+                }
+
+                $insert = $pdo->prepare("
+                    INSERT INTO comments (clip_id, parent_id, author_id, body, start_tc)
+                    VALUES (
+                        UUID_TO_BIN(:clip_uuid,1),
+                        UUID_TO_BIN(:parent_uuid,1),
+                        UUID_TO_BIN(:author_uuid,1),
+                        :body,
+                        :start_tc
+                    )
+                ");
+
+                $insert->execute([
+                    ':clip_uuid'   => $clipUuid,
+                    ':parent_uuid' => $parentUuid,
+                    ':author_uuid' => $personUuid,
+                    ':body'        => $body,
+                    ':start_tc'    => $startTc,
+                ]);
+            }
+
+            // PRG: redirect after POST to avoid duplicate submissions
+            $selfUrl = $_SERVER['REQUEST_URI'] ?? '';
+            header('Location: ' . $selfUrl);
+            exit;
+        }
         // Assets: pick latest proxy_web and poster
         // Assets: pick latest proxy_web or original for playback, plus poster
         $assetStmt = $pdo->prepare("
@@ -369,20 +558,11 @@ final class ClipPlayerController
         $metaStmt->execute([':c' => $clipUuid]);
         $metadata = $metaStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Comments (latest first)
-        $cmtStmt = $pdo->prepare("
-            SELECT 
-                BIN_TO_UUID(cm.id,1) AS id,
-                cm.body, cm.start_tc, cm.end_tc, cm.created_at
-            FROM comments cm
-            WHERE cm.clip_id = UUID_TO_BIN(:c,1)
-            ORDER BY cm.created_at DESC
-            LIMIT 200
-        ");
-        $cmtStmt->execute([':c' => $clipUuid]);
-        $comments = $cmtStmt->fetchAll(PDO::FETCH_ASSOC);
+        // Comments (threaded: root + replies)
+        $comments = $this->loadCommentsThreaded($pdo, $clipUuid);
 
-        $daysOut = $this->fetchDaysWithThumbs($pdo, $projectUuid, $visibilitySql, $viewerParam);
+
+        $daysOut = $this->fetchDaysWithThumbs($pdo, $projectUuid, $dayVisibilitySql, $aclSql, $viewerParam);
 
 
         // >>> ADDED: placeholder thumb path for days with no clips
@@ -448,16 +628,22 @@ final class ClipPlayerController
             $isProjectAdmin = (int)($admStmt->fetchColumn() ?: 0);
         }
 
-        // ACL fragment (same as show)
-        $visibilitySql = '';
-        $viewerParam   = null;
+        // ACL + visibility fragments (same idea as show)
+        $aclSql           = '';
+        $dayVisibilitySql = '';
+        $viewerParam      = null;
+
         if (!$isSuperuser && !$isProjectAdmin) {
-            $visibilitySql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid,1))";
-            $viewerParam   = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
+            $aclSql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid,1))";
+            $viewerParam = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
+
+            // Regular users should only see published days in overview too
+            $dayVisibilitySql = " AND d.published_at IS NOT NULL";
         }
 
         // Build the same days list with thumbs via helper
-        $daysOut = $this->fetchDaysWithThumbs($pdo, $projectUuid, $visibilitySql, $viewerParam);
+        $daysOut = $this->fetchDaysWithThumbs($pdo, $projectUuid, $dayVisibilitySql, $aclSql, $viewerParam);
+
 
         // Reuse the SAME view; no clip/day selected. JS handles ?pane=days
         \App\Support\View::render('admin/player/show', [

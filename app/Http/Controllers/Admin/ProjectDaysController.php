@@ -162,21 +162,23 @@ class ProjectDaysController
 
         // --- Days + clip counts (single query) ---
         $sql = "
-    SELECT
-        BIN_TO_UUID(d.id,1) AS day_uuid,
-        d.shoot_date,
-        d.unit,
-        d.title,
-        COALESCE(c.cnt, 0) AS clip_count
-    FROM days d
-    LEFT JOIN (
-        SELECT day_id, COUNT(*) AS cnt
-        FROM clips
-        GROUP BY day_id
-    ) c ON c.day_id = d.id
-    WHERE d.project_id = UUID_TO_BIN(:pid,1)
-    ORDER BY $orderBy, d.created_at DESC
-";
+            SELECT
+                BIN_TO_UUID(d.id,1) AS day_uuid,
+                d.shoot_date,
+                d.unit,
+                d.title,
+                d.published_at,
+                COALESCE(c.cnt, 0) AS clip_count
+            FROM days d
+            LEFT JOIN (
+                SELECT day_id, COUNT(*) AS cnt
+                FROM clips
+                GROUP BY day_id
+            ) c ON c.day_id = d.id
+            WHERE d.project_id = UUID_TO_BIN(:pid,1)
+            ORDER BY $orderBy, d.created_at DESC
+        ";
+
         $daysStmt = $pdo->prepare($sql);
         $daysStmt->execute([':pid' => $projectUuid]);
         $days = $daysStmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -197,6 +199,129 @@ class ProjectDaysController
             'dir'     => $dir,
         ]);
     }
+
+    public function publish(string $projectUuid, string $dayUuid): void
+    {
+        // Auth
+        $account    = $_SESSION['account'] ?? null;
+        $personUuid = $_SESSION['person_uuid'] ?? null;
+
+        if (!$account || !$personUuid) {
+            http_response_code(403);
+            echo "Forbidden";
+            return;
+        }
+
+        $pdo = DB::pdo();
+
+        // Verify project admin or superuser
+        $isSuperuser = (int)($account['is_superuser'] ?? 0);
+
+        $stmt = $pdo->prepare("
+        SELECT is_project_admin 
+        FROM project_members 
+        WHERE project_id = UUID_TO_BIN(:p,1)
+          AND person_id  = UUID_TO_BIN(:u,1)
+        LIMIT 1
+    ");
+        $stmt->execute([
+            ':p' => $projectUuid,
+            ':u' => $personUuid
+        ]);
+
+        $isProjectAdmin = (int)($stmt->fetchColumn() ?: 0);
+
+        if (!$isSuperuser && !$isProjectAdmin) {
+            http_response_code(403);
+            echo "Forbidden";
+            return;
+        }
+
+        // Update days.published_at
+        $sendEmail = ($_POST['send_email'] ?? '0') === '1' ? 1 : 0;
+
+        $upd = $pdo->prepare("
+        UPDATE days
+        SET published_at = NOW()
+        WHERE id = UUID_TO_BIN(:d,1)
+          AND project_id = UUID_TO_BIN(:p,1)
+        LIMIT 1
+    ");
+
+        $upd->execute([
+            ':d' => $dayUuid,
+            ':p' => $projectUuid,
+        ]);
+
+        // (Later we will use sendEmail)
+        $_SESSION['publish_feedback'] = [
+            'published'  => true,
+            'send_email' => $sendEmail,
+        ];
+
+        header("Location: /admin/projects/$projectUuid/days/$dayUuid/clips");
+        exit;
+    }
+
+    public function unpublish(string $projectUuid, string $dayUuid): void
+    {
+        // Auth
+        $account    = $_SESSION['account'] ?? null;
+        $personUuid = $_SESSION['person_uuid'] ?? null;
+
+        if (!$account || !$personUuid) {
+            http_response_code(403);
+            echo "Forbidden";
+            return;
+        }
+
+        $pdo = DB::pdo();
+
+        // Verify project admin or superuser
+        $isSuperuser = (int)($account['is_superuser'] ?? 0);
+
+        $stmt = $pdo->prepare("
+        SELECT is_project_admin
+        FROM project_members
+        WHERE project_id = UUID_TO_BIN(:p,1)
+          AND person_id  = UUID_TO_BIN(:u,1)
+        LIMIT 1
+    ");
+        $stmt->execute([
+            ':p' => $projectUuid,
+            ':u' => $personUuid,
+        ]);
+
+        $isProjectAdmin = (int)($stmt->fetchColumn() ?: 0);
+
+        if (!$isSuperuser && !$isProjectAdmin) {
+            http_response_code(403);
+            echo "Forbidden";
+            return;
+        }
+
+        // Unpublish: set published_at back to NULL
+        $upd = $pdo->prepare("
+        UPDATE days
+        SET published_at = NULL
+        WHERE id = UUID_TO_BIN(:d,1)
+          AND project_id = UUID_TO_BIN(:p,1)
+        LIMIT 1
+    ");
+        $upd->execute([
+            ':d' => $dayUuid,
+            ':p' => $projectUuid,
+        ]);
+
+        $_SESSION['publish_feedback'] = [
+            'published'  => false,
+            'send_email' => 0,
+        ];
+
+        header("Location: /admin/projects/$projectUuid/days/$dayUuid/clips");
+        exit;
+    }
+
 
     public function createForm(string $projectUuid): void
     {

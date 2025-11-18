@@ -94,43 +94,101 @@ final class ResolveCsvImportService
             $tcStart  = $csvRow['Start TC'] ?? null;
             $tcEnd    = $csvRow['End TC']   ?? null;
 
+            // --- Normalize key-ish fields to strip control chars & bad whitespace ---
+            $fileName = $this->normalizeKeyField($fileName, 255);
+            $filePath = $this->normalizeKeyField($filePath, 1024);
+
+            $scene    = $this->normalizeKeyField($scene, 32);
+            $slate    = $this->normalizeKeyField($slate, 32);
+            $take     = $this->normalizeKeyField($take, 16);
+
+            $camera   = $this->normalizeKeyField($camera, 8);
+            $reel     = $this->normalizeKeyField($reel, 64);
+
+            $tcStart  = $this->normalizeKeyField($tcStart, 16);
+            $tcEnd    = $this->normalizeKeyField($tcEnd, 16);
+            // -----------------------------------------------------------------------
+
+
             $fpsRaw   = $csvRow['FPS'] ?? ($csvRow['Shot Frame Rate'] ?? null);
             $fps      = $this->parseFps($fpsRaw);
 
             $durText  = $csvRow['Duration'] ?? $csvRow['Duration TC'] ?? null;
             $durMs    = $this->durationToMs($durText, $fps);
 
-            $rawJson  = json_encode($csvRow, JSON_UNESCAPED_SLASHES);
+            $rawJson  = json_encode(
+                $csvRow,
+                JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+            );
 
-            // Write import_rows
-            $stRow = $pdo->prepare("
-                INSERT INTO import_rows (
-                    id, import_job_id, row_index,
-                    shoot_date, scene, slate, take, camera, reel,
-                    file_name, file_path, tc_start, tc_end, duration_ms, raw_json
-                )
-                VALUES (
-                    UUID_TO_BIN(UUID(),1), :job, :i,
-                    NULL, :scene, :slate, :take, :camera, :reel,
-                    :file_name, :file_path, :tc_start, :tc_end, :dur_ms, :raw
-                )
-            ");
-            $stRow->bindParam(':job', $jobBin, PDO::PARAM_LOB);
-            $stRow->bindValue(':i', $rowIdx, PDO::PARAM_INT);
-            $stRow->bindValue(':scene', $scene);
-            $stRow->bindValue(':slate', $slate);
-            $stRow->bindValue(':take', $take);
-            $stRow->bindValue(':camera', $camera);
-            $stRow->bindValue(':reel', $reel);
-            $stRow->bindValue(':file_name', $fileName);
-            $stRow->bindValue(':file_path', $filePath);
-            $stRow->bindValue(':tc_start', $tcStart);
-            $stRow->bindValue(':tc_end', $tcEnd);
-            $stRow->bindValue(':dur_ms', $durMs, PDO::PARAM_INT);
-            $stRow->bindValue(':raw', $rawJson);
-            $stRow->execute();
 
-            $total++;
+            try {
+                // Write import_rows (normal row)
+                $stRow = $pdo->prepare("
+                    INSERT INTO import_rows (
+                        id, import_job_id, row_index,
+                        shoot_date, scene, slate, take, camera, reel,
+                        file_name, file_path, tc_start, tc_end, duration_ms, raw_json
+                    )
+                    VALUES (
+                        UUID_TO_BIN(UUID(),1), :job, :i,
+                        NULL, :scene, :slate, :take, :camera, :reel,
+                        :file_name, :file_path, :tc_start, :tc_end, :dur_ms, :raw
+                    )
+                ");
+                $stRow->bindParam(':job', $jobBin, PDO::PARAM_LOB);
+                $stRow->bindValue(':i', $rowIdx, PDO::PARAM_INT);
+                $stRow->bindValue(':scene', $scene);
+                $stRow->bindValue(':slate', $slate);
+                $stRow->bindValue(':take', $take);
+                $stRow->bindValue(':camera', $camera);
+                $stRow->bindValue(':reel', $reel);
+                $stRow->bindValue(':file_name', $fileName);
+                $stRow->bindValue(':file_path', $filePath);
+                $stRow->bindValue(':tc_start', $tcStart);
+                $stRow->bindValue(':tc_end', $tcEnd);
+                $stRow->bindValue(':dur_ms', $durMs, PDO::PARAM_INT);
+                $stRow->bindValue(':raw', $rawJson);
+                $stRow->execute();
+
+                $total++;
+            } catch (\Throwable $e) {
+                // If *anything* goes wrong for this row, store it as an error-row
+                $errMsg = mb_substr($e->getMessage(), 0, 1000);
+
+                $stErr = $pdo->prepare("
+                    INSERT INTO import_rows (
+                        id, import_job_id, row_index,
+                        shoot_date, scene, slate, take, camera, reel,
+                        file_name, file_path, tc_start, tc_end, duration_ms, raw_json,
+                        status, error_text
+                    )
+                    VALUES (
+                        UUID_TO_BIN(UUID(),1), :job, :i,
+                        NULL, :scene, :slate, :take, :camera, :reel,
+                        :file_name, :file_path, :tc_start, :tc_end, :dur_ms, :raw,
+                        'error', :err
+                    )
+                ");
+                $stErr->bindParam(':job', $jobBin, PDO::PARAM_LOB);
+                $stErr->bindValue(':i', $rowIdx, PDO::PARAM_INT);
+                $stErr->bindValue(':scene', $scene);
+                $stErr->bindValue(':slate', $slate);
+                $stErr->bindValue(':take', $take);
+                $stErr->bindValue(':camera', $camera);
+                $stErr->bindValue(':reel', $reel);
+                $stErr->bindValue(':file_name', $fileName);
+                $stErr->bindValue(':file_path', $filePath);
+                $stErr->bindValue(':tc_start', $tcStart);
+                $stErr->bindValue(':tc_end', $tcEnd);
+                $stErr->bindValue(':dur_ms', $durMs, PDO::PARAM_INT);
+                $stErr->bindValue(':raw', $rawJson);
+                $stErr->bindValue(':err', $errMsg);
+                $stErr->execute();
+
+                // Do NOT rethrow – we want the rest of the rows to continue importing
+                continue;
+            }
         }
 
         // finalize job
@@ -191,11 +249,30 @@ final class ResolveCsvImportService
         $st->bindValue(':fn_base', $clipBaseNoExt);
         $st->bindValue(':fn2_len', $base);
         $st->bindValue(':fn2_val', $base);
-        $st->execute();
-
+        try {
+            $st->execute();
+        } catch (\Throwable $e) {
+            error_log(sprintf(
+                "[CSV-MATCH] SQL ERROR clip_file=%s fn1=%s fn_base=%s msg=%s",
+                $uploadedFileName,
+                $base,
+                $clipBaseNoExt,
+                $e->getMessage()
+            ));
+            return false;
+        }
 
         $row = $st->fetch(PDO::FETCH_ASSOC);
-        if (!$row) return false;
+        if (!$row) {
+            error_log(sprintf(
+                "[CSV-MATCH] NO ROW FOUND for clip_file=%s base=%s jobFilter=%s",
+                $uploadedFileName,
+                $clipBaseNoExt,
+                $jobFilterBin ? 'yes' : 'no'
+            ));
+            return false;
+        }
+
 
         $take = $row['take'] ?? null;
         $takeInt = (ctype_digit((string)$take) ? (int)$take : null);
@@ -203,9 +280,15 @@ final class ResolveCsvImportService
         // --- Normalize CSV values: trim strings; convert "" (and "   ") to NULL ---
         // This makes non-destructive mode ignore blanks, and overwrite mode actually clear fields.
         $norm = function ($v) {
-            if (is_string($v)) $v = trim($v);
+            if (is_string($v)) {
+                // Remove control chars from DB-side values as well
+                $v = preg_replace('/[\x00-\x1F\x7F]/u', ' ', $v);
+                $v = preg_replace('/\s+/u', ' ', $v);
+                $v = trim($v);
+            }
             return ($v === '' ? null : $v);
         };
+
 
         $scene   = $norm($row['scene']    ?? null);
         $slate   = $norm($row['slate']    ?? null);
@@ -394,8 +477,17 @@ final class ResolveCsvImportService
 
         $clipIndex = [];
         foreach ($clips as $clip) {
-            $base = $this->baseNoExt($clip['file_name']);
-            if ($base === '') continue;
+            // Clean up any control chars / weird whitespace in DB-side filenames
+            $cleanName = $this->normalizeKeyField($clip['file_name'], 255);
+            if ($cleanName === null || $cleanName === '') {
+                continue;
+            }
+
+            $base = $this->baseNoExt($cleanName);
+            if ($base === '' || $base === null) {
+                continue;
+            }
+
             $clipIndex[strtolower($base)] = $clip;
         }
 
@@ -441,16 +533,34 @@ final class ResolveCsvImportService
                 continue;
             }
             // We need full application → re-use single-clip method (needs uploadedPublicPath; pass empty)
-            $ok = $this->applyToClipIfMatch(
-                $pdo,
-                $projectUuid,
-                $dayUuid,
-                $clip['clip_uuid'],
-                $clip['file_name'],
-                '',
-                $overwrite,
-                $jobBin            // <— NEW
-            );
+            try {
+                $ok = $this->applyToClipIfMatch(
+                    $pdo,
+                    $projectUuid,
+                    $dayUuid,
+                    $clip['clip_uuid'],
+                    $clip['file_name'],
+                    '',
+                    $overwrite,
+                    $jobBin
+                );
+            } catch (\Throwable $e) {
+                error_log(sprintf(
+                    "[CSV-APPLY] EXCEPTION row_index=%d csv_name=%s clip_uuid=%s file_name=%s msg=%s",
+                    (int)$r['row_index'],
+                    (string)$csvFileNameRaw,
+                    $clip['clip_uuid'],
+                    $clip['file_name'],
+                    $e->getMessage()
+                ));
+                $unmatched[] = [
+                    'row'    => (int)$r['row_index'],
+                    'reason' => 'exception: ' . $e->getMessage(),
+                    'csv_name' => $csvFileNameRaw,
+                ];
+                continue;
+            }
+
             if ($ok) {
                 $matchedCount++;
                 $succeeded[] = ['csv_name' => $csvFileNameRaw, 'clip_uuid' => $clip['clip_uuid']];
@@ -461,6 +571,46 @@ final class ResolveCsvImportService
 
         return ['matched_count' => $matchedCount, 'unmatched' => $unmatched, 'succeeded' => $succeeded];
     }
+
+    /**
+     * Normalize key-ish string fields coming from Resolve:
+     * - cast to string
+     * - remove control characters (including stray newlines)
+     * - collapse whitespace
+     * - trim
+     * - turn empty into NULL
+     * - optionally truncate to a safe max length
+     */
+    private function normalizeKeyField(mixed $value, int $maxLen = 0): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $s = (string)$value;
+
+        // Remove control chars (0x00–0x1F, 0x7F), incl. \r, \n, \t
+        $s = preg_replace('/[\x00-\x1F\x7F]/u', ' ', $s);
+
+        // Collapse multiple whitespace into a single space
+        $s = preg_replace('/\s+/u', ' ', $s);
+
+        // Trim ends
+        $s = trim($s);
+
+        if ($s === '') {
+            return null;
+        }
+
+        if ($maxLen > 0) {
+            // Safe truncate in UTF-8
+            $s = mb_substr($s, 0, $maxLen);
+        }
+
+        return $s;
+    }
+
+
 
     // ----------------- helpers (ported from your controller) -----------------
 
