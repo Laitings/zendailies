@@ -17,10 +17,15 @@ $this->start('content'); ?>
             <?php foreach ($projects as $p):
                 $uuid   = $p['id'] ?? $p['project_uuid'] ?? '';
                 $title  = $p['title'] ?? '';
+                $createdAtRaw = $p['created_at'] ?? null;
+                $createdAtLabel = $createdAtRaw
+                    ? (new \DateTime($createdAtRaw))->format('d-m-Y') // e.g. 07-10-2025
+                    : '—';
                 $status = $p['status'] ?? '';
                 $code   = $p['code'] ?? '';
             ?>
-                <a class="zd-card" href="/projects/<?= urlencode($uuid) ?>/enter" style="text-decoration:none">
+                <div class="zd-card">
+                    <a class="zd-card-cover" href="/projects/<?= urlencode($uuid) ?>/enter" aria-label="Enter project: <?= htmlspecialchars($title) ?>"></a>
                     <div class="zd-card-head">
                         <div class="zd-card-title"><?= htmlspecialchars($title) ?></div>
                         <div class="zd-chip <?= $status === 'active' ? 'zd-chip-ok' : 'zd-chip-muted' ?>">
@@ -28,13 +33,11 @@ $this->start('content'); ?>
                         </div>
                     </div>
                     <div class="zd-card-meta">
+                        <div><span class="zd-k">Created</span> <span class="zd-v"><?= htmlspecialchars($createdAtLabel) ?></span></div>
                         <div><span class="zd-k">Code</span> <span class="zd-v"><?= htmlspecialchars($code) ?></span></div>
                         <div><span class="zd-k">ID</span> <span class="zd-v mono"><?= htmlspecialchars($uuid) ?></span></div>
                     </div>
-                    <div class="zd-card-actions">
-                        <span class="zd-link">Enter project →</span>
-                    </div>
-                </a>
+                </div>
             <?php endforeach; ?>
         </div>
     <?php endif; ?>

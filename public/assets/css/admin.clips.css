@@ -5,7 +5,7 @@
   text-decoration: none;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 .zd-table th a.zd-sort:hover {
   text-decoration: underline;

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Support\DB;
 use App\Support\View;
+use App\Repositories\ClipRepository;
 
 final class ProjectClipsController
 {
@@ -44,44 +45,63 @@ final class ProjectClipsController
         // Pagination
         $offset = ($q['page'] - 1) * $q['per'];
 
+
         $pdo = DB::pdo();
 
-        // === Guard: regular users cannot access unpublished days ===
-        $dayStmt = $pdo->prepare("
-            SELECT 
-                d.id,
-                d.published_at
-            FROM days d
-            WHERE d.project_id = UUID_TO_BIN(:p, 1)
-              AND d.id        = UUID_TO_BIN(:d, 1)
-            LIMIT 1
+        // === Fetch All Days (for dropdown) ===
+        $daysStmt = $pdo->prepare("
+            SELECT BIN_TO_UUID(id,1) as id, shoot_date, title
+            FROM days
+            WHERE project_id = UUID_TO_BIN(:p,1)
+            ORDER BY shoot_date ASC
         ");
-        $dayStmt->execute([
-            ':p' => $projectUuid,
-            ':d' => $dayUuid,
-        ]);
-        $dayRow = $dayStmt->fetch(\PDO::FETCH_ASSOC);
+        $daysStmt->execute([':p' => $projectUuid]);
+        $allDays = $daysStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
 
-        if (!$dayRow) {
-            http_response_code(404);
-            echo 'Day not found';
-            return;
+        // === Check Mode: All Days or Single Day ===
+        $isAllDays = ($dayUuid === 'all');
+        $dayInfo = null;
+        $dayLabel = '';
+
+        if ($isAllDays) {
+            $dayLabel = 'All days';
+        } else {
+            // === Guard: regular users cannot access unpublished days ===
+            $dayStmt = $pdo->prepare("
+                SELECT d.id, d.published_at, d.title, d.shoot_date, d.notes
+                FROM days d
+                WHERE d.project_id = UUID_TO_BIN(:p, 1)
+                  AND d.id         = UUID_TO_BIN(:d, 1)
+                LIMIT 1
+            ");
+            $dayStmt->execute([':p' => $projectUuid, ':d' => $dayUuid]);
+            $dayRow = $dayStmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$dayRow) {
+                http_response_code(404);
+                echo 'Day not found';
+                return;
+            }
+
+            if (!$isSuperuser && !$isProjectAdmin && empty($dayRow['published_at'])) {
+                http_response_code(403);
+                echo 'This day is not published.';
+                return;
+            }
+
+            $dayInfo = $dayRow;
+            $dayLabel = $dayInfo['title'] !== null && $dayInfo['title'] !== ''
+                ? $dayInfo['title']
+                : ($dayInfo['shoot_date'] ?? '');
         }
-
-        if (!$isSuperuser && !$isProjectAdmin && empty($dayRow['published_at'])) {
-            http_response_code(403);
-            echo 'This day is not published.';
-            return;
-        }
-
 
         // Project header info
         $projStmt = $pdo->prepare("
-        SELECT BIN_TO_UUID(p.id,1) AS project_uuid, p.title, p.code, p.status
-        FROM projects p
-        WHERE p.id = UUID_TO_BIN(:p,1)
-        LIMIT 1
-    ");
+            SELECT BIN_TO_UUID(p.id,1) AS project_uuid, p.title, p.code, p.status
+            FROM projects p
+            WHERE p.id = UUID_TO_BIN(:p,1)
+            LIMIT 1
+        ");
         $projStmt->execute([':p' => $projectUuid]);
         $project = $projStmt->fetch(\PDO::FETCH_ASSOC) ?: [
             'project_uuid' => $projectUuid,
@@ -94,13 +114,13 @@ final class ProjectClipsController
         $isProjectAdmin = 0;
         if ($personUuid) {
             $stmtAdmin = $pdo->prepare("
-            SELECT pm.is_project_admin
-            FROM project_members pm
-            JOIN projects p ON p.id = pm.project_id
-            WHERE p.id = UUID_TO_BIN(:project_uuid, 1)
-              AND pm.person_id = UUID_TO_BIN(:person_uuid, 1)
-            LIMIT 1
-        ");
+                SELECT pm.is_project_admin
+                FROM project_members pm
+                JOIN projects p ON p.id = pm.project_id
+                WHERE p.id = UUID_TO_BIN(:project_uuid, 1)
+                  AND pm.person_id = UUID_TO_BIN(:person_uuid, 1)
+                LIMIT 1
+            ");
             $stmtAdmin->execute([
                 ':project_uuid' => $projectUuid,
                 ':person_uuid'  => $personUuid,
@@ -108,247 +128,67 @@ final class ProjectClipsController
             $isProjectAdmin = (int)($stmtAdmin->fetchColumn() ?: 0);
         }
 
-        // Build WHERE & params
-        $where = [
-            'c.project_id = UUID_TO_BIN(:project_uuid, 1)',
-            'c.day_id     = UUID_TO_BIN(:day_uuid, 1)'
-        ];
-        $paramsSql = [
-            ':project_uuid' => $projectUuid,
-            ':day_uuid'     => $dayUuid,
+        // === Filters ===
+        $filters = [
+            'scene'  => $q['scene'],
+            'slate'  => $q['slate'],
+            'take'   => $q['take'],
+            'camera' => $q['camera'],
+            'rating' => $q['rating'],
+            'select' => $q['select'],
+            'text'   => $q['text'],
         ];
 
-        if ($q['scene'] !== '') {
-            $where[] = 'c.scene = :scene';
-            $paramsSql[':scene'] = $q['scene'];
-        }
-        if ($q['slate'] !== '') {
-            $where[] = 'c.slate = :slate';
-            $paramsSql[':slate'] = $q['slate'];
-        }
-        if ($q['take']  !== '') {
-            // numeric vs string
-            if (ctype_digit($q['take'])) {
-                $where[] = 'c.take_int = :take_int';
-                $paramsSql[':take_int'] = (int)$q['take'];
-            } else {
-                $where[] = 'c.take = :take';
-                $paramsSql[':take'] = $q['take'];
-            }
-        }
-        if ($q['camera'] !== '') {
-            $where[] = 'c.camera = :camera';
-            $paramsSql[':camera'] = $q['camera'];
-        }
-        if ($q['rating'] !== '') {
-            $where[] = 'c.rating = :rating';
-            $paramsSql[':rating'] = (int)$q['rating'];
-        }
-        if ($q['select'] !== '') {
-            $where[] = 'c.is_select = :is_select';
-            $paramsSql[':is_select'] = (int)$q['select'];
-        }
-        if ($q['text'] !== '') {
-            $where[] = '(c.file_name LIKE :t OR c.reel LIKE :t)';
-            $paramsSql[':t'] = '%' . $q['text'] . '%';
-        }
-
-        // Sensitive-ACL visibility
-        // Show if: no ACL rows (csa.group_id IS NULL)
-        //      OR user is superuser/project-admin
-        //      OR user belongs to any mapped group
-        $visibilitySql = '';
+        // === Sensitive-ACL visibility ===
+        $visibilitySql    = '';
+        $visibilityParams = [];
         if (!$isSuperuser && !$isProjectAdmin) {
             $visibilitySql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid, 1))";
-            $paramsSql[':viewer_person_uuid'] = $personUuid ?? '00000000-0000-0000-0000-000000000000';
+            $visibilityParams[':viewer_person_uuid'] = $personUuid ?? '00000000-0000-0000-0000-000000000000';
         }
 
-        // Sort whitelist
-        $sortWhitelist = [
-            'created_at' => 'c.created_at',
-            'scene'      => 'c.scene',
-            'slate'      => 'c.slate',
-            'take'       => 'c.take_int',
-            'camera'     => 'c.camera',
-            'reel'       => 'c.reel',
-            'file'       => 'c.file_name',
-            'rating'     => 'c.rating',
-            'select'     => 'c.is_select',
-            'tc_start'   => 'c.tc_start',
-            'tc_end'     => 'c.tc_end',
-            'duration'   => 'c.duration_ms',
+        // === Use ClipRepository ===
+        $clipRepo = new ClipRepository($pdo);
+        $repoOptions = [
+            'visibility_sql'    => $visibilitySql,
+            'visibility_params' => $visibilityParams,
         ];
+        $listOptions = array_merge($repoOptions, [
+            'sort'      => $q['sort'],
+            'direction' => $q['dir'],
+            'limit'     => $q['per'],
+            'offset'    => $offset,
+        ]);
 
-        // Parse requested sort (e.g. "scene, slate, take_int, camera")
-        $orderParts = [];
-        foreach (explode(',', $q['sort']) as $part) {
-            $k = trim($part);
-            switch ($k) {
-                case 'scene':
-                case 'slate':
-                case 'camera':
-                case 'reel':
-                case 'file':
-                case 'rating':
-                case 'select':
-                case 'tc_start':
-                case 'tc_end':
-                case 'duration':
-                case 'created_at':
-                    $orderParts[] = $sortWhitelist[$k] . ' ' . $q['dir'];
-                    break;
-                case 'take_int':
-                case 'take':
-                    $orderParts[] = 'c.take_int ' . $q['dir'];
-                    break;
-            }
-        }
-        if (!$orderParts) {
-            $orderParts[] = 'c.scene ASC, c.slate ASC, c.take_int ASC, c.camera ASC';
+        // [New Logic to fetch both Unfiltered and Filtered stats]
+
+        // 1. Unfiltered Stats (Empty filters array)
+        if ($isAllDays) {
+            $totalUnfiltered    = $clipRepo->countForProject($projectUuid, [], $repoOptions);
+            $durationUnfiltered = $clipRepo->sumDurationForProject($projectUuid, [], $repoOptions);
+        } else {
+            $totalUnfiltered    = $clipRepo->countForDay($projectUuid, $dayUuid, [], $repoOptions);
+            $durationUnfiltered = $clipRepo->sumDurationForDay($projectUuid, $dayUuid, [], $repoOptions);
         }
 
-        // Day info
-        $dayStmt = $pdo->prepare("
-        SELECT 
-            BIN_TO_UUID(d.id,1) AS day_uuid,
-            d.title,
-            d.shoot_date,
-            d.notes,
-            d.published_at
-        FROM days d
-        WHERE d.id = UUID_TO_BIN(:d,1)
-          AND d.project_id = UUID_TO_BIN(:p,1)
-        LIMIT 1
-    ");
-        $dayStmt->execute([':d' => $dayUuid, ':p' => $projectUuid]);
-        $dayInfo = $dayStmt->fetch(\PDO::FETCH_ASSOC) ?: null;
-
-        // Count (with same ACL restrictions)
-        $sqlCount = "
-        SELECT COUNT(*)
-        FROM clips c
-        JOIN days d ON d.id = c.day_id
-        LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-        LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-        WHERE " . implode(' AND ', $where) . $visibilitySql . "
-    ";
-        $stmtCount = $pdo->prepare($sqlCount);
-        $stmtCount->execute($paramsSql);
-        $total = (int)$stmtCount->fetchColumn();
-
-        // Data (page subset)
-        $sql = "
-                SELECT
-                    BIN_TO_UUID(c.id,1) AS clip_uuid,
-                    c.scene,
-                    c.slate,
-                    c.take,
-                    c.take_int,
-                    c.camera,
-                    c.reel,
-                    c.file_name,
-                    c.tc_start,
-                    c.tc_end,
-                    c.duration_ms,
-                    c.rating,
-                    c.is_select,
-                    c.created_at,
-
-                    -- Poster / proxy_web paths (as before)
-                    MAX(CASE WHEN a.asset_type='poster' THEN a.storage_path END) AS poster_path,
-                    MAX(CASE WHEN a.asset_type='proxy_web'  THEN a.storage_path END) AS proxy_path,
-
-                    -- How many proxies currently exist for this clip
-                    (
-                        SELECT COUNT(*)
-                        FROM clip_assets a2
-                        WHERE a2.clip_id = c.id
-                        AND a2.asset_type = 'proxy_web'
-                    ) AS proxy_count,
-
-                    -- Latest encode job state for this clip (if any)
-                    (
-                        SELECT ej.state
-                        FROM encode_jobs ej
-                        WHERE ej.clip_id = c.id
-                        ORDER BY ej.id DESC
-                        LIMIT 1
-                    ) AS job_state,
-
-                    -- Latest encode job progress (0-100)
-                    (
-                        SELECT ej.progress_pct
-                        FROM encode_jobs ej
-                        WHERE ej.clip_id = c.id
-                        ORDER BY ej.id DESC
-                        LIMIT 1
-                    ) AS job_progress
-
-                FROM clips c
-                JOIN days d ON d.id = c.day_id
-                LEFT JOIN clip_assets a ON a.clip_id = c.id
-                LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-                LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-                WHERE " . implode(' AND ', $where) . $visibilitySql . "
-                GROUP BY c.id
-                ORDER BY " . implode(', ', $orderParts) . "
-                LIMIT :limit OFFSET :offset
-            ";
-
-        $stmt = $pdo->prepare($sql);
-
-        // bind normal params
-        foreach ($paramsSql as $k => $v) {
-            if (in_array($k, [':limit', ':offset'], true)) continue;
-            $stmt->bindValue($k, $v);
-        }
-        $stmt->bindValue(':limit',  $q['per'], \PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset,   \PDO::PARAM_INT);
-        $stmt->execute();
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-        // Camera list (for filter dropdown) (note: this is page cameras, not global)
-        $cams = [];
-        foreach ($rows as $r) {
-            if ($r['camera'] !== null && $r['camera'] !== '') {
-                $cams[$r['camera']] = true;
-            }
-        }
-        ksort($cams);
-        $cameraOptions = array_keys($cams);
-
-        $dayLabel = '';
-        if ($dayInfo) {
-            $dayLabel = $dayInfo['title'] !== null && $dayInfo['title'] !== ''
-                ? $dayInfo['title']
-                : ($dayInfo['shoot_date'] ?? '');
+        // 2. Filtered Stats (Uses $filters)
+        if ($isAllDays) {
+            $total              = $clipRepo->countForProject($projectUuid, $filters, $repoOptions);
+            $rows               = $clipRepo->listForProject($projectUuid, $filters, $listOptions);
+            $dayTotalDurationMs = $clipRepo->sumDurationForProject($projectUuid, $filters, $repoOptions);
+        } else {
+            $total              = $clipRepo->countForDay($projectUuid, $dayUuid, $filters, $repoOptions);
+            $rows               = $clipRepo->listForDay($projectUuid, $dayUuid, $filters, $listOptions);
+            $dayTotalDurationMs = $clipRepo->sumDurationForDay($projectUuid, $dayUuid, $filters, $repoOptions);
         }
 
-        // --- NEW: compute total runtime for the whole day (all clips in this day),
-        // honoring the same ACL visibility restrictions.
-        //
-        // NOTE: We intentionally do NOT apply pagination here.
-        //
-        $sqlSum = "
-        SELECT COALESCE(SUM(c.duration_ms), 0) AS total_ms
-        FROM clips c
-        JOIN days d ON d.id = c.day_id
-        LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-        LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-        WHERE " . implode(' AND ', $where) . $visibilitySql . "
-    ";
-        $stmtSum = $pdo->prepare($sqlSum);
-        $stmtSum->execute($paramsSql);
-        $dayTotalDurationMs = (int)($stmtSum->fetchColumn() ?? 0);
-        // --- /NEW
+        // Camera list (Fetch all available for this context, regardless of page)
+        $cameraOptions = $clipRepo->getDistinctCameras($projectUuid, $isAllDays ? null : $dayUuid);
 
-        // CSRF token for converter-style actions (poster, metadata)
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
-        }
+        // CSRF
+        if (session_status() === PHP_SESSION_NONE) session_start();
         $converterToken = bin2hex(random_bytes(32));
         $_SESSION['csrf_tokens']['converter'][$dayUuid] = $converterToken;
-
         $quickToken = \App\Support\Csrf::token();
         $_SESSION['csrf_tokens']['clip_quick'][$dayUuid] = $quickToken;
 
@@ -358,6 +198,8 @@ final class ProjectClipsController
             'day_uuid'                => $dayUuid,
             'day_info'                => $dayInfo,
             'day_label'               => $dayLabel,
+            'all_days'                => $allDays, // Passed to view
+            'is_all_days'             => $isAllDays,
             'filters'                 => $q,
             'rows'                    => $rows,
             'total'                   => $total,
@@ -368,10 +210,9 @@ final class ProjectClipsController
             'isProjectAdmin'          => $isProjectAdmin,
             'converter_csrf'          => $converterToken,
             'quick_csrf'              => $quickToken,
-
-
-            // NEW: pass full-day runtime in ms
             'day_total_duration_ms'   => $dayTotalDurationMs,
+            'total_unfiltered'        => $totalUnfiltered,
+            'duration_unfiltered'     => $durationUnfiltered,
         ]);
     }
 

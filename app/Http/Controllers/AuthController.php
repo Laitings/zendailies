@@ -73,11 +73,14 @@ final class AuthController
             'id'           => $row['account_id'],
             'email'        => $row['email'],
             'is_superuser' => (int)($row['is_superuser'] ?? 0),
+            'user_role'    => $row['user_role'] ?? 'regular',   // <-- add this
+            'status'       => $row['status'] ?? null,           // optional, nice to have
             'first_name'   => $row['first_name'] ?? null,
             'display_name' => $row['display_name'] ?? null,
         ];
         // Back-compat alias
         $_SESSION['user'] = $_SESSION['account'];
+
 
         // ? New: resolve and cache person_uuid for RBAC / project access
         try {

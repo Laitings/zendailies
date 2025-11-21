@@ -843,3 +843,86 @@ select {
 .zd-card button.icon-btn:hover {
   background: rgba(255, 255, 255, 0.08);
 }
+
+/* === Project Card Grid (shared by dashboard and admin/projects) === */
+
+/* Projects grid: force proper layout */
+.zd-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 24px;
+  margin-top: 16px;
+  width: 100%;
+}
+
+/* Reset any inherited card sizing */
+.zd-card-grid .zd-card {
+  margin: 0;
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  overflow: hidden;
+  background-clip: padding-box;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+}
+
+/* Card is the container; cover link sits on top */
+.zd-card-grid .zd-card {
+  position: relative;
+}
+
+/* Full-card clickable cover (does not change layout) */
+.zd-card-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  /* sits above content but below icons */
+  text-decoration: none;
+  border-radius: inherit;
+}
+
+/* Hover effect on the card (tint + subtle outline + lift) */
+.zd-card-grid .zd-card:hover {
+  background: rgba(58, 160, 255, 0.05);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--accent) inset;
+  transform: scale(1.02);
+  /* gentle zoom instead of lift */
+  transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.2s ease;
+  isolation: isolate;
+}
+
+/* Bottom-right icon group (above the cover link) */
+.zd-card-icons {
+  position: absolute;
+  transform-origin: bottom right;
+  will-change: transform;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  gap: 10px;
+  z-index: 2;
+  /* ensure clickable above cover */
+}
+
+/* Icon buttons */
+.zd-card-icons .icon-btn {
+  padding: 4px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  background: transparent;
+  border: 0;
+}
+
+.zd-card-icons .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.icon--accent {
+  filter: invert(61%) sepia(53%) saturate(2574%) hue-rotate(189deg)
+    brightness(97%) contrast(101%);
+}

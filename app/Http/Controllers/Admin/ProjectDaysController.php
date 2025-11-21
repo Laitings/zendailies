@@ -191,13 +191,14 @@ class ProjectDaysController
         ];
 
         // --- Render view ---
-        echo View::render('admin/days/index', [
-            'project' => $projectRow,
-            'days'    => $days,
-            'routes'  => $routes,
-            'sort'    => $sort,
-            'dir'     => $dir,
+        View::render('admin/days/index', [
+            'project'      => $projectRow,
+            'days'         => $days,
+            'routes'       => $routes,
+            'sort'         => $sort,
+            'dir'          => $dir,
         ]);
+        return; // Explicit return
     }
 
     public function publish(string $projectUuid, string $dayUuid): void

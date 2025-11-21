@@ -13,9 +13,80 @@ class UserController
 {
     public function index()
     {
-        $users = (new AccountRepository())->listForAdmin(); // next step
-        return View::render('admin/users/index', ['users' => $users]);
+
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        $account    = $_SESSION['account']     ?? null;
+        $personUuid = $_SESSION['person_uuid'] ?? null;
+
+        if (!$account) {
+            http_response_code(403);
+            echo "Forbidden.";
+            return;
+        }
+
+        $isSuperuser = !empty($account['is_superuser']);
+
+        $repo = new AccountRepository();
+
+        // Try to recover person_uuid from account if it's missing
+        // NOTE: login usually stores BIN_TO_UUID(a.id,1) as 'id'
+        if (!$personUuid && !empty($account['id'])) {
+            $resolved = $repo->firstPersonIdForAccount($account['id']);
+            if ($resolved) {
+                $personUuid = $resolved;
+                $_SESSION['person_uuid'] = $personUuid;
+            }
+        }
+
+        // Read project filter from query string (?project=UUID or ?project=all)
+        $projectFilter = isset($_GET['project']) ? trim((string)$_GET['project']) : '';
+
+        // Normalize: 'all' or empty string => no specific project filter
+        if ($projectFilter === '' || $projectFilter === 'all') {
+            $projectFilter = null;
+        }
+
+        // Read sort parameters from query string
+        $sort = trim((string)($_GET['sort'] ?? 'name'));
+        $dir  = strtolower(trim((string)($_GET['dir'] ?? 'asc')));
+        if (!in_array($dir, ['asc', 'desc'])) {
+            $dir = 'asc';
+        }
+
+        $projects = [];
+        $users    = [];
+
+        if ($isSuperuser) {
+            // Superuser: personUuid not needed for filters, see all projects/users
+            $projects = $repo->listProjectsForUser('', true);
+            $users    = $repo->listForAdmin('', true, $projectFilter, $sort, $dir);
+        } else {
+            // Non-superuser admin: if we *still* don't have a person UUID,
+            // we can't know their projects → show an empty list instead of 403.
+            if ($personUuid) {
+                $projects = $repo->listProjectsForUser($personUuid, false);
+                $users    = $repo->listForAdmin($personUuid, false, $projectFilter, $sort, $dir);
+            } else {
+                // No person link → no projects, no users; page still loads.
+                $projects = [];
+                $users    = [];
+            }
+        }
+
+        return View::render('admin/users/index', [
+            'users'            => $users,
+            'projects'         => $projects,
+            'selected_project' => $projectFilter,  // may be null
+            'is_superuser'     => $isSuperuser,
+            'sort'             => $sort,
+            'dir'              => $dir,
+        ]);
     }
+
+
 
     public function create()
     {

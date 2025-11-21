@@ -463,6 +463,29 @@ if (!empty($clip_list) && is_array($clip_list)) {
                                     $hasSceneInfo = ($scene !== '' || $slate !== '' || $take !== '');
                                     ?>
 
+                                    <?php
+                                    $commentCount = (int)($it['comment_count'] ?? 0);
+                                    $isSelect = (int)($it['is_select'] ?? 0) === 1;
+                                    ?>
+
+                                    <?php if ($commentCount > 0 || $isSelect): ?>
+                                        <div class="zd-flag-strip">
+                                            <?php if ($commentCount > 0): ?>
+                                                <div class="zd-flag-comment" aria-label="<?= $commentCount ?> comment<?= $commentCount === 1 ? '' : 's' ?>">
+                                                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                                                        <path d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6.5L9 21l0-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" fill="#ffffff" stroke="#000000" stroke-width="1.8" stroke-linejoin="round" />
+                                                    </svg>
+                                                </div>
+                                            <?php endif; ?>
+                                            <?php if ($isSelect): ?>
+                                                <div class="zd-flag-star" aria-label="Good take">
+                                                    <svg viewBox="0 0 24 24" role="img" focusable="false" width="16" height="16">
+                                                        <path d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
+                                                    </svg>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
 
 
                                     <?php
@@ -470,71 +493,12 @@ if (!empty($clip_list) && is_array($clip_list)) {
                                     ?>
                                     <?php if (!empty($it['poster_path'])) : ?>
                                         <div class="thumb-wrap">
-                                            <img src="<?= htmlspecialchars($it['poster_path']) ?>" alt="">
-
-                                            <?php if ($commentCount > 0 || (int)($it['is_select'] ?? 0) === 1): ?>
-                                                <div class="zd-flag-strip">
-                                                    <?php if ($commentCount > 0): ?>
-                                                        <div class="zd-flag-comment" aria-label="<?= $commentCount ?> comment<?= $commentCount === 1 ? '' : 's' ?>">
-                                                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                                                                <path
-                                                                    d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6.5L9 21l0-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"
-                                                                    fill="#ffffff"
-                                                                    stroke="#000000"
-                                                                    stroke-width="1.8"
-                                                                    stroke-linejoin="round" />
-                                                            </svg>
-                                                        </div>
-                                                    <?php endif; ?>
-                                                    <?php if ((int)($it['is_select'] ?? 0) === 1): ?>
-                                                        <div class="zd-flag-star" aria-label="Good take">
-                                                            <svg viewBox="0 0 24 24" role="img" focusable="false" width="16" height="16">
-                                                                <path d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
-                                                            </svg>
-                                                        </div>
-                                                    <?php endif; ?>
-
-
-                                                </div>
-                                            <?php endif; ?>
+                                            <img src="<?= htmlspecialchars($it['poster_path']) ?>" alt="Clip thumbnail">
                                         </div>
 
                                     <?php else : ?>
                                         <div class="thumb-wrap">
-                                            <div class="thumb-wrap">
-                                                <div class="no-thumb"></div>
-
-                                                <?php if ($clipLabel !== '') : ?>
-                                                    <div class="clip-badge"><?= htmlspecialchars($clipLabel) ?></div>
-                                                <?php endif; ?>
-
-                                                <?php if ($commentCount > 0 || (int)($it['is_select'] ?? 0) === 1): ?>
-                                                    <div class="zd-flag-strip">
-                                                        <?php if ($commentCount > 0): ?>
-                                                            <div class="zd-flag-comment">
-                                                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                                                    <path
-                                                                        d="M5 4h14a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6.5L9 21l0-4H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"
-                                                                        fill="#ffffff"
-                                                                        stroke="#000000"
-                                                                        stroke-width="1.8"
-                                                                        stroke-linejoin="round" />
-                                                                </svg>
-                                                            </div>
-                                                        <?php endif; ?>
-
-                                                        <?php if ((int)($it['is_select'] ?? 0) === 1): ?>
-                                                            <div class="zd-flag-star">
-                                                                <svg viewBox="0 0 24 24" aria-hidden="true">
-                                                                    <path
-                                                                        d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
-                                                                </svg>
-                                                            </div>
-                                                        <?php endif; ?>
-
-                                                    </div>
-                                                <?php endif; ?>
-                                            </div>
+                                            <div class="no-thumb"></div>
 
                                         <?php endif; ?>
 
@@ -548,26 +512,6 @@ if (!empty($clip_list) && is_array($clip_list)) {
                                             ?>
                                             <div class="clip-title clip-title-right">
                                                 <span><?= htmlspecialchars($rowTitle, ENT_QUOTES, 'UTF-8') ?></span>
-
-                                                <?php if ($commentCount > 0): ?>
-                                                    <span class="zd-inline-comment" title="<?= $commentCount ?> comments">
-                                                        <svg class="zd-icon-comment" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-                                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10z"
-                                                                fill="#ffffff"
-                                                                stroke="#000000"
-                                                                stroke-width="1.8"
-                                                                stroke-linejoin="round" />
-                                                        </svg>
-                                                    </span>
-                                                <?php endif; ?>
-
-                                                <?php if ((int)($it['is_select'] ?? 0) === 1): ?>
-                                                    <span class="zd-inline-star" title="Good take" aria-label="Good take">
-                                                        <svg viewBox="0 0 24 24" role="img" focusable="false">
-                                                            <path d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
-                                                        </svg>
-                                                    </span>
-                                                <?php endif; ?>
                                             </div>
 
                                             <?php if ($hasSceneInfo && $fileNameBase !== ''): ?>

@@ -26,6 +26,8 @@ final class AuthService
             'last_name'    => $acc['last_name'] ?? null,
             'display_name' => $acc['display_name'] ?? null,
             'is_superuser' => (bool)$acc['is_superuser'],
+            'user_role'    => $acc['user_role'] ?? 'regular',   // <-- add this
+            'status'       => $acc['status'] ?? null,           // <-- and this (optional but useful)
             'mfa_policy'   => $acc['mfa_policy'],
         ];
     }

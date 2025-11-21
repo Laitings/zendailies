@@ -18,6 +18,80 @@
   const importUids = document.getElementById("zd-import-uuids");
   const selCountEl = document.getElementById("zd-selected-count");
 
+  // ---- Day Filter (Dropdown)
+  const daySelect = document.getElementById("zd-day-select");
+  if (daySelect) {
+    daySelect.addEventListener("change", function () {
+      const url = this.value;
+      if (url) {
+        window.location.href = url;
+      }
+    });
+  }
+
+  // Live filter: AJAX-refresh table while keeping focus & caret
+  const filterForm = root.querySelector("form.zd-filter-form");
+  const filterControls = root.querySelectorAll(
+    ".zd-filters input.zd-input, .zd-filters select.zd-select"
+  );
+
+  let filterDebounce = null;
+
+  function handleFilterChange() {
+    if (!filterForm || !tbodyEl) return;
+    if (filterDebounce) clearTimeout(filterDebounce);
+
+    filterDebounce = setTimeout(() => {
+      // Build URL with current filter form values
+      const url = new URL(window.location.href);
+      const formData = new FormData(filterForm);
+
+      // Replace all existing query params with current form values
+      url.search = ""; // start clean
+      for (const [key, value] of formData.entries()) {
+        if (value !== "") {
+          url.searchParams.append(key, value);
+        }
+      }
+
+      // Optional: keep other non-filter params if you use them (page, sort, etc.)
+      // e.g.:
+      // const current = new URL(window.location.href);
+      // const keep = ["sort", "direction"];
+      // keep.forEach((k) => {
+      //   if (current.searchParams.has(k) && !url.searchParams.has(k)) {
+      //     url.searchParams.set(k, current.searchParams.get(k));
+      //   }
+      // });
+
+      fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      })
+        .then((res) => res.text())
+        .then((html) => {
+          // Parse response and grab the new tbody
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+          const newTbody = doc.querySelector(".zd-table tbody");
+          if (!newTbody) return;
+
+          // Swap only the rows; filters & inputs stay untouched → caret preserved
+          tbodyEl.innerHTML = newTbody.innerHTML;
+        })
+        .catch((err) => {
+          console.error("Live filter update failed", err);
+        });
+    }, 400); // delay between keystrokes
+  }
+
+  filterControls.forEach((el) => {
+    el.addEventListener("input", handleFilterChange);
+    el.addEventListener("change", handleFilterChange);
+  });
+
   // ---- Timecode helpers
   function formatDurationMsToTimecode(ms, fpsFallback, fpsFromServer) {
     if (!ms || ms <= 0) return "";
@@ -74,6 +148,14 @@
     const totalAttr = blockEl.getAttribute("data-day-total-ms");
     const totalMs = parseInt(totalAttr || "0", 10);
     outEl.textContent = formatTotalMsToHHMMSSFF(totalMs, 24);
+  }
+
+  function renderUnfilteredRuntime() {
+    const el = document.getElementById("zd-unfiltered-runtime");
+    if (!el) return;
+    const ms = parseInt(el.getAttribute("data-ms") || "0", 10);
+    // Reusing your existing timecode function
+    el.textContent = formatTotalMsToHHMMSSFF(ms, 24);
   }
 
   // ---- Selection state
@@ -208,6 +290,7 @@
   initDurationsOnPage();
   renderTotalRuntimeFromDayAttribute();
   renderSelectedRuntime();
+  renderUnfilteredRuntime();
 
   // ---- Poster (single)
   document.addEventListener("click", async (ev) => {
@@ -424,6 +507,32 @@
         cancel();
       }
     });
+    // --- Tab navigation: scene → slate → take ---
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Tab") {
+        ev.preventDefault();
+
+        const cell = input.closest("td");
+        const row = cell.closest("tr");
+
+        const order = ["scene", "slate", "take"];
+        const current = cell.dataset.edit;
+        const idx = order.indexOf(current);
+
+        if (idx >= 0 && idx < order.length - 1) {
+          const nextField = order[idx + 1];
+          const nextTd = row.querySelector(`td[data-edit="${nextField}"]`);
+          if (nextTd) {
+            nextTd.click(); // triggers beginQuickEdit(nextTd)
+            return;
+          }
+        }
+
+        // After "take", exit edit mode
+        input.blur();
+      }
+    });
+
     input.addEventListener("blur", () => commit(input.value.trim()));
   }
 
@@ -483,5 +592,104 @@
     if (!svg) return;
     svg.classList.toggle("on", !!isOn);
     svg.classList.toggle("off", !isOn);
+  }
+
+  // ---- Live Filtering (As you type) ----
+  // Renamed to liveFilterForm to avoid conflicts
+  const liveFilterForm = document.querySelector(".zd-filters");
+
+  if (liveFilterForm) {
+    // Inputs to trigger live refresh
+    const liveInputs = liveFilterForm.querySelectorAll(
+      'input[name="scene"], input[name="slate"], input[name="take"], input[name="text"]'
+    );
+
+    // Debounce helper: wait 300ms after typing stops before fetching
+    function debounce(fn, delay) {
+      let timer;
+      return function (...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(this, args), delay);
+      };
+    }
+
+    const updateTableViaAjax = async () => {
+      // Visual feedback
+      if (tbodyEl) tbodyEl.style.opacity = "0.5";
+
+      try {
+        // Build URL with current form data, forcing page=1
+        const formData = new FormData(liveFilterForm);
+        const params = new URLSearchParams(formData);
+        params.set("page", "1"); // Reset pagination on filter change
+
+        // Preserve current day context in URL
+        const targetUrl = window.location.pathname + "?" + params.toString();
+
+        const resp = await fetch(targetUrl);
+        if (!resp.ok) throw new Error("Filter request failed");
+
+        const html = await resp.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+
+        // 1. Replace Table Body Rows
+        const newTbody = doc.querySelector(".zd-table tbody");
+        if (newTbody && tbodyEl) {
+          tbodyEl.innerHTML = newTbody.innerHTML;
+        }
+
+        // 2. Replace Pager
+        const oldPager = document.querySelector(".zd-pager");
+        const newPager = doc.querySelector(".zd-pager");
+        if (oldPager) {
+          if (newPager) oldPager.replaceWith(newPager);
+          else oldPager.innerHTML = ""; // Clear if no pages left
+        }
+
+        // 3. Replace Header Stats (Count / Total Runtime)
+        const oldHead = document.querySelector(".zd-clips-head");
+        const newHead = doc.querySelector(".zd-clips-head");
+        if (oldHead && newHead) {
+          oldHead.innerHTML = newHead.innerHTML;
+        }
+
+        // 4. Re-initialize JS logic on new elements
+        initDurationsOnPage(); // Recalculate pretty timecodes
+        renderTotalRuntimeFromDayAttribute(); // Update total text
+        renderUnfilteredRuntime();
+
+        // Re-apply visual selection state
+        selectedRows.forEach((uuid) => {
+          const row = document.getElementById("clip-" + uuid);
+          if (row) row.classList.add("zd-selected-row");
+        });
+        updateBulkUI(); // Recalculate selected stats
+
+        // 5. Update Browser URL (so refresh keeps filters)
+        window.history.replaceState({}, "", targetUrl);
+      } catch (err) {
+        console.error("Live filter error:", err);
+      } finally {
+        if (tbodyEl) tbodyEl.style.opacity = "";
+      }
+    };
+
+    const debouncedUpdate = debounce(updateTableViaAjax, 300);
+
+    // Attach listeners
+    liveInputs.forEach((input) => {
+      input.addEventListener("input", debouncedUpdate);
+    });
+
+    // ---- New: Live Filtering for Dropdowns ----
+    const liveSelects = liveFilterForm.querySelectorAll(
+      'select[name="camera"], select[name="rating"], select[name="select"]'
+    );
+
+    liveSelects.forEach((sel) => {
+      // Update immediately on change (no debounce needed for dropdowns)
+      sel.addEventListener("change", updateTableViaAjax);
+    });
   }
 })();

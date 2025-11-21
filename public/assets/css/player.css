@@ -917,10 +917,11 @@ body::-webkit-scrollbar-thumb:hover,
 /* ===== View-specific behavior ===== */
 
 /* LIST VIEW:
-   - Only use inline icons in the title, no corner strip on tiny thumbs.
+   - Use corner strip on the item row.
+   - Hide inline icons in the title (now done via PHP).
 */
-#clipListContainer.list-view .thumb-wrap .zd-flag-strip {
-  display: none;
+#clipListContainer.list-view .zd-flag-strip {
+  display: flex;
 }
 
 /* GRID VIEW:
@@ -934,26 +935,6 @@ body::-webkit-scrollbar-thumb:hover,
 
 #clipListContainer.grid-view .thumb-wrap .zd-flag-strip {
   display: flex;
-}
-
-/* ===== View-specific behavior ===== */
-
-/* LIST VIEW:
-   - Use inline star + bubble next to title.
-   - Hide corner flags on the tiny thumb (to avoid clutter).
-*/
-#clipListContainer.list-view .thumb-wrap .zd-flag-star,
-#clipListContainer.list-view .thumb-wrap .zd-flag-comment {
-  display: none;
-}
-
-/* GRID VIEW:
-   - Use flags on thumbnail corners.
-   - Hide inline star + bubble next to title.
-*/
-#clipListContainer.grid-view .clip-title .zd-inline-star,
-#clipListContainer.grid-view .clip-title .zd-inline-comment {
-  display: none;
 }
 
 #clipListContainer.grid-view .thumb-wrap .zd-flag-star,
