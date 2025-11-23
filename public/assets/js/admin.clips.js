@@ -4,6 +4,126 @@
   const root = document.querySelector(".zd-clips-page");
   if (!root) return;
 
+  // ---- Column visibility controls (popup) ----
+  const columnsToggleBtn = document.getElementById("zd-columns-toggle");
+  const columnsPopup = document.getElementById("zd-columns-popup");
+
+  // -----------------------------
+  // Column Visibility Persistence
+  // -----------------------------
+
+  const STORAGE_KEY = "zendailies.clipColumns";
+
+  // Load from localStorage
+  function loadColumnState() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  // Save to localStorage
+  function saveColumnState(state) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  const columnState = loadColumnState();
+
+  // Apply saved column state to page
+  Object.entries(columnState).forEach(([col, isVisible]) => {
+    const root = document.querySelector(".zd-clips-page");
+
+    if (!isVisible) {
+      root.classList.add(`hide-col-${col}`);
+      // Uncheck the checkbox in popup
+      const cb = document.querySelector(
+        `.zd-columns-item input[data-col="${col}"]`
+      );
+      if (cb) cb.checked = false;
+    }
+  });
+
+  // Hook checkboxes to update state
+  document
+    .querySelectorAll('.zd-columns-item input[type="checkbox"]')
+    .forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const col = cb.dataset.col;
+
+        // Update DOM
+        const root = document.querySelector(".zd-clips-page");
+        if (cb.checked) {
+          root.classList.remove(`hide-col-${col}`);
+        } else {
+          root.classList.add(`hide-col-${col}`);
+        }
+
+        // Update and save state
+        columnState[col] = cb.checked;
+        saveColumnState(columnState);
+      });
+    });
+
+  // All checkboxes inside popup
+  const colToggles = columnsPopup
+    ? columnsPopup.querySelectorAll("input[data-col]")
+    : [];
+
+  function applyColVisibility() {
+    // For each checkbox, add/remove hide-col-XXX on root
+    colToggles.forEach((cb) => {
+      const col = cb.dataset.col;
+      if (!col) return;
+      const cls = "hide-col-" + col;
+      if (cb.checked) {
+        root.classList.remove(cls);
+      } else {
+        root.classList.add(cls);
+      }
+    });
+  }
+
+  function openColumnsPopup() {
+    if (!columnsPopup) return;
+    columnsPopup.classList.add("is-open");
+  }
+
+  function closeColumnsPopup() {
+    if (!columnsPopup) return;
+    columnsPopup.classList.remove("is-open");
+  }
+
+  if (columnsToggleBtn && columnsPopup) {
+    // Toggle on button click
+    columnsToggleBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (columnsPopup.classList.contains("is-open")) {
+        closeColumnsPopup();
+      } else {
+        openColumnsPopup();
+      }
+    });
+
+    // Click inside popup should not close it
+    columnsPopup.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+    });
+
+    // Click anywhere else closes it
+    document.addEventListener("click", () => {
+      closeColumnsPopup();
+    });
+
+    // React to checkbox changes
+    colToggles.forEach((cb) => {
+      cb.addEventListener("change", applyColVisibility);
+    });
+
+    // Initial state on load
+    applyColVisibility();
+  }
+
   // ---- Page-level inputs (from data-*)
   const projectUuid = root.dataset.project || "";
   const dayUuid = root.dataset.day || "";
@@ -29,6 +149,9 @@
       }
     });
   }
+
+  // initial state
+  applyColVisibility();
 
   // Live filter: AJAX-refresh table while keeping focus & caret
   const filterForm = root.querySelector("form.zd-filter-form");
@@ -300,133 +423,6 @@
   renderTotalRuntimeFromDayAttribute();
   renderSelectedRuntime();
   renderUnfilteredRuntime();
-
-  // ---- Poster (single)
-  document.addEventListener("click", async (ev) => {
-    const btn = ev.target.closest('button.icon-btn[data-action="poster"]');
-    if (!btn) return;
-
-    const clipUuid = btn.getAttribute("data-clip");
-    const rowEl = document.querySelector(`#clip-${clipUuid}`);
-    const rowDayUuid = rowEl?.getAttribute("data-day-uuid") || dayUuid || "";
-
-    const baseUrl = `/admin/projects/${encodeURIComponent(
-      projectUuid
-    )}/days/${encodeURIComponent(rowDayUuid)}/converter/`;
-    const endpoint = baseUrl + "poster";
-
-    btn.disabled = true;
-    const originalTitle = btn.title;
-    btn.title = "Working…";
-
-    try {
-      const body = new URLSearchParams({
-        csrf_token: converterCsrf,
-        clip_uuid: clipUuid,
-        force: "1",
-      });
-
-      const resp = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body,
-      });
-      const json = await resp.json();
-
-      if (resp.ok && json.ok) {
-        btn.title = "Poster OK";
-        if (json.href) {
-          const thumbCellImg = rowEl?.querySelector('[data-field="thumb"] img');
-          if (thumbCellImg) {
-            thumbCellImg.src = json.href + "?v=" + Date.now();
-          } else {
-            const thumbDiv = rowEl?.querySelector(
-              '[data-field="thumb"] .zd-thumb'
-            );
-            if (thumbDiv)
-              thumbDiv.outerHTML = `<img class="zd-thumb" src="${
-                json.href
-              }?v=${Date.now()}" alt="">`;
-          }
-        }
-        initDurationsOnPage();
-        renderTotalRuntimeFromDayAttribute();
-        renderSelectedRuntime();
-      } else {
-        btn.title = "Poster ERR";
-        alert(json.error || json.message || "Failed poster");
-      }
-    } catch (err) {
-      console.error(err);
-      btn.title = "Poster ERR";
-      alert("Network/JS error during poster");
-    } finally {
-      btn.disabled = false;
-      setTimeout(() => (btn.title = originalTitle), 2000);
-    }
-  });
-
-  // ---- Bulk poster
-  async function runBulkPosterAction() {
-    const baseUrl = `/admin/projects/${encodeURIComponent(
-      projectUuid
-    )}/days/${encodeURIComponent(dayUuid)}/converter/`;
-    const endpoint = baseUrl + "poster";
-
-    for (const clipUuid of selectedRows) {
-      const rowEl = document.querySelector(`#clip-${clipUuid}`);
-      try {
-        const body = new URLSearchParams({
-          csrf_token: converterCsrf,
-          clip_uuid: clipUuid,
-          force: "1",
-        });
-        const resp = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body,
-        });
-        const json = await resp.json();
-        if (resp.ok && json.ok) {
-          if (json.href) {
-            const thumbCellImg = rowEl?.querySelector(
-              '[data-field="thumb"] img'
-            );
-            if (thumbCellImg) {
-              thumbCellImg.src = json.href + "?v=" + Date.now();
-            } else {
-              const thumbDiv = rowEl?.querySelector(
-                '[data-field="thumb"] .zd-thumb'
-              );
-              if (thumbDiv)
-                thumbDiv.outerHTML = `<img class="zd-thumb" src="${
-                  json.href
-                }?v=${Date.now()}" alt="">`;
-            }
-          }
-        } else {
-          console.error("Bulk poster failed for", clipUuid, json);
-          alert(
-            "Problem with poster on " +
-              clipUuid +
-              ": " +
-              (json.error || json.message || "unknown error")
-          );
-        }
-      } catch (err) {
-        console.error("Bulk poster error for", clipUuid, err);
-        alert("Network/JS error during bulk poster on " + clipUuid);
-      }
-    }
-
-    initDurationsOnPage();
-    renderTotalRuntimeFromDayAttribute();
-    renderSelectedRuntime();
-  }
-
-  if (bulkPosterBtn) {
-    bulkPosterBtn.addEventListener("click", runBulkPosterAction);
-  }
 
   // ---- Import CSV — pack selected UUIDs
   if (importForm) {
@@ -701,6 +697,9 @@
 
         // 5. Update Browser URL (so refresh keeps filters)
         window.history.replaceState({}, "", targetUrl);
+
+        // 6. Re-sync layout so pager and headers stay centered with the table
+        syncClipsLayout();
       } catch (err) {
         console.error("Live filter error:", err);
       } finally {
@@ -725,4 +724,424 @@
       sel.addEventListener("change", updateTableViaAjax);
     });
   }
+
+  // =======================
+  // Publish / Unpublish Modal
+  // =======================
+  document.addEventListener("DOMContentLoaded", function () {
+    const backdrop = document.getElementById("zd-publish-backdrop");
+
+    const btnOpenPublish = document.getElementById("zd-publish-open");
+    const btnOpenUnpublish = document.getElementById("zd-unpublish-open");
+
+    const btnCancel = document.getElementById("zd-publish-cancel");
+    const btnConfirm = document.getElementById("zd-publish-confirm");
+
+    const sendEmailBlock = document.getElementById("zd-modal-email-block");
+    const sendEmailInput = document.getElementById("zd-publish-send-email");
+    const titleEl = document.getElementById("zd-modal-title");
+    const messageEl = document.getElementById("zd-modal-message");
+    const publishExtra = document.getElementById("zd-modal-publish-extra");
+
+    const publishForm = document.getElementById("zd-publish-form");
+    const unpublishForm = document.getElementById("zd-unpublish-form");
+    const sendField = document.getElementById("zd-publish-send-email-field");
+
+    let currentMode = "publish";
+
+    function openModal(mode) {
+      currentMode = mode;
+
+      if (mode === "publish") {
+        titleEl.textContent = "Publish day";
+        messageEl.textContent = "Are you sure you want to publish this day?";
+        btnConfirm.textContent = "Publish";
+
+        sendEmailBlock.style.display = "block";
+        publishExtra.style.display = "block";
+      } else {
+        titleEl.textContent = "Unpublish day";
+        messageEl.textContent =
+          "Unpublish this day? It will no longer be visible to regular users.";
+        btnConfirm.textContent = "Unpublish";
+
+        sendEmailBlock.style.display = "none";
+        publishExtra.style.display = "none";
+      }
+
+      if (backdrop) backdrop.hidden = false;
+    }
+
+    function closeModal() {
+      if (backdrop) backdrop.hidden = true;
+    }
+
+    if (btnOpenPublish) {
+      btnOpenPublish.addEventListener("click", () => openModal("publish"));
+    }
+    if (btnOpenUnpublish) {
+      btnOpenUnpublish.addEventListener("click", () => openModal("unpublish"));
+    }
+
+    if (btnCancel) {
+      btnCancel.addEventListener("click", closeModal);
+    }
+
+    if (backdrop) {
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) closeModal();
+      });
+    }
+
+    if (btnConfirm) {
+      btnConfirm.addEventListener("click", () => {
+        if (currentMode === "publish") {
+          if (sendField && sendEmailInput) {
+            sendField.value = sendEmailInput.checked ? "1" : "0";
+          }
+          if (publishForm) publishForm.submit();
+        } else {
+          if (unpublishForm) unpublishForm.submit();
+        }
+      });
+    }
+  });
+
+  // =======================
+  // ⋯ Actions menu + bulk actions
+  // =======================
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".zd-actions-btn");
+    const wrap = btn?.closest(".zd-actions-wrap");
+
+    // Page + shared refs
+    const pageRoot = document.querySelector(".zd-clips-page");
+    const projectUuid = pageRoot?.dataset.project || "";
+    const currentDayUuid = pageRoot?.dataset.day || "";
+
+    const importFileInput = document.getElementById("zd-import-file");
+    const importOverwrite = document.getElementById("zd-import-overwrite");
+    const importUuids = document.getElementById("zd-import-uuids");
+
+    const bulkDeleteForm = document.getElementById("zd-bulk-delete-form");
+    const bulkDeleteUuids = document.getElementById("zd-bulk-delete-uuids");
+
+    function getSelectedClipUuids() {
+      return Array.from(
+        document.querySelectorAll(".zd-table tbody tr.zd-selected-row")
+      )
+        .map((tr) => tr.dataset.clipUuid)
+        .filter(Boolean);
+    }
+
+    function closeAllMenus() {
+      document.querySelectorAll(".zd-actions-wrap.open").forEach((w) => {
+        w.classList.remove("open");
+        w.classList.remove("drop-up");
+      });
+    }
+
+    // === Open/close any ⋯ menu ===
+    if (btn && wrap) {
+      const wasOpen = wrap.classList.contains("open");
+
+      // Close everything first so we never have two open
+      closeAllMenus();
+
+      if (!wasOpen) {
+        wrap.classList.remove("drop-up");
+
+        // Auto-direction (skip header)
+        if (!wrap.classList.contains("zd-actions-wrap-head")) {
+          const rect = wrap.getBoundingClientRect();
+          const menuHeight = 160; // estimated dropdown height
+          const spaceBelow = window.innerHeight - rect.bottom;
+          const spaceAbove = rect.top;
+
+          // Not enough room below → fold up
+          if (spaceBelow < menuHeight && spaceAbove > menuHeight) {
+            wrap.classList.add("drop-up");
+          }
+        }
+
+        wrap.classList.add("open");
+      }
+
+      e.stopPropagation();
+      return;
+    }
+
+    // === Header bulk: Import metadata for selected (overwrite) ===
+    const bulkImportBtn = e.target.closest("[data-bulk-import]");
+    if (bulkImportBtn) {
+      e.preventDefault();
+      const uuids = getSelectedClipUuids();
+      if (!uuids.length) {
+        alert("No clips selected.");
+        closeAllMenus();
+        return;
+      }
+      if (!importFileInput || !importOverwrite || !importUuids) return;
+
+      importOverwrite.checked = true;
+      importUuids.value = uuids.join(",");
+      importFileInput.click(); // open file picker
+      closeAllMenus();
+      return;
+    }
+
+    // === Header bulk: Delete selected ===
+    const bulkDeleteBtn = e.target.closest("[data-bulk-delete]");
+    if (bulkDeleteBtn) {
+      e.preventDefault();
+      const uuids = getSelectedClipUuids();
+      if (!uuids.length) {
+        alert("No clips selected.");
+        closeAllMenus();
+        return;
+      }
+      if (!bulkDeleteForm || !bulkDeleteUuids) return;
+
+      if (!confirm("Delete " + uuids.length + " selected clip(s)?")) {
+        closeAllMenus();
+        return;
+      }
+      bulkDeleteUuids.value = uuids.join(",");
+      bulkDeleteForm.submit();
+      return;
+    }
+
+    // === Per-clip: Import metadata for THIS clip only ===
+    const clipImportLink = e.target.closest("[data-clip-import]");
+    if (clipImportLink) {
+      e.preventDefault();
+      const clipUuid = clipImportLink.getAttribute("data-clip-import");
+      if (!clipUuid || !importFileInput || !importOverwrite || !importUuids)
+        return;
+
+      importOverwrite.checked = true;
+      importUuids.value = clipUuid;
+      importFileInput.click(); // same CSV form, limited to single clip
+      closeAllMenus();
+      return;
+    }
+
+    // === Click elsewhere: close any open menus ===
+    closeAllMenus();
+  });
+
+  // =======================
+  // Center header/filters with table width
+  // =======================
+  function syncClipsLayout() {
+    const table = document.querySelector(".zd-clips-table-wrap");
+    if (!table) return;
+
+    const tableWidth = table.offsetWidth;
+
+    const sections = [
+      ".zd-clips-head",
+      ".zd-actions",
+      ".zd-bulk-actions",
+      ".zd-filters-container",
+      ".zd-pager",
+    ];
+
+    sections.forEach((selector) => {
+      const el = document.querySelector(selector);
+      if (el) {
+        el.style.width = tableWidth + "px";
+        el.style.marginLeft = "auto";
+        el.style.marginRight = "auto";
+      }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", syncClipsLayout);
+  window.addEventListener("load", syncClipsLayout);
+  window.addEventListener("resize", syncClipsLayout);
+
+  const clipsPage = document.querySelector(".zd-clips-page");
+  if (clipsPage) {
+    const observer = new MutationObserver(syncClipsLayout);
+    observer.observe(clipsPage, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  }
+
+  document.addEventListener("click", (e) => {
+    if (e.target.closest('.zd-columns-item input[type="checkbox"]')) {
+      setTimeout(syncClipsLayout, 50);
+    }
+  });
+
+  // =======================
+  // Poster generation (single + bulk, AJAX)
+  // =======================
+  document.addEventListener("DOMContentLoaded", () => {
+    const root = document.querySelector(".zd-clips-page");
+    if (!root) return;
+
+    const projectUuid = root.dataset.project || "";
+    const dayUuid = root.dataset.day || "";
+    const csrf = root.dataset.converterCsrf || "";
+
+    // Generate poster for a specific clip + day
+    async function generatePosterAjax(clipUuid, dayId, opts = {}) {
+      const { silent = false } = opts;
+
+      if (!projectUuid || !dayId || !csrf) {
+        if (!silent)
+          console.warn("Missing data for poster generation.", {
+            projectUuid,
+            dayId,
+            csrfPresent: !!csrf,
+          });
+        return false;
+      }
+
+      const url =
+        `/admin/projects/${encodeURIComponent(projectUuid)}` +
+        `/days/${encodeURIComponent(dayId)}/converter/poster`;
+
+      const body = new FormData();
+      body.append("csrf_token", csrf);
+      body.append("clip_uuid", clipUuid);
+      body.append("force", "1"); // always overwrite
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          body,
+        });
+
+        const text = await res.text();
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch (e) {
+          // not JSON, ignore
+        }
+
+        if (!res.ok) {
+          if (!silent) {
+            console.error("Poster HTTP error:", {
+              status: res.status,
+              body: data || text,
+            });
+          }
+          return false;
+        }
+
+        if (!data || !data.ok) {
+          if (!silent) {
+            console.warn(
+              "Poster failed:",
+              data && data.error ? data.error : "Unknown error",
+              data
+            );
+          }
+          return false;
+        }
+
+        // Success – update thumb in place
+        if (data.href) {
+          const row = document.querySelector(
+            `tr[data-clip-uuid="${clipUuid}"]`
+          );
+          if (row) {
+            const cell = row.querySelector(".col-thumb");
+            if (cell) {
+              let img = cell.querySelector("img.zd-thumb");
+              const src = data.href + "?v=" + Date.now(); // cache-bust
+
+              if (!img) {
+                img = document.createElement("img");
+                img.className = "zd-thumb";
+                img.alt = "";
+                cell.innerHTML = "";
+                cell.appendChild(img);
+              }
+
+              img.src = src;
+            }
+          }
+        }
+
+        if (data.db_warning) {
+          console.warn("Poster DB warning:", data.db_warning);
+        }
+
+        return true;
+      } catch (err) {
+        console.error("Poster error", err);
+        return false;
+      }
+    }
+
+    // --- Single clip: "Generate poster" in per-row menu ---
+    document.addEventListener("click", (e) => {
+      const link = e.target.closest("[data-clip-poster]");
+      if (!link) return;
+
+      e.preventDefault();
+
+      const row = link.closest("tr[data-clip-uuid]");
+      const clipUuid =
+        link.getAttribute("data-clip-poster") ||
+        (row ? row.dataset.clipUuid : "");
+      const rowDayUuid = (row && row.dataset.dayUuid) || dayUuid || "";
+
+      if (!clipUuid || !rowDayUuid) {
+        console.warn("Missing clip or day UUID for poster generation.", {
+          clipUuid,
+          rowDayUuid,
+        });
+        return;
+      }
+
+      // Use the row's day (works in All days + single-day)
+      generatePosterAjax(clipUuid, rowDayUuid);
+    });
+
+    // --- Bulk: "Generate posters for selected" in header menu (silent) ---
+    document.addEventListener("click", async (e) => {
+      const bulkBtn = e.target.closest("[data-bulk-poster]");
+      if (!bulkBtn) return;
+
+      e.preventDefault();
+
+      const rows = Array.from(
+        document.querySelectorAll(".zd-table tbody tr.zd-selected-row")
+      );
+
+      const jobs = rows
+        .map((tr) => {
+          const clipUuid = tr.dataset.clipUuid;
+          const rowDayUuid = tr.dataset.dayUuid || dayUuid || "";
+          if (!clipUuid || !rowDayUuid) return null;
+          return { clipUuid, dayUuid: rowDayUuid };
+        })
+        .filter(Boolean);
+
+      if (!jobs.length) {
+        console.warn("Bulk posters: no valid clips selected.");
+        return;
+      }
+
+      let ok = 0;
+      let fail = 0;
+
+      for (const job of jobs) {
+        const success = await generatePosterAjax(job.clipUuid, job.dayUuid, {
+          silent: true,
+        });
+        if (success) ok++;
+        else fail++;
+      }
+
+      console.log(`Bulk posters done: ok=${ok}, failed=${fail}`);
+    });
+  });
 })();

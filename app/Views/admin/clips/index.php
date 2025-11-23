@@ -68,450 +68,26 @@ function zd_sort_link(string $key, string $label, array $filters): string
 
 <title>Clips · Zentropa Dailies</title>
 <link rel="stylesheet" href="/assets/css/admin.clips.css?v=<?= rawurlencode((string)@filemtime($_SERVER['DOCUMENT_ROOT'] . '/assets/css/admin.clips.css')) ?>">
-<script type="module" defer src="/assets/js/admin.clips.js?v=<?= rawurlencode((string)@filemtime($_SERVER['DOCUMENT_ROOT'] . '/assets/js/admin.clips.js')) ?>"></script>
+
+
 
 <style>
-    /* Publish day modal (dark admin look) */
-    /* --- Table layout borrowed from days (users-style) --- */
-    .zd-clips-table-wrap {
-        margin-top: 16px;
-        border-radius: 12px;
-        overflow: visible;
-        background: var(--panel, #111318);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    /* TEMP: make thumbs big so we can clearly see poster updates */
+    .zd-clips-table .col-thumb {
+        width: 220px;
     }
 
-    table.zd-clips-table {
-        width: 100%;
-        border-collapse: collapse;
-        table-layout: fixed;
-        font-size: 0.9rem;
-    }
-
-    .zd-clips-table thead th {
-        text-align: left;
-        padding: 10px 16px;
-        background: #171922;
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--muted, #9aa7b2);
-        border-bottom: 1px solid var(--border, #1f2430);
-        white-space: nowrap;
-    }
-
-    .zd-clips-table tbody td {
-        padding: 10px 16px;
-        border-top: 1px solid var(--border, #1f2430);
-        color: var(--text, #e9eef3);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    /* Allow dropdown menu to escape the cell */
-    .zd-clips-table tbody td.col-actions {
-        overflow: visible;
-        text-overflow: initial;
-        white-space: nowrap;
-        position: relative;
-        /* safety, in case we ever move the menu here */
-    }
-
-
-    .zd-clips-table tbody tr:hover {
-        background: rgba(58, 160, 255, 0.05);
-    }
-
-    .zd-clips-table tbody tr {
-        cursor: pointer;
-    }
-
-    /* Right-align “Actions” like on days */
-    .col-actions {
-        text-align: right;
-        width: 140px;
-    }
-
-    /* Stronger blue highlight for selected rows, keeps keyboard/selection feel */
-    .zd-clips-table tbody tr.zd-selected-row {
-        background: rgba(58, 160, 255, 0.20);
-    }
-
-    .zd-publish-backdrop {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.6);
-        display: flex;
-    }
-
-
-
-    /* Thumb cell – hide any text dots under the image */
-    .zd-clips-table td.thumb-cell {
-        text-overflow: clip;
-        white-space: nowrap;
-        font-size: 0;
-        /* hides any stray text like "..." */
-    }
-
-
-
-    .zd-publish-backdrop[hidden] {
-        display: none;
-    }
-
-    .zd-publish-modal {
-        background: #111318;
-        border: 1px solid #1f2430;
-        border-radius: 12px;
-        padding: 16px 18px;
-        width: min(440px, 92vw);
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
-    }
-
-    .zd-publish-head h2 {
-        margin: 0 0 8px;
-        font-size: 18px;
-        color: #e9eef3;
-    }
-
-    .zd-publish-body {
-        font-size: 14px;
-        color: #e9eef3;
-    }
-
-    .zd-publish-checkbox {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-top: 16px;
-        font-size: 14px;
-        color: #e9eef3;
-    }
-
-    .zd-publish-note {
-        margin-top: 8px;
-        font-size: 12px;
-        color: #9aa7b2;
-    }
-
-    .zd-publish-footer {
-        margin-top: 16px;
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-    }
-
-    /* --- Sortable headers (same as days/index.php) --- */
-    .zd-sortable-header {
-        display: inline-flex;
-        align-items: center;
-        gap: 2px;
-        color: inherit;
-        text-decoration: none;
-        transition: color 0.15s ease;
-    }
-
-    .zd-sortable-header:hover,
-    .zd-sortable-header.is-active {
-        color: var(--text);
-    }
-
-    .zd-sort-icon {
+    .zd-clips-table .zd-thumb {
         display: block;
-        flex-shrink: 0;
-        transition: fill 0.15s ease, opacity 0.15s ease;
-    }
-
-    .zd-sort-icon path {
-        fill: var(--muted);
-        opacity: 0.4;
-        transition: fill 0.15s ease, opacity 0.15s ease;
-    }
-
-    .zd-sortable-header:hover .zd-sort-icon path {
-        fill: var(--text);
-        opacity: 0.6;
-    }
-
-    .zd-sortable-header.is-active.sort-asc .zd-sort-icon .zd-arrow-up,
-    .zd-sortable-header.is-active.sort-desc .zd-sort-icon .zd-arrow-down {
-        fill: var(--text);
-        opacity: 1;
-    }
-
-    /* --- Actions dropdown (⋯) --- */
-    .zd-actions-wrap {
-        position: relative;
-        display: inline-flex;
-        justify-content: flex-end;
-    }
-
-    .zd-actions-btn {
-        width: 32px;
-        height: 28px;
-        border-radius: 6px;
-        border: 1px solid var(--border, #1f2430);
-        background: #181b24;
-        color: #e9eef3;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        font-size: 18px;
-        line-height: 1;
-        padding: 0;
-    }
-
-    .zd-actions-btn:hover {
-        background: #222633;
-    }
-
-    .zd-actions-menu {
-        position: absolute;
-        right: 0;
-        top: 34px;
-        background: #111318;
-        border: 1px solid #1f2430;
+        width: 100px;
+        height: auto;
         border-radius: 8px;
-        padding: 6px 0;
-        min-width: 160px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-        display: none;
-        /* hide by default */
-        z-index: 999;
-    }
-
-    .zd-actions-wrap.open .zd-actions-menu {
-        display: block;
-    }
-
-    .zd-actions-menu a,
-    .zd-actions-menu button.zd-actions-item {
-        display: block;
-        width: 100%;
-        padding: 6px 12px;
-        color: var(--text, #e9eef3);
-        text-decoration: none;
-        font-size: 13px;
-        white-space: nowrap;
-        text-align: left;
-        background: none;
-        border: none;
-        cursor: pointer;
-    }
-
-    .zd-actions-menu a:hover,
-    .zd-actions-menu button.zd-actions-item:hover {
-        background: rgba(255, 255, 255, 0.08);
-    }
-
-
-    .zd-actions-head {
-        display: inline-flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 6px;
-        width: 100%;
-    }
-
-    /* When near bottom of viewport: open the row menu upwards instead */
-    .zd-actions-wrap.drop-up .zd-actions-menu {
-        top: auto;
-        bottom: 34px;
-        /* same offset as top, but from bottom */
-        box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.6);
-    }
-
-    /* --- Sleeker, tighter input fields for filters --- */
-
-    .zd-filters .zd-input,
-    .zd-filters .zd-select {
-        background: #0f1218;
-        border: 1px solid #1f2430;
-        color: #e9eef3;
-        padding: 4px 8px;
-        /* was something like 8-12, now tighter */
-        font-size: 13px;
-        /* slightly smaller */
-        border-radius: 6px;
-        /* subtle radius */
-        height: 28px;
-        /* uniform compact height */
-    }
-
-    /* Make text inputs match dropdown height/padding exactly */
-    .zd-filters input.zd-input[type="text"],
-    .zd-filters input.zd-input {
-        padding: 4px 8px;
-        font-size: 13px;
-        height: 28px;
-        box-sizing: border-box;
-    }
-
-    /* Make all blue buttons match filter height and center text */
-    .zd-clips-page .zd-btn,
-    .zd-clips-page .zd-btn-primary {
-        min-height: 28px;
-        height: 28px;
-        padding: 0 14px;
-        /* horizontal padding only */
-        display: inline-flex;
-        /* enables centering */
-        align-items: center;
-        /* vertical centering */
-        justify-content: center;
-        /* horizontal centering */
-        line-height: 1;
-        font-size: 13px;
-        border-radius: 6px;
-        /* same feel as filters */
-        box-sizing: border-box;
-    }
-
-    /* Normalize ALL button variants on the clips page */
-    .zd-clips-page .zd-btn,
-    .zd-clips-page .zd-btn-primary,
-    .zd-clips-page .zd-btn-secondary,
-    .zd-clips-page .zd-btn-danger,
-    .zd-clips-page .btn,
-    .zd-clips-page button {
-        height: 28px;
-        min-height: 28px;
-        padding: 0 14px;
-        font-size: 13px !important;
-        /* make sure they match */
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        line-height: 1;
-        border-radius: 6px;
-        box-sizing: border-box;
-    }
-
-
-    .zd-filters .zd-input::placeholder {
-        color: #6c7685;
-    }
-
-    .zd-filters .zd-select {
-        padding-right: 24px;
-        /* tighter select arrow spacing */
-    }
-
-    /* Buttons inside filters */
-    .zd-filters .zd-btn {
-        height: 28px;
-        padding: 0 12px;
-        font-size: 13px;
-        border-radius: 6px;
-    }
-
-    /* Compact layout for filter row */
-    .zd-filters {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 10px;
-        align-items: center;
-    }
-
-    .zd-filters>* {
-        flex-shrink: 0;
-    }
-
-
-
-    .zd-filters input.zd-input[type="text"]::placeholder {
-        font-size: 11px;
-        opacity: 0.65;
-    }
-
-    /* Limit width of Scene / Slate / Take fields */
-    .zd-filters input[name="scene"],
-    .zd-filters input[name="slate"],
-    .zd-filters input[name="take"] {
-        max-width: 55px;
-        /* fits ~4 characters */
-        width: 100%;
-        justify-self: start;
-        /* prevents stretching */
-    }
-
-    /* Selected (star) column */
-    .col-selected {
-        width: 5%;
-        text-align: center;
-        white-space: nowrap;
-    }
-
-    /* Make sure stars keep a solid size */
-    .col-selected .star {
-        width: 14px;
-        height: 14px;
-        display: inline-block;
-    }
-
-
-    .col-thumb {
-        width: 6%;
-    }
-
-    .col-scene {
-        width: 5%;
-    }
-
-    .col-slate {
-        width: 5%;
-    }
-
-    .col-take {
-        width: 4%;
-    }
-
-    .col-camera {
-        width: 4%;
-    }
-
-    .col-selected {
-        width: 6%;
-    }
-
-    .col-reel {
-        width: 8%;
-    }
-
-    .col-file {
-        width: 21%;
-    }
-
-    .col-tc {
-        width: 8%;
-    }
-
-    .col-duration {
-        width: 7%;
-    }
-
-    .col-proxy {
-        width: 10%;
-    }
-
-    /* admin only */
-    .col-actions {
-        width: 3%;
-    }
-
-    /* Equal vertical spacing for the clips header meta rows */
-    .zd-clips-head .zd-meta>div {
-        margin-top: 6px;
-    }
-
-    .zd-clips-head .zd-meta>div:first-child {
-        margin-top: 0;
+        object-fit: cover;
     }
 </style>
+
+<script type="module" defer src="/assets/js/admin.clips.js?v=<?= rawurlencode((string)@filemtime($_SERVER['DOCUMENT_ROOT'] . '/assets/js/admin.clips.js')) ?>"></script>
+
 
 
 <?php $this->end(); ?>
@@ -546,6 +122,7 @@ if ($__publish_fb) {
     // $dayLabel logic is now largely handled in controller, but we fallback safely
     $displayLabel = $is_all_days ? 'All days' : ($day_label ?? 'Day');
     ?>
+
     <div class="zd-clips-head">
         <h1>
             Clips - <?= htmlspecialchars($is_all_days ? 'All days' : ($day_label ?? 'Day')) ?>
@@ -584,6 +161,8 @@ if ($__publish_fb) {
 
         </div>
     </div>
+
+
     <?php if ($isPowerUser): ?>
         <div class="zd-actions" style="display:flex; gap:12px; align-items:center">
 
@@ -627,12 +206,7 @@ if ($__publish_fb) {
     <?php if ($isPowerUser && !$is_all_days): ?>
         <div class="zd-bulk-actions" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; font-size:13px; color:#9aa7b2;">
 
-            <button id="zd-bulk-poster"
-                class="zd-btn"
-                style="background:#3aa0ff;color:#0b0c10;"
-                disabled>
-                Generate poster for selected
-            </button>
+
 
             <div style="margin-left:auto; display:flex; align-items:center;">
                 <form id="zd-import-form"
@@ -669,53 +243,108 @@ if ($__publish_fb) {
     <?php endif; ?>
 
     <div class="zd-stack">
-        <form method="get" class="zd-filters">
-            <select class="zd-select" id="zd-day-select">
-                <option value="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/all/clips"
-                    <?= $is_all_days ? 'selected' : '' ?>>
-                    All days
-                </option>
-                <?php foreach ($all_days ?? [] as $d):
-                    $dLabel = $d['title'] ?: $d['shoot_date'];
-                    $dUrl = "/admin/projects/" . htmlspecialchars($project_uuid) . "/days/" . htmlspecialchars($d['id']) . "/clips";
-                    $isSelected = !$is_all_days && ($day_uuid === $d['id']);
-                ?>
-                    <option value="<?= $dUrl ?>" <?= $isSelected ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($dLabel) ?>
+        <form method="get" class="zd-filters zd-filters-container">
+            <div class="zd-filters-left">
+                <select class="zd-select" id="zd-day-select">
+                    <option value="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/all/clips"
+                        <?= $is_all_days ? 'selected' : '' ?>>
+                        All days
                     </option>
-                <?php endforeach; ?>
-            </select>
+                    <?php foreach ($all_days ?? [] as $d):
+                        $dLabel = $d['title'] ?: $d['shoot_date'];
+                        $dUrl = "/admin/projects/" . htmlspecialchars($project_uuid) . "/days/" . htmlspecialchars($d['id']) . "/clips";
+                        $isSelected = !$is_all_days && ($day_uuid === $d['id']);
+                    ?>
+                        <option value="<?= $dUrl ?>" <?= $isSelected ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($dLabel) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
 
-            <input class="zd-input" name="scene" value="<?= htmlspecialchars($filters['scene']) ?>" placeholder="Scene">
-            <input class="zd-input" name="slate" value="<?= htmlspecialchars($filters['slate']) ?>" placeholder="Slate">
-            <input class="zd-input" name="take" value="<?= htmlspecialchars($filters['take']) ?>" placeholder="Take">
-            <select class="zd-select" name="camera">
-                <option value="">Camera</option>
-                <?php foreach ($cameraOptions as $c): ?>
-                    <option value="<?= htmlspecialchars($c) ?>" <?= $filters['camera'] === $c ? 'selected' : '' ?>><?= htmlspecialchars($c) ?></option>
-                <?php endforeach; ?>
-            </select>
-            <select class="zd-select" name="rating">
-                <option value="">Rating</option>
-                <?php for ($i = 1; $i <= 5; $i++): ?>
-                    <option value="<?= $i ?>" <?= $filters['rating'] === (string)$i ? 'selected' : '' ?>><?= $i ?>★</option>
-                <?php endfor; ?>
-            </select>
-            <select class="zd-select" name="select">
-                <option value="">Select?</option>
-                <option value="1" <?= $filters['select'] === '1' ? 'selected' : '' ?>>Yes</option>
-                <option value="0" <?= $filters['select'] === '0' ? 'selected' : '' ?>>No</option>
-            </select>
-            <input class="zd-input" name="text" value="<?= htmlspecialchars($filters['text']) ?>" placeholder="Search file/reel">
-            <div style="display:flex;gap:8px">
-                <button class="zd-btn" type="submit">Apply</button>
-                <a class="zd-btn" href="?">Reset</a>
+                <input class="zd-input" name="scene" value="<?= htmlspecialchars($filters['scene']) ?>" placeholder="Scene">
+                <input class="zd-input" name="slate" value="<?= htmlspecialchars($filters['slate']) ?>" placeholder="Slate">
+                <input class="zd-input" name="take" value="<?= htmlspecialchars($filters['take']) ?>" placeholder="Take">
+                <select class="zd-select" name="camera">
+                    <option value="">Camera</option>
+                    <?php foreach ($cameraOptions as $c): ?>
+                        <option value="<?= htmlspecialchars($c) ?>" <?= $filters['camera'] === $c ? 'selected' : '' ?>><?= htmlspecialchars($c) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select class="zd-select" name="rating">
+                    <option value="">Rating</option>
+                    <?php for ($i = 1; $i <= 5; $i++): ?>
+                        <option value="<?= $i ?>" <?= $filters['rating'] === (string)$i ? 'selected' : '' ?>><?= $i ?>★</option>
+                    <?php endfor; ?>
+                </select>
+                <select class="zd-select" name="select">
+                    <option value="">Select?</option>
+                    <option value="1" <?= $filters['select'] === '1' ? 'selected' : '' ?>>Yes</option>
+                    <option value="0" <?= $filters['select'] === '0' ? 'selected' : '' ?>>No</option>
+                </select>
+                <input class="zd-input" name="text" value="<?= htmlspecialchars($filters['text']) ?>" placeholder="Search file/reel">
+                <div style="display:flex;gap:8px">
+                    <button class="zd-btn" type="submit">Apply</button>
+                    <a class="zd-btn" href="?">Reset</a>
+                </div>
+            </div>
+            <!-- NEW: Columns button anchored to top-right of filter row -->
+            <div class="zd-columns-wrapper">
+                <button type="button" class="zd-btn zd-btn-ghost" id="zd-columns-toggle">
+                    Columns
+                </button>
+
+                <div id="zd-columns-popup" class="zd-columns-popup">
+                    <div class="zd-columns-popup-inner">
+                        <div class="zd-columns-title">Visible columns</div>
+
+                        <label class="zd-columns-item">
+                            <input type="checkbox" data-col="scene" checked> Scene
+                        </label>
+                        <label class="zd-columns-item">
+                            <input type="checkbox" data-col="slate" checked> Slate
+                        </label>
+                        <label class="zd-columns-item">
+                            <input type="checkbox" data-col="take" checked> Take
+                        </label>
+                        <label class="zd-columns-item">
+                            <input type="checkbox" data-col="camera" checked> Camera
+                        </label>
+                        <label class="zd-columns-item">
+                            <input type="checkbox" data-col="selected" checked> Selected
+                        </label>
+                        <label class="zd-columns-item">
+                            <input type="checkbox" data-col="reel" checked> Reel
+                        </label>
+                        <label class="zd-columns-item">
+                            <input type="checkbox" data-col="file" checked> File
+                        </label>
+                        <label class="zd-columns-item">
+                            <input type="checkbox" data-col="tc" checked> TC In
+                        </label>
+                        <label class="zd-columns-item">
+                            <input type="checkbox" data-col="duration" checked> Duration
+                        </label>
+
+                        <?php if ($isPowerUser): ?>
+                            <label class="zd-columns-item">
+                                <input type="checkbox" data-col="proxy" checked> Proxy
+                            </label>
+                        <?php endif; ?>
+                    </div>
+                </div>
             </div>
         </form>
 
 
         <div class="zd-table-wrap zd-clips-table-wrap">
+
+            <div class="zd-table-toolbar-inner">
+                <div class="flex-spacer"></div>
+            </div>
+
+            <!-- MOVE TABLE INSIDE -->
             <table class="zd-table zd-clips-table">
+
                 <thead>
                     <tr>
                         <th class="col-thumb zd-resizable">
@@ -788,7 +417,7 @@ if ($__publish_fb) {
 
                         <?php if ($isPowerUser): ?>
                             <th class="col-proxy zd-resizable">
-                                <div class="th-inner">Proxy / Job</div>
+                                <div class="th-inner">Proxy</div>
                                 <div class="col-resize-handle"></div>
                             </th>
                         <?php endif; ?>
@@ -856,10 +485,10 @@ if ($__publish_fb) {
                             if ($jobState !== '') {
                                 $jobLabel = ucfirst($jobState);
                                 if ($jobStateTsNice !== '') {
-                                    $jobLabel .= ' · ' . $jobStateTsNice;
+                                    $jobLabel .= '' . $jobStateTsNice;
                                 }
                             } else {
-                                $jobLabel = 'No jobs';
+                                $jobLabel = '';
                             }
                             ?>
 
@@ -900,7 +529,6 @@ if ($__publish_fb) {
                                 <!-- Camera -->
                                 <td class="col-camera"><?= htmlspecialchars($r['camera'] ?? '') ?></td>
 
-                                <!-- Selected -->
                                 <!-- Selected -->
                                 <td class="col-selected zd-select-td" data-field="select">
                                     <?php $isSelected = (int)($r['is_select'] ?? 0) === 1; ?>
@@ -984,8 +612,7 @@ if ($__publish_fb) {
                                     <!-- Proxy / Job -->
                                     <td class="col-proxy" data-field="proxy_job">
                                         <span class="zd-meta">
-                                            <?= htmlspecialchars($proxyLabel, ENT_QUOTES, 'UTF-8') ?> ·
-                                            <?= htmlspecialchars($jobLabel, ENT_QUOTES, 'UTF-8') ?>
+                                            <?= htmlspecialchars($proxyLabel, ENT_QUOTES, 'UTF-8') ?>
                                         </span>
                                     </td>
                                 <?php endif; ?>
@@ -1002,9 +629,14 @@ if ($__publish_fb) {
                                             <div class="zd-actions-wrap">
                                                 <button class="zd-actions-btn" type="button">⋯</button>
                                                 <div class="zd-actions-menu">
-                                                    <a href="/admin/projects/<?= $project_uuid ?>/days/<?= $rowDayUuid ?>/clips/<?= $r['clip_uuid'] ?>/edit">Edit metadata</a>
+
                                                     <a href="#" data-clip-import="<?= htmlspecialchars($r['clip_uuid']) ?>">Import metadata</a>
-                                                    <a href="/admin/projects/<?= $project_uuid ?>/days/<?= $rowDayUuid ?>/clips/<?= $r['clip_uuid'] ?>/poster">Generate poster</a>
+                                                    <a href="#"
+                                                        data-clip-poster="<?= htmlspecialchars($r['clip_uuid']) ?>">
+                                                        Generate poster
+                                                    </a>
+
+
                                                     <a href="/admin/projects/<?= $project_uuid ?>/days/<?= $rowDayUuid ?>/clips/<?= $r['clip_uuid'] ?>/delete" style="color:#d62828;">Delete</a>
                                                 </div>
                                             </div>
@@ -1040,6 +672,7 @@ if ($__publish_fb) {
         </div>
     </div>
 </div>
+
 
 <!-- Publish day modal -->
 <div class="zd-publish-backdrop" id="zd-publish-backdrop" hidden>
@@ -1109,222 +742,10 @@ if ($__publish_fb) {
 </form>
 
 
-
-
 <?php $this->end(); /* end of content section */ ?>
 
 <?php $this->start('scripts'); ?>
 <?= $this->includeWithin('partials/import_csv_modal', ['feedback' => $__fb]) ?>
-
-<script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const backdrop = document.getElementById("zd-publish-backdrop");
-
-        const btnOpenPublish = document.getElementById("zd-publish-open");
-        const btnOpenUnpublish = document.getElementById("zd-unpublish-open");
-
-        const btnCancel = document.getElementById("zd-publish-cancel");
-        const btnConfirm = document.getElementById("zd-publish-confirm");
-
-        const sendEmailBlock = document.getElementById("zd-modal-email-block");
-        const sendEmailInput = document.getElementById("zd-publish-send-email");
-        const titleEl = document.getElementById("zd-modal-title");
-        const messageEl = document.getElementById("zd-modal-message");
-        const publishExtra = document.getElementById("zd-modal-publish-extra");
-
-
-        const publishForm = document.getElementById("zd-publish-form");
-        const unpublishForm = document.getElementById("zd-unpublish-form");
-        const sendField = document.getElementById("zd-publish-send-email-field");
-
-        let currentMode = "publish";
-
-        function openModal(mode) {
-            currentMode = mode;
-
-            if (mode === "publish") {
-                titleEl.textContent = "Publish day";
-                messageEl.textContent = "Are you sure you want to publish this day?";
-                btnConfirm.textContent = "Publish";
-
-                sendEmailBlock.style.display = "block";
-                publishExtra.style.display = "block";
-
-            } else {
-                titleEl.textContent = "Unpublish day";
-                messageEl.textContent = "Unpublish this day? It will no longer be visible to regular users.";
-                btnConfirm.textContent = "Unpublish";
-
-                sendEmailBlock.style.display = "none";
-                publishExtra.style.display = "none";
-            }
-
-
-            backdrop.hidden = false;
-        }
-
-        function closeModal() {
-            backdrop.hidden = true;
-        }
-
-        if (btnOpenPublish) {
-            btnOpenPublish.addEventListener("click", () => openModal("publish"));
-        }
-        if (btnOpenUnpublish) {
-            btnOpenUnpublish.addEventListener("click", () => openModal("unpublish"));
-        }
-
-        if (btnCancel) {
-            btnCancel.addEventListener("click", closeModal);
-        }
-
-        backdrop.addEventListener("click", (e) => {
-            if (e.target === backdrop) closeModal();
-        });
-
-        if (btnConfirm) {
-            btnConfirm.addEventListener("click", () => {
-                if (currentMode === "publish") {
-                    sendField.value = sendEmailInput.checked ? "1" : "0";
-                    publishForm.submit();
-                } else {
-                    unpublishForm.submit();
-                }
-            });
-        }
-    });
-</script>
-
-<script>
-    document.addEventListener('click', (e) => {
-        const btn = e.target.closest('.zd-actions-btn');
-        const wrap = btn?.closest('.zd-actions-wrap');
-
-        // Shared refs
-        const bulkPosterBtn = document.getElementById('zd-bulk-poster');
-        const importFileInput = document.getElementById('zd-import-file');
-        const importOverwrite = document.getElementById('zd-import-overwrite');
-        const importUuids = document.getElementById('zd-import-uuids');
-        const bulkDeleteForm = document.getElementById('zd-bulk-delete-form');
-        const bulkDeleteUuids = document.getElementById('zd-bulk-delete-uuids');
-
-        function getSelectedClipUuids() {
-            return Array.from(document.querySelectorAll('.zd-table tbody tr.zd-selected-row'))
-                .map(tr => tr.dataset.clipUuid)
-                .filter(Boolean);
-        }
-
-        function closeAllMenus() {
-            document.querySelectorAll('.zd-actions-wrap.open')
-                .forEach(w => {
-                    w.classList.remove('open');
-                    w.classList.remove('drop-up');
-                });
-        }
-
-        // === Open/close any ⋯ menu ===
-        if (btn && wrap) {
-            const wasOpen = wrap.classList.contains('open');
-
-            // Close everything first so we never have two open
-            closeAllMenus();
-
-            if (!wasOpen) {
-                wrap.classList.remove('drop-up');
-
-                // Auto-direction (skip header)
-                if (!wrap.classList.contains('zd-actions-wrap-head')) {
-                    const rect = wrap.getBoundingClientRect();
-                    const menuHeight = 160; // estimated dropdown height
-                    const spaceBelow = window.innerHeight - rect.bottom;
-                    const spaceAbove = rect.top;
-
-                    // Not enough room below → fold up
-                    if (spaceBelow < menuHeight && spaceAbove > menuHeight) {
-                        wrap.classList.add('drop-up');
-                    }
-                }
-
-                wrap.classList.add('open');
-            }
-
-            e.stopPropagation();
-            return;
-        }
-
-
-
-        // === Header bulk: Import metadata for selected (overwrite) ===
-        const bulkImportBtn = e.target.closest('[data-bulk-import]');
-        if (bulkImportBtn) {
-            e.preventDefault();
-            const uuids = getSelectedClipUuids();
-            if (!uuids.length) {
-                alert('No clips selected.');
-                closeAllMenus();
-                return;
-            }
-            if (!importFileInput || !importOverwrite || !importUuids) return;
-
-            importOverwrite.checked = true;
-            importUuids.value = uuids.join(',');
-            importFileInput.click(); // open file picker
-            closeAllMenus();
-            return;
-        }
-
-        // === Header bulk: Generate posters for selected ===
-        const bulkPosterMenu = e.target.closest('[data-bulk-poster]');
-        if (bulkPosterMenu) {
-            e.preventDefault();
-            if (bulkPosterBtn) bulkPosterBtn.click();
-            closeAllMenus();
-            return;
-        }
-
-        // === Header bulk: Delete selected ===
-        const bulkDeleteBtn = e.target.closest('[data-bulk-delete]');
-        if (bulkDeleteBtn) {
-            e.preventDefault();
-            const uuids = getSelectedClipUuids();
-            if (!uuids.length) {
-                alert('No clips selected.');
-                closeAllMenus();
-                return;
-            }
-            if (!bulkDeleteForm || !bulkDeleteUuids) return;
-
-            if (!confirm('Delete ' + uuids.length + ' selected clip(s)?')) {
-                closeAllMenus();
-                return;
-            }
-            bulkDeleteUuids.value = uuids.join(',');
-            bulkDeleteForm.submit();
-            return;
-        }
-
-        // === Per-clip: Import metadata for THIS clip only ===
-        const clipImportLink = e.target.closest('[data-clip-import]');
-        if (clipImportLink) {
-            e.preventDefault();
-            const clipUuid = clipImportLink.getAttribute('data-clip-import');
-            if (!clipUuid || !importFileInput || !importOverwrite || !importUuids) return;
-
-            importOverwrite.checked = true;
-            importUuids.value = clipUuid;
-            importFileInput.click(); // same CSV form, limited to single clip
-            closeAllMenus();
-            return;
-        }
-
-        // === Click elsewhere: close any open menus ===
-        closeAllMenus();
-    });
-</script>
-
-
-
-
 
 
 <?php $this->end(); ?>

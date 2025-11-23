@@ -16,16 +16,19 @@
 }
 
 .zd-filters {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(120px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 12px 0;
+  align-items: center;
 }
 
 .zd-table {
-  width: 100%;
+  width: auto;
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: auto;
+  min-width: unset;
 }
 .zd-table th,
 .zd-table td {
@@ -111,28 +114,107 @@
   cursor: not-allowed;
 }
 
-/* Force a clean, single-column layout on this page only */
+/* CRITICAL FIX: Override parent container width constraint */
 .zd-clips-page {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  column-count: 1; /* defensive against legacy column layouts */
+  display: block;
+  width: 100%;
+  max-width: none; /* Remove the 1280px limit from .zd-container */
+  margin-left: calc(-1 * var(--container-padding, 16px)); /* Break out left */
+  margin-right: calc(-1 * var(--container-padding, 16px)); /* Break out right */
+  padding-left: var(
+    --container-padding,
+    16px
+  ); /* Add back padding for headers */
+  padding-right: var(--container-padding, 16px);
+  overflow-x: auto; /* Scroll when content is too wide */
+  overflow-y: visible;
+}
+
+/* Also ensure the parent .zd-container doesn't constrain us */
+.zd-main:has(.zd-clips-page) .zd-container {
+  max-width: none;
+  padding: 0; /* Remove padding since we handle it in .zd-clips-page */
+}
+
+/* New / Fixed Code */
+.zd-clips-head,
+.zd-actions,
+.zd-bulk-actions,
+.zd-filters-container,
+.zd-pager {
+  /* Allow JS to set the width wider than the screen */
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box; /* Ensures padding doesn't break alignment */
+
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 12px;
+}
+
+/* 1. The main container spreads the Left Group and Right Button apart */
+.zd-filters-container {
+  display: flex;
+  justify-content: space-between; /* Pushes Left Group to start, Columns button to end */
+  align-items: center; /* Vertically center everything */
+  gap: 16px;
+  width: 100%;
+}
+
+/* 2. The new wrapper keeps the actual inputs tight together */
+.zd-filters-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px; /* Nice tight gap between inputs */
+  align-items: center;
+}
+
+/* 3. Ensure the Columns wrapper doesn't shrink */
+.zd-columns-wrapper {
+  margin-left: auto; /* Extra safety to push it right if flex-wrap happens */
+  flex-shrink: 0;
+}
+/* Make sure these sections match table width exactly */
+.zd-clips-table-wrap {
+  width: fit-content;
+  max-width: none;
+  margin: 16px auto;
+  min-width: 0;
+}
+
+/* Head section should match table width */
+.zd-clips-head {
+  display: block;
+  margin: 6px auto 12px;
+}
+
+/* Wrapper to contain filters + columns button as one unit */
+.zd-filters-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%; /* Will be set by JS to match table */
 }
 
 /* Head block above filters/table */
 .zd-clips-head {
-  grid-column: 1 / -1;
-  column-span: all;
   margin: 6px 0 8px;
 }
 
 /* stack helpers */
 .zd-stack {
   display: block;
-  float: none;
+  width: 100%;
 }
-.zd-table-wrap {
-  clear: both;
+
+/* CRITICAL: Table wrapper centering that allows full expansion */
+.zd-table-wrap,
+.zd-clips-table-wrap {
+  width: fit-content;
+  max-width: none; /* Let table be as wide as it needs */
+  margin: 16px auto;
+  min-width: 0;
 }
 
 /* multi-select styling */
@@ -202,8 +284,8 @@ td[data-edit="take"] .zd-inline-input {
   outline-offset: 2px;
 }
 .star {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   display: block;
   transition: transform 0.08s ease, opacity 0.12s ease;
 }
@@ -222,7 +304,7 @@ td[data-edit="take"] .zd-inline-input {
 
 /* Nice filename truncation for tighter layouts */
 .col-file .filename {
-  max-width: 34vw; /* tweak as you like */
+  max-width: 34vw;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -235,8 +317,8 @@ td[data-edit="take"] .zd-inline-input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 16px; /* controls height & width */
-  border-radius: 8px; /* pill shape */
+  padding: 6px 16px;
+  border-radius: 8px;
   font-size: 14px;
   line-height: 1.1;
   border: none;
@@ -244,7 +326,496 @@ td[data-edit="take"] .zd-inline-input {
   box-sizing: border-box;
 }
 
-/* Make sure anchors don't get weird default link styles */
 .zd-actions a.zd-btn {
   text-decoration: none;
+}
+
+/* ===== INLINE STYLES FROM PHP (consolidated here) ===== */
+
+/* Table layout */
+.zd-clips-table-wrap {
+  border-radius: 12px;
+  overflow: visible;
+  background: var(--panel, #111318);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+table.zd-clips-table {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.zd-clips-table thead th {
+  text-align: left;
+  padding: 10px 16px;
+  background: #171922;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #9aa7b2);
+  border-bottom: 1px solid var(--border, #1f2430);
+  white-space: nowrap;
+}
+
+.zd-clips-table tbody td {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border, #1f2430);
+  color: var(--text, #e9eef3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zd-clips-table tbody td.col-actions {
+  overflow: visible;
+  text-overflow: initial;
+  white-space: nowrap;
+  position: relative;
+}
+
+.zd-clips-table tbody tr:hover {
+  background: rgba(58, 160, 255, 0.05);
+}
+
+.zd-clips-table tbody tr {
+  cursor: pointer;
+}
+
+.col-actions {
+  text-align: right;
+  width: 140px;
+}
+
+.zd-clips-table tbody tr.zd-selected-row {
+  background: rgba(58, 160, 255, 0.2);
+}
+
+.zd-clips-table td.thumb-cell {
+  text-overflow: clip;
+  white-space: nowrap;
+  font-size: 0;
+}
+
+/* Publish modal */
+.zd-publish-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+}
+
+.zd-publish-backdrop[hidden] {
+  display: none;
+}
+
+.zd-publish-modal {
+  background: #111318;
+  border: 1px solid #1f2430;
+  border-radius: 12px;
+  padding: 16px 18px;
+  width: min(440px, 92vw);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+}
+
+.zd-publish-head h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: #e9eef3;
+}
+
+.zd-publish-body {
+  font-size: 14px;
+  color: #e9eef3;
+}
+
+.zd-publish-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 14px;
+  color: #e9eef3;
+}
+
+.zd-publish-footer {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Sortable headers */
+.zd-sortable-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.zd-sortable-header:hover,
+.zd-sortable-header.is-active {
+  color: var(--text);
+}
+
+.zd-sort-icon {
+  display: block;
+  flex-shrink: 0;
+  transition: fill 0.15s ease, opacity 0.15s ease;
+}
+
+.zd-sort-icon path {
+  fill: var(--muted);
+  opacity: 0.4;
+  transition: fill 0.15s ease, opacity 0.15s ease;
+}
+
+.zd-sortable-header:hover .zd-sort-icon path {
+  fill: var(--text);
+  opacity: 0.6;
+}
+
+.zd-sortable-header.is-active.sort-asc .zd-sort-icon .zd-arrow-up,
+.zd-sortable-header.is-active.sort-desc .zd-sort-icon .zd-arrow-down {
+  fill: var(--text);
+  opacity: 1;
+}
+
+/* Actions dropdown */
+.zd-actions-wrap {
+  position: relative;
+  display: inline-flex;
+  justify-content: flex-end;
+}
+
+.zd-actions-btn {
+  width: 32px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #1f2430);
+  background: #181b24;
+  color: #e9eef3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+}
+
+.zd-actions-btn:hover {
+  background: #222633;
+}
+
+.zd-actions-menu {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  background: #111318;
+  border: 1px solid #1f2430;
+  border-radius: 8px;
+  padding: 6px 0;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  display: none;
+  z-index: 999;
+}
+
+.zd-actions-wrap.open .zd-actions-menu {
+  display: block;
+}
+
+.zd-actions-menu a,
+.zd-actions-menu button.zd-actions-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  color: var(--text, #e9eef3);
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.zd-actions-menu a:hover,
+.zd-actions-menu button.zd-actions-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.zd-actions-head {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 100%;
+}
+
+.zd-actions-wrap.drop-up .zd-actions-menu {
+  top: auto;
+  bottom: 34px;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.6);
+}
+
+/* Compact filters */
+.zd-filters .zd-input,
+.zd-filters .zd-select {
+  background: #0f1218;
+  border: 1px solid #1f2430;
+  color: #e9eef3;
+  padding: 4px 8px;
+  font-size: 13px;
+  border-radius: 6px;
+  height: 28px;
+}
+
+.zd-filters input.zd-input[type="text"],
+.zd-filters input.zd-input {
+  padding: 4px 8px;
+  font-size: 13px;
+  height: 28px;
+  box-sizing: border-box;
+}
+
+.zd-clips-page .zd-btn,
+.zd-clips-page .zd-btn-primary,
+.zd-clips-page .zd-btn-secondary,
+.zd-clips-page .zd-btn-danger,
+.zd-clips-page .btn,
+.zd-clips-page button {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 14px;
+  font-size: 13px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.zd-filters .zd-input::placeholder {
+  color: #6c7685;
+}
+
+.zd-filters .zd-select {
+  padding-right: 24px;
+}
+
+.zd-filters .zd-btn {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.zd-filters > * {
+  flex-shrink: 0;
+}
+
+.zd-filters input.zd-input[type="text"]::placeholder {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.zd-filters input[name="scene"],
+.zd-filters input[name="slate"],
+.zd-filters input[name="take"] {
+  max-width: 55px;
+  width: 100%;
+}
+
+/* --- FIX 1: Remove the viewport width restriction --- */
+/* Old code: max-width: 34vw; */
+.col-file .filename {
+  max-width: 100%; /* Let the TD parent control the width */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+table.zd-clips-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 1035px; /* Adjust this value to your needs */
+}
+
+/* --- FIX 2: Add max-width to force truncation --- */
+/* We add max-width matching the width to force the browser to respect the size */
+
+.col-thumb {
+  width: 90px;
+  min-width: 90px;
+  max-width: 90px; /* Add this */
+}
+.col-scene {
+  width: 50px;
+  min-width: 50px;
+  max-width: 50px; /* Add this */
+}
+.col-slate {
+  width: 50px;
+  min-width: 50px;
+  max-width: 50px; /* Add this */
+}
+.col-take {
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px; /* Add this */
+}
+.col-camera {
+  width: 30px;
+  min-width: 30px;
+  max-width: 30px; /* Add this */
+}
+.col-selected {
+  width: 70px;
+  min-width: 70px;
+  max-width: 70px; /* Add this */
+  text-align: center;
+}
+.col-reel {
+  width: 90px;
+  min-width: 90px;
+  max-width: 90px; /* Add this */
+}
+.col-file {
+  width: 230px;
+  min-width: 230px;
+  max-width: 230px; /* CRITICAL: This forces the long filename to cut off */
+}
+.col-tc {
+  width: 75px;
+  min-width: 75px;
+  max-width: 75px; /* Add this */
+}
+/* For hidden columns, keep width 0 */
+.col-duration {
+  width: 60px;
+  min-width: 60px;
+  max-width: 60px;
+  overflow: hidden;
+}
+.col-proxy {
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  overflow: hidden;
+}
+.col-actions {
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px; /* Add this */
+  text-align: right;
+}
+.zd-clips-head .zd-meta > div {
+  margin-top: 6px;
+}
+
+.zd-clips-head .zd-meta > div:first-child {
+  margin-top: 0;
+}
+
+/* Hide columns */
+.zd-clips-page.hide-col-scene .col-scene {
+  display: none;
+}
+.zd-clips-page.hide-col-slate .col-slate {
+  display: none;
+}
+.zd-clips-page.hide-col-take .col-take {
+  display: none;
+}
+.zd-clips-page.hide-col-camera .col-camera {
+  display: none;
+}
+.zd-clips-page.hide-col-selected .col-selected {
+  display: none;
+}
+.zd-clips-page.hide-col-reel .col-reel {
+  display: none;
+}
+.zd-clips-page.hide-col-file .col-file {
+  display: none;
+}
+.zd-clips-page.hide-col-tc .col-tc {
+  display: none;
+}
+.zd-clips-page.hide-col-duration .col-duration {
+  display: none;
+}
+.zd-clips-page.hide-col-proxy .col-proxy {
+  display: none;
+}
+.zd-clips-page.hide-col-actions .col-actions {
+  display: none;
+}
+
+/* Columns dropdown */
+.zd-columns-wrapper {
+  position: relative;
+  flex-shrink: 0; /* Don't compress the button */
+  z-index: 50;
+}
+
+.zd-btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(154, 167, 178, 0.5);
+  color: #e9eef3;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.zd-btn-ghost:hover {
+  background: rgba(154, 167, 178, 0.1);
+}
+
+.zd-columns-popup {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--panel, #111318);
+  border: 1px solid var(--border, #1f2430);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 8px 10px;
+  min-width: 190px;
+  z-index: 40;
+  display: none;
+}
+
+.zd-columns-popup.is-open {
+  display: block;
+}
+
+.zd-columns-popup-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #e9eef3;
+}
+
+.zd-columns-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--muted, #9aa7b2);
+}
+
+.zd-columns-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.zd-columns-item input[type="checkbox"] {
+  accent-color: #3aa0ff;
 }

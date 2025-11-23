@@ -115,14 +115,44 @@ final class DayConverterController
     {
         $this->jsonHeaders();
 
-        // CSRF
+        // CSRF (accept per-day, "all" token, or any matching token in the converter bucket)
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
         $inputToken = $_POST['csrf_token'] ?? '';
-        $expected   = $_SESSION['csrf_tokens']['converter'][$dayUuid] ?? '';
-        if (!$expected || !hash_equals($expected, $inputToken)) {
+
+        $bucket   = $_SESSION['csrf_tokens']['converter'] ?? [];
+        $matched  = false;
+
+        if (is_array($bucket)) {
+            // 1) Exact day match
+            if (!empty($bucket[$dayUuid]) && hash_equals($bucket[$dayUuid], $inputToken)) {
+                $matched = true;
+            }
+            // 2) Shared "all" token (clips All-days view)
+            elseif (!empty($bucket['all']) && hash_equals($bucket['all'], $inputToken)) {
+                $matched = true;
+            } else {
+                // 3) Fallback: accept any value in this bucket that equals the token
+                foreach ($bucket as $val) {
+                    if (is_string($val) && hash_equals($val, $inputToken)) {
+                        $matched = true;
+                        break;
+                    }
+                }
+            }
+        } elseif (is_string($bucket) && hash_equals($bucket, $inputToken)) {
+            // Legacy: single string
+            $matched = true;
+        }
+
+        if (!$matched) {
             http_response_code(419);
             echo json_encode(['ok' => false, 'error' => 'CSRF token mismatch']);
             return;
         }
+
 
         if (!$this->canManageDay($projectUuid)) {
             http_response_code(403);
@@ -358,14 +388,40 @@ final class DayConverterController
     {
         $this->jsonHeaders();
 
-        // CSRF
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        // CSRF (same rules as generatePoster)
         $inputToken = $_POST['csrf_token'] ?? '';
-        $expected   = $_SESSION['csrf_tokens']['converter'][$dayUuid] ?? '';
-        if (!$expected || !hash_equals($expected, $inputToken)) {
+
+        $bucket   = $_SESSION['csrf_tokens']['converter'] ?? [];
+        $matched  = false;
+
+        if (is_array($bucket)) {
+            if (!empty($bucket[$dayUuid]) && hash_equals($bucket[$dayUuid], $inputToken)) {
+                $matched = true;
+            } elseif (!empty($bucket['all']) && hash_equals($bucket['all'], $inputToken)) {
+                $matched = true;
+            } else {
+                foreach ($bucket as $val) {
+                    if (is_string($val) && hash_equals($val, $inputToken)) {
+                        $matched = true;
+                        break;
+                    }
+                }
+            }
+        } elseif (is_string($bucket) && hash_equals($bucket, $inputToken)) {
+            $matched = true;
+        }
+
+        if (!$matched) {
             http_response_code(419);
             echo json_encode(['ok' => false, 'error' => 'CSRF token mismatch']);
             return;
         }
+
+
 
         if (!$this->canManageDay($projectUuid)) {
             http_response_code(403);
@@ -375,8 +431,24 @@ final class DayConverterController
 
         $pdo = DB::pdo();
 
-        // Find poster-missing clips for day
-        $sql = "
+        // Global "force" flag for this bulk call (0 or 1)
+        $forceGlobal = ((int)($_POST['force'] ?? 0) === 1);
+
+        // --- 1) Check if we got an explicit selection from clips page ---
+        $clipUuidsRaw = trim($_POST['clip_uuids'] ?? '');
+        $clipUuidList = array_values(array_filter(array_map('trim', explode(',', $clipUuidsRaw))));
+        $rows = [];
+
+        if (!empty($clipUuidList)) {
+            // Use the *selected* clips
+            foreach ($clipUuidList as $uuid) {
+                if ($uuid !== '') {
+                    $rows[] = ['clip_uuid' => $uuid];
+                }
+            }
+        } else {
+            // Fallback: old behaviour – all clips on this day that are missing a poster
+            $sql = "
             SELECT bin_to_uuid(c.id,1) AS clip_uuid, c.duration_ms
             FROM clips c
             WHERE c.project_id = uuid_to_bin(:p_uuid,1)
@@ -387,28 +459,59 @@ final class DayConverterController
               )
             ORDER BY c.created_at ASC
         ";
-        $st = $pdo->prepare($sql);
-        $st->execute([':p_uuid' => $projectUuid, ':d_uuid' => $dayUuid]);
-        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+            $st = $pdo->prepare($sql);
+            $st->execute([':p_uuid' => $projectUuid, ':d_uuid' => $dayUuid]);
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+        }
 
-        // We’ll process sequentially (CPU-friendly)
         $ok = 0;
         $fail = 0;
         $skipped = 0;
-        foreach ($rows as $r) {
-            $_POST['clip_uuid'] = $r['clip_uuid'];
-            $_POST['force']     = 0;
-            // Call our own method (without headers) by factoring out logic — for brevity we’ll just duplicate minimal flow:
-            ob_start();
-            $this->generatePoster($projectUuid, $dayUuid);
-            $resp = json_decode(ob_get_clean() ?: '{}', true);
-            if (($resp['ok'] ?? false) === true) $ok++;
-            else if (($resp['skipped'] ?? false) === true) $skipped++;
-            else $fail++;
+
+        if (empty($rows)) {
+            echo json_encode([
+                'ok'      => true,
+                'done'    => 0,
+                'failed'  => 0,
+                'skipped' => 0,
+            ]);
+            return;
         }
 
-        echo json_encode(['ok' => true, 'done' => $ok, 'failed' => $fail, 'skipped' => $skipped]);
+        // --- 2) Loop rows and reuse generatePoster() internally ---
+        foreach ($rows as $r) {
+            // Prepare per-call POST payload
+            $_POST['clip_uuid']  = $r['clip_uuid'];
+            $_POST['force']      = $forceGlobal ? 1 : 0;
+            $_POST['csrf_token'] = $inputToken; // keep the same validated token
+
+            ob_start();
+            $this->generatePoster($projectUuid, $dayUuid);
+            $respJson = ob_get_clean();
+            $resp = json_decode($respJson ?: '{}', true);
+
+            if (!is_array($resp)) {
+                $fail++;
+                continue;
+            }
+
+            if (!empty($resp['skipped'])) {
+                $skipped++;
+            } elseif (!empty($resp['ok'])) {
+                $ok++;
+            } else {
+                $fail++;
+            }
+        }
+
+        echo json_encode([
+            'ok'      => true,
+            'done'    => $ok,
+            'failed'  => $fail,
+            'skipped' => $skipped,
+        ]);
     }
+
 
     /**
      * Pull metadata (duration_ms, fps, tc_start) for a clip and write it to DB.
@@ -429,12 +532,27 @@ final class DayConverterController
 
         // CSRF (reuse same token bucket as generatePoster / index)
         $inputToken = $_POST['csrf_token'] ?? '';
-        $expected   = $_SESSION['csrf_tokens']['converter'][$dayUuid] ?? '';
+
+        $bucket   = $_SESSION['csrf_tokens']['converter'] ?? [];
+        $expected = '';
+
+        if (is_array($bucket)) {
+            if (!empty($bucket[$dayUuid])) {
+                $expected = $bucket[$dayUuid];
+            } elseif (!empty($bucket['all'])) {
+                $expected = $bucket['all'];
+            }
+        } elseif (is_string($bucket)) {
+            $expected = $bucket;
+        }
+
         if (!$expected || !hash_equals($expected, $inputToken)) {
             http_response_code(419);
             echo json_encode(['ok' => false, 'error' => 'CSRF token mismatch']);
             return;
         }
+
+
 
         // Auth guard: same rule as poster
         if (!$this->canManageDay($projectUuid)) {
