@@ -13,6 +13,14 @@
 /** @var string $day_label */
 /** @var array $project */
 
+// Power-user status
+$isSuperuser    = (int)($isSuperuser    ?? 0);
+$isProjectAdmin = (int)($isProjectAdmin ?? 0);
+$isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
+
+// Column count for the table (power users see an extra Proxy/Job column)
+$colCount = $isPowerUser ? 12 : 11;
+
 // Expect $project_uuid and $day_uuid from the controller
 $projectUuidSafe = htmlspecialchars($project_uuid ?? '');
 $dayUuidSafe     = htmlspecialchars($day_uuid ?? '');
@@ -424,11 +432,84 @@ function zd_sort_link(string $key, string $label, array $filters): string
     .zd-filters input[name="scene"],
     .zd-filters input[name="slate"],
     .zd-filters input[name="take"] {
-        max-width: 60px;
+        max-width: 55px;
         /* fits ~4 characters */
         width: 100%;
         justify-self: start;
         /* prevents stretching */
+    }
+
+    /* Selected (star) column */
+    .col-selected {
+        width: 5%;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    /* Make sure stars keep a solid size */
+    .col-selected .star {
+        width: 14px;
+        height: 14px;
+        display: inline-block;
+    }
+
+
+    .col-thumb {
+        width: 6%;
+    }
+
+    .col-scene {
+        width: 5%;
+    }
+
+    .col-slate {
+        width: 5%;
+    }
+
+    .col-take {
+        width: 4%;
+    }
+
+    .col-camera {
+        width: 4%;
+    }
+
+    .col-selected {
+        width: 6%;
+    }
+
+    .col-reel {
+        width: 8%;
+    }
+
+    .col-file {
+        width: 21%;
+    }
+
+    .col-tc {
+        width: 8%;
+    }
+
+    .col-duration {
+        width: 7%;
+    }
+
+    .col-proxy {
+        width: 10%;
+    }
+
+    /* admin only */
+    .col-actions {
+        width: 3%;
+    }
+
+    /* Equal vertical spacing for the clips header meta rows */
+    .zd-clips-head .zd-meta>div {
+        margin-top: 6px;
+    }
+
+    .zd-clips-head .zd-meta>div:first-child {
+        margin-top: 0;
     }
 </style>
 
@@ -456,7 +537,9 @@ if ($__publish_fb) {
     data-project="<?= htmlspecialchars($project_uuid) ?>"
     data-day="<?= htmlspecialchars($day_uuid) ?>"
     data-converter-csrf="<?= htmlspecialchars($converter_csrf ?? '') ?>"
-    data-quick-csrf="<?= htmlspecialchars($quick_csrf ?? '') ?>">
+    data-quick-csrf="<?= htmlspecialchars($quick_csrf ?? '') ?>"
+    data-can-edit="<?= $isPowerUser ? '1' : '0' ?>">
+
 
 
     <?php
@@ -492,40 +575,48 @@ if ($__publish_fb) {
                 ·
                 Runtime: <span id="zd-total-runtime">00:00:00:00</span>
             </div>
+            <div class="zd-meta zd-meta-selected">
+                <span id="zd-selected-count">0 selected</span>
+                ·
+                Selected runtime:
+                <span id="zd-selected-runtime">00:00:00:00</span>
+            </div>
+
         </div>
     </div>
-    <div class="zd-actions" style="display:flex; gap:12px; align-items:center">
+    <?php if ($isPowerUser): ?>
+        <div class="zd-actions" style="display:flex; gap:12px; align-items:center">
 
-        <!-- Add clips -->
-        <a class="zd-btn zd-btn-primary"
-            href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/upload">
-            + Add clips
-        </a>
+            <!-- Add clips -->
+            <a class="zd-btn zd-btn-primary"
+                href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/upload">
+                + Add clips
+            </a>
 
-        <!-- Publish -->
-        <?php if (!$dayIsPublished): ?>
-            <button type="button"
-                class="zd-btn zd-btn-primary"
-                id="zd-publish-open">
-                Publish
-            </button>
-        <?php else: ?>
-            <button type="button"
-                class="zd-btn"
-                id="zd-unpublish-open">
-                Unpublish
-            </button>
+            <!-- Publish / Unpublish -->
+            <?php if (!$dayIsPublished): ?>
+                <button type="button"
+                    class="zd-btn zd-btn-primary"
+                    id="zd-publish-open">
+                    Publish
+                </button>
+            <?php else: ?>
+                <button type="button"
+                    class="zd-btn"
+                    id="zd-unpublish-open">
+                    Unpublish
+                </button>
+            <?php endif; ?>
 
-        <?php endif; ?>
+            <!-- Delete -->
+            <a class="zd-btn zd-btn-danger"
+                href="/admin/projects/<?= htmlspecialchars($project['project_uuid'] ?? $project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/delete">
+                Delete day
+            </a>
 
+        </div>
+    <?php endif; ?>
 
-        <!-- Delete -->
-        <a class="zd-btn zd-btn-danger"
-            href="/admin/projects/<?= htmlspecialchars($project['project_uuid'] ?? $project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/delete">
-            Delete day
-        </a>
-
-    </div>
     <?php if (!empty($__publish_fb['published'])): ?>
         <div class="zd-flash-ok">
             Day published<?= !empty($__publish_fb['send_email']) ? ' (Email planned)' : '' ?>.
@@ -533,55 +624,49 @@ if ($__publish_fb) {
     <?php endif; ?>
 
 
+    <?php if ($isPowerUser && !$is_all_days): ?>
+        <div class="zd-bulk-actions" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; font-size:13px; color:#9aa7b2;">
 
-    <div class="zd-bulk-actions" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; font-size:13px; color:#9aa7b2;">
-        <div style="display:flex; flex-direction:column; line-height:1.3; min-width:140px;">
-            <div id="zd-selected-count">0 selected</div>
-            <div>
-                Selected runtime:
-                <span id="zd-selected-runtime">00:00:00:00</span>
+            <button id="zd-bulk-poster"
+                class="zd-btn"
+                style="background:#3aa0ff;color:#0b0c10;"
+                disabled>
+                Generate poster for selected
+            </button>
+
+            <div style="margin-left:auto; display:flex; align-items:center;">
+                <form id="zd-import-form"
+                    method="post"
+                    action="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/import_csv"
+                    enctype="multipart/form-data"
+                    style="display:flex; gap:8px; align-items:center; background:#111318; border:1px solid #1f2430; border-radius:10px; padding:6px 10px; font-size:13px; color:#9aa7b2;">
+                    <input type="hidden" name="_csrf" value="<?= \App\Support\Csrf::token() ?>">
+                    <!-- NEW: populated by JS with comma-separated clip UUIDs when selection > 0 -->
+                    <input type="hidden" id="zd-import-uuids" name="limit_to_uuids" value="">
+
+                    <label style="display:flex; flex-direction:column; cursor:pointer;">
+                        <span style="font-size:11px; color:#9aa7b2;">Resolve CSV</span>
+                        <input id="zd-import-file"
+                            type="file"
+                            name="csv_file"
+                            accept=".csv,text/csv"
+                            style="font-size:12px; color:#e9eef3; background:#0f1218; border:1px solid #1f2430; border-radius:6px; padding:4px 6px; min-width:180px;">
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; margin-left:8px;">
+                        <input type="checkbox" name="overwrite" id="zd-import-overwrite" value="1" />
+                        <span>Overwrite existing values</span>
+                    </label>
+                    <button id="zd-import-btn"
+                        type="submit"
+                        class="zd-btn"
+                        title="Import metadata"
+                        style="background:#3aa0ff;color:#0b0c10;">
+                        Import metadata
+                    </button>
+                </form>
             </div>
         </div>
-
-        <button id="zd-bulk-poster"
-            class="zd-btn"
-            style="background:#3aa0ff;color:#0b0c10;"
-            disabled>
-            Generate poster for selected
-        </button>
-
-        <div style="margin-left:auto; display:flex; align-items:center;">
-            <form id="zd-import-form"
-                method="post"
-                action="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/import_csv"
-                enctype="multipart/form-data"
-                style="display:flex; gap:8px; align-items:center; background:#111318; border:1px solid #1f2430; border-radius:10px; padding:6px 10px; font-size:13px; color:#9aa7b2;">
-                <input type="hidden" name="_csrf" value="<?= \App\Support\Csrf::token() ?>">
-                <!-- NEW: populated by JS with comma-separated clip UUIDs when selection > 0 -->
-                <input type="hidden" id="zd-import-uuids" name="limit_to_uuids" value="">
-
-                <label style="display:flex; flex-direction:column; cursor:pointer;">
-                    <span style="font-size:11px; color:#9aa7b2;">Resolve CSV</span>
-                    <input id="zd-import-file"
-                        type="file"
-                        name="csv_file"
-                        accept=".csv,text/csv"
-                        style="font-size:12px; color:#e9eef3; background:#0f1218; border:1px solid #1f2430; border-radius:6px; padding:4px 6px; min-width:180px;">
-                </label>
-                <label style="display:flex; align-items:center; gap:6px; margin-left:8px;">
-                    <input type="checkbox" name="overwrite" id="zd-import-overwrite" value="1" />
-                    <span>Overwrite existing values</span>
-                </label>
-                <button id="zd-import-btn"
-                    type="submit"
-                    class="zd-btn"
-                    title="Import metadata"
-                    style="background:#3aa0ff;color:#0b0c10;">
-                    Import metadata
-                </button>
-            </form>
-        </div>
-    </div>
+    <?php endif; ?>
 
     <div class="zd-stack">
         <form method="get" class="zd-filters">
@@ -633,51 +718,160 @@ if ($__publish_fb) {
             <table class="zd-table zd-clips-table">
                 <thead>
                     <tr>
-                        <th>Thumb</th>
-                        <th><?= zd_sort_link('scene',    'Scene',  $filters) ?></th>
-                        <th><?= zd_sort_link('slate',    'Slate',  $filters) ?></th>
-                        <th><?= zd_sort_link('take',     'Take',   $filters) ?></th>
-                        <th><?= zd_sort_link('camera',   'Cam',    $filters) ?></th>
-                        <th><?= zd_sort_link('select', 'Selected', $filters) ?></th>
-                        <th><?= zd_sort_link('reel',     'Reel',   $filters) ?></th>
-                        <th><?= zd_sort_link('file',     'File',   $filters) ?></th>
-                        <th><?= zd_sort_link('tc_start', 'TC In',  $filters) ?></th>
-                        <th><?= zd_sort_link('duration', 'Dur',    $filters) ?></th>
-                        <th>Proxy / Job</th>
+                        <th class="col-thumb zd-resizable">
+                            <div class="th-inner">Thumb</div>
+                            <div class="col-resize-handle"></div>
+                        </th>
+
+                        <th class="col-scene zd-resizable">
+                            <div class="th-inner">
+                                <?= zd_sort_link('scene', 'Scene', $filters) ?>
+                            </div>
+                            <div class="col-resize-handle"></div>
+                        </th>
+
+                        <th class="col-slate zd-resizable">
+                            <div class="th-inner">
+                                <?= zd_sort_link('slate', 'Slate', $filters) ?>
+                            </div>
+                            <div class="col-resize-handle"></div>
+                        </th>
+
+                        <th class="col-take zd-resizable">
+                            <div class="th-inner">
+                                <?= zd_sort_link('take', 'Take', $filters) ?>
+                            </div>
+                            <div class="col-resize-handle"></div>
+                        </th>
+
+                        <th class="col-camera zd-resizable">
+                            <div class="th-inner">
+                                <?= zd_sort_link('camera', 'Cam', $filters) ?>
+                            </div>
+                            <div class="col-resize-handle"></div>
+                        </th>
+
+                        <th class="col-selected zd-resizable">
+                            <div class="th-inner">
+                                <?= zd_sort_link('select', 'Selected', $filters) ?>
+                            </div>
+                            <div class="col-resize-handle"></div>
+                        </th>
+
+                        <th class="col-reel zd-resizable">
+                            <div class="th-inner">
+                                <?= zd_sort_link('reel', 'Reel', $filters) ?>
+                            </div>
+                            <div class="col-resize-handle"></div>
+                        </th>
+
+                        <th class="col-file zd-resizable">
+                            <div class="th-inner">
+                                <?= zd_sort_link('file', 'File', $filters) ?>
+                            </div>
+                            <div class="col-resize-handle"></div>
+                        </th>
+
+                        <th class="col-tc zd-resizable">
+                            <div class="th-inner">
+                                <?= zd_sort_link('tc_start', 'TC In', $filters) ?>
+                            </div>
+                            <div class="col-resize-handle"></div>
+                        </th>
+
+                        <th class="col-duration zd-resizable">
+                            <div class="th-inner">
+                                <?= zd_sort_link('duration', 'Dur', $filters) ?>
+                            </div>
+                            <div class="col-resize-handle"></div>
+                        </th>
+
+                        <?php if ($isPowerUser): ?>
+                            <th class="col-proxy zd-resizable">
+                                <div class="th-inner">Proxy / Job</div>
+                                <div class="col-resize-handle"></div>
+                            </th>
+                        <?php endif; ?>
+
                         <th class="col-actions">
                             <div class="zd-actions-head">
                                 <span>Actions</span>
-                                <div class="zd-actions-wrap zd-actions-wrap-head">
-                                    <button class="zd-actions-btn" type="button">⋯</button>
-                                    <div class="zd-actions-menu">
-                                        <button type="button" class="zd-actions-item" data-bulk-import>
-                                            Import metadata for selected (overwrite)
-                                        </button>
-                                        <button type="button" class="zd-actions-item" data-bulk-poster>
-                                            Generate posters for selected
-                                        </button>
-                                        <button type="button" class="zd-actions-item" data-bulk-delete>
-                                            Delete selected
-                                        </button>
+
+                                <?php if ($isPowerUser): ?>
+                                    <div class="zd-actions-wrap zd-actions-wrap-head">
+                                        <button class="zd-actions-btn" type="button">⋯</button>
+                                        <div class="zd-actions-menu">
+                                            <button type="button" class="zd-actions-item" data-bulk-import>
+                                                Import metadata for selected (overwrite)
+                                            </button>
+                                            <button type="button" class="zd-actions-item" data-bulk-poster>
+                                                Generate posters for selected
+                                            </button>
+                                            <button type="button" class="zd-actions-item" data-bulk-delete>
+                                                Delete selected
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
+                                <?php endif; ?>
                             </div>
                         </th>
-
                     </tr>
                 </thead>
+
+
 
                 <tbody>
                     <?php if (!$rows): ?>
                         <tr>
-                            <td colspan="10" class="zd-meta">No clips found.</td>
+                            <td colspan="<?= $colCount ?>" class="zd-meta">No clips found.</td>
                         </tr>
                         <?php else: foreach ($rows as $idx => $r): ?>
+                            <?php
+                            $isSelected = (int)($r['selected'] ?? 0) === 1;
+                            $thumbUrl   = $r['poster_path'] ?? $placeholder_thumb_url;
+
+                            // NEW: per-row day UUID (for All days vs single day)
+                            $rowDayUuid      = $r['day_uuid'] ?? $day_uuid;
+                            $rowDayUuidSafe  = htmlspecialchars($rowDayUuid, ENT_QUOTES, 'UTF-8');
+
+                            // NEW: proxy / job labels, based on ClipRepository fields
+                            $hasProxy        = !empty($r['proxy_path']);
+                            $proxyCount      = (int)($r['proxy_count'] ?? 0);
+                            $jobState        = (string)($r['job_state'] ?? '');
+                            $jobStateTsNice  = (string)($r['job_state_ts_nice'] ?? '');
+
+                            if ($hasProxy) {
+                                // At least one web proxy exists
+                                $proxyLabel = 'Proxy ready';
+                                if ($proxyCount > 1) {
+                                    $proxyLabel .= ' (' . $proxyCount . ' files)';
+                                }
+                            } elseif ($proxyCount > 0) {
+                                // Some proxy assets but not the main one
+                                $proxyLabel = 'Proxy files: ' . $proxyCount;
+                            } else {
+                                $proxyLabel = 'No proxy';
+                            }
+
+                            if ($jobState !== '') {
+                                $jobLabel = ucfirst($jobState);
+                                if ($jobStateTsNice !== '') {
+                                    $jobLabel .= ' · ' . $jobStateTsNice;
+                                }
+                            } else {
+                                $jobLabel = 'No jobs';
+                            }
+                            ?>
+
                             <tr id="clip-<?= htmlspecialchars($r['clip_uuid']) ?>"
+                                class="zd-table-row"
                                 data-clip-uuid="<?= htmlspecialchars($r['clip_uuid']) ?>"
-                                data-row-index="<?= (int)$idx ?>">
-                                <!-- Thumb (live-updated after poster gen) -->
-                                <td class="thumb-cell" data-field="thumb">
+                                data-row-index="<?= $idx ?>"
+                                data-day-uuid="<?= $rowDayUuidSafe ?>">
+
+
+                                <!-- Thumb -->
+                                <td class="col-thumb thumb-cell" data-field="thumb">
                                     <?php if (!empty($r['poster_path'])): ?>
                                         <img class="zd-thumb" src="<?= htmlspecialchars($r['poster_path']) ?>" alt="">
                                     <?php else: ?>
@@ -685,136 +879,141 @@ if ($__publish_fb) {
                                     <?php endif; ?>
                                 </td>
 
-                                <!-- Scene / Slate / Take / Cam / Reel -->
-                                <td class="zd-editable" data-edit="scene"><span><?= htmlspecialchars($r['scene'] ?? '') ?></span></td>
-                                <td class="zd-editable" data-edit="slate"><span><?= htmlspecialchars($r['slate'] ?? '') ?></span></td>
-                                <td class="zd-editable" data-edit="take"><span><?= htmlspecialchars(($r['take_int'] ?? null) !== null ? (string)$r['take_int'] : ($r['take'] ?? '')) ?></span></td>
-                                <td><?= htmlspecialchars($r['camera'] ?? '') ?></td>
-                                <td class="zd-select-td" data-field="select">
-                                    <button class="star-toggle"
-                                        type="button"
-                                        data-clip="<?= htmlspecialchars($r['clip_uuid']) ?>"
-                                        data-selected="<?= (int)($r['is_select'] ?? 0) ?>"
-                                        aria-label="Toggle selected"
-                                        title="Toggle selected">
-                                        <?php if ((int)($r['is_select'] ?? 0) === 1): ?>
-                                            <svg viewBox="0 0 24 24" class="star on" aria-hidden="true">
-                                                <path d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
-                                            </svg>
-                                        <?php else: ?>
-                                            <svg viewBox="0 0 24 24" class="star off" aria-hidden="true">
-                                                <path d="M12 17.3l-5.47 3.22 1.45-6.17-4.78-4.1 6.3-.54L12 3l2.5 6.7 6.3.54-4.78 4.1 1.45 6.17z" />
-                                            </svg>
-                                        <?php endif; ?>
-                                    </button>
+                                <!-- Scene -->
+                                <td class="col-scene <?php if ($isPowerUser): ?>zd-editable<?php endif; ?>"
+                                    <?php if ($isPowerUser): ?>data-edit="scene" <?php endif; ?>>
+                                    <span><?= htmlspecialchars($r['scene'] ?? '') ?></span>
                                 </td>
 
-                                <td><?= htmlspecialchars($r['reel'] ?? '') ?></td>
+                                <!-- Slate -->
+                                <td class="col-slate <?php if ($isPowerUser): ?>zd-editable<?php endif; ?>"
+                                    <?php if ($isPowerUser): ?>data-edit="slate" <?php endif; ?>>
+                                    <span><?= htmlspecialchars($r['slate'] ?? '') ?></span>
+                                </td>
 
-                                <!-- File name + UUID -->
+                                <!-- Take -->
+                                <td class="col-take <?php if ($isPowerUser): ?>zd-editable<?php endif; ?>"
+                                    <?php if ($isPowerUser): ?>data-edit="take" <?php endif; ?>>
+                                    <span><?= htmlspecialchars(($r['take_int'] ?? null) !== null ? (string)$r['take_int'] : ($r['take'] ?? '')) ?></span>
+                                </td>
+
+                                <!-- Camera -->
+                                <td class="col-camera"><?= htmlspecialchars($r['camera'] ?? '') ?></td>
+
+                                <!-- Selected -->
+                                <!-- Selected -->
+                                <td class="col-selected zd-select-td" data-field="select">
+                                    <?php $isSelected = (int)($r['is_select'] ?? 0) === 1; ?>
+
+                                    <?php if ($isPowerUser): ?>
+                                        <button class="star-toggle"
+                                            type="button"
+                                            data-clip="<?= htmlspecialchars($r['clip_uuid']) ?>"
+                                            data-selected="<?= $isSelected ? 1 : 0 ?>"
+                                            aria-label="Toggle selected"
+                                            title="Toggle selected">
+                                            <?php if ($isSelected): ?>
+                                                <svg
+                                                    viewBox="0 0 24 24"
+                                                    class="star on"
+                                                    width="18"
+                                                    height="18"
+                                                    aria-hidden="true">
+                                                    <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.788 1.402 8.168L12 18.896l-7.336 3.87 1.402-8.168L.132 9.21l8.2-1.192z" />
+                                                </svg>
+                                            <?php else: ?>
+                                                <svg
+                                                    viewBox="0 0 24 24"
+                                                    class="star off"
+                                                    width="18"
+                                                    height="18"
+                                                    aria-hidden="true">
+                                                    <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.788 1.402 8.168L12 18.896l-7.336 3.87 1.402-8.168L.132 9.21l8.2-1.192z" />
+                                                </svg>
+                                            <?php endif; ?>
+                                        </button>
+                                    <?php else: ?>
+                                        <span class="star-readonly">
+                                            <?php if ($isSelected): ?>
+                                                <svg
+                                                    viewBox="0 0 24 24"
+                                                    class="star on"
+                                                    width="18"
+                                                    height="18"
+                                                    aria-hidden="true">
+                                                    <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.788 1.402 8.168L12 18.896l-7.336 3.87 1.402-8.168L.132 9.21l8.2-1.192z" />
+                                                </svg>
+                                            <?php else: ?>
+                                                <svg
+                                                    viewBox="0 0 24 24"
+                                                    class="star off"
+                                                    width="18"
+                                                    height="18"
+                                                    aria-hidden="true">
+                                                    <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.788 1.402 8.168L12 18.896l-7.336 3.87 1.402-8.168L.132 9.21l8.2-1.192z" />
+                                                </svg>
+                                            <?php endif; ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+
+
+                                <!-- Reel -->
+                                <td class="col-reel"><?= htmlspecialchars($r['reel'] ?? '') ?></td>
+
+                                <!-- File -->
                                 <td class="col-file">
-                                    <div class="filename" title="<?= htmlspecialchars($r['file_name'] ?? '') ?>">
-                                        <?= htmlspecialchars($r['file_name'] ?? '') ?>
-                                    </div>
-                                    <div class="zd-meta uuid">#<?= htmlspecialchars($r['clip_uuid']) ?></div>
+                                    <?php
+                                    $fileNameFull = $r['file_name'] ?? '';
+                                    $fileNameWithoutExt = pathinfo($fileNameFull, PATHINFO_FILENAME);
+                                    ?>
+                                    <div class="filename" title="<?= htmlspecialchars($fileNameFull) ?>"><?= htmlspecialchars($fileNameWithoutExt) ?></div>
                                 </td>
 
                                 <!-- TC In -->
-                                <td data-field="tc_start"><?= htmlspecialchars($r['tc_start'] ?? '') ?></td>
+                                <td class="col-tc" data-field="tc_start"><?= htmlspecialchars($r['tc_start'] ?? '') ?></td>
 
-                                <!-- Duration (live-updated after metadata pull) -->
-                                <td data-field="duration"
+                                <!-- Duration -->
+                                <td class="col-duration"
+                                    data-field="duration"
                                     data-duration-ms="<?= $r['duration_ms'] !== null ? (int)$r['duration_ms'] : '' ?>"
                                     data-fps="<?= isset($r['fps']) && $r['fps'] !== null ? (int)$r['fps'] : '' ?>">
                                 </td>
 
-                                <!-- proxy_web / Encode job status -->
-                                <td data-field="proxy_job">
-                                    <?php
-                                    $proxyCount  = (int)($r['proxy_count'] ?? 0);
-                                    $jobStateRaw = $r['job_state'] ?? null;
-                                    $jobProgress = $r['job_progress'] ?? null;
+                                <?php if ($isPowerUser): ?>
+                                    <!-- Proxy / Job -->
+                                    <td class="col-proxy" data-field="proxy_job">
+                                        <span class="zd-meta">
+                                            <?= htmlspecialchars($proxyLabel, ENT_QUOTES, 'UTF-8') ?> ·
+                                            <?= htmlspecialchars($jobLabel, ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                    </td>
+                                <?php endif; ?>
 
-                                    $hasProxy = $proxyCount > 0;
-
-                                    $jobState = $jobStateRaw !== null
-                                        ? strtolower((string)$jobStateRaw)
-                                        : null;
-                                    $hasJob   = $jobState !== null;
-
-                                    // --- Proxy label semantics ---
-                                    //  - Proxy ✓          => at least one proxy_web asset
-                                    //  - Proxy converting => encode job queued/running but no proxy yet
-                                    //  - Proxy none       => no proxy_web and no encode job
-                                    if ($hasProxy) {
-                                        $proxyLabel = 'Proxy ✓';
-                                    } elseif ($hasJob && ($jobState === 'queued' || $jobState === 'running')) {
-                                        $proxyLabel = 'Proxy converting';
-                                    } else {
-                                        $proxyLabel = 'Proxy none';
-                                    }
-
-                                    // --- Job label semantics ---
-                                    //  - No job         => no encode_jobs row
-                                    //  - Queued         => state = queued
-                                    //  - Running (xx%)  => state = running (+ optional %)
-                                    //  - Done / Failed / Canceled => final states
-                                    if (!$hasJob) {
-                                        $jobLabel = 'No job';
-                                    } elseif ($jobState === 'queued') {
-                                        $jobLabel = 'Queued';
-                                    } elseif ($jobState === 'running') {
-                                        if ($jobProgress !== null && $jobProgress !== '') {
-                                            $jobLabel = 'Running (' . (int)$jobProgress . '%)';
-                                        } else {
-                                            $jobLabel = 'Running';
-                                        }
-                                    } elseif ($jobState === 'done') {
-                                        $jobLabel = 'Done';
-                                    } elseif ($jobState === 'failed') {
-                                        $jobLabel = 'Failed';
-                                    } elseif ($jobState === 'canceled') {
-                                        $jobLabel = 'Canceled';
-                                    } else {
-                                        // Fallback for any odd state strings
-                                        $jobLabel = (string)$jobStateRaw;
-                                    }
-                                    ?>
-                                    <span class="zd-meta">
-                                        <?= htmlspecialchars($proxyLabel, ENT_QUOTES, 'UTF-8') ?>
-                                        ·
-                                        <?= htmlspecialchars($jobLabel, ENT_QUOTES, 'UTF-8') ?>
-                                    </span>
-
-                                </td>
                                 <!-- Actions -->
                                 <td class="col-actions">
                                     <div class="zd-actions-head">
-                                        <!-- Play -->
-                                        <a href="/admin/projects/<?= $projectUuidSafe ?>/days/<?= $dayUuidSafe ?>/player/<?= htmlspecialchars($r['clip_uuid']) ?>"
-                                            class="zd-actions-btn zd-play-btn"
-                                            title="Play">
-                                            <img src="/assets/icons/play.svg" alt="Play" class="icon">
+                                        <a href="/admin/projects/<?= $projectUuidSafe ?>/days/<?= $rowDayUuidSafe ?>/player/<?= htmlspecialchars($r['clip_uuid']) ?>"
+                                            class="zd-actions-btn zd-play-btn" title="Play">
+                                            <img src="/assets/icons/play.svg" class="icon" alt="Play">
                                         </a>
 
-                                        <div class="zd-actions-wrap">
-                                            <button class="zd-actions-btn" type="button">⋯</button>
-
-                                            <div class="zd-actions-menu">
-                                                <a href="/admin/projects/<?= $project_uuid ?>/days/<?= $day_uuid ?>/clips/<?= $r['clip_uuid'] ?>/edit">Edit metadata</a>
-                                                <a href="#"
-                                                    data-clip-import="<?= htmlspecialchars($r['clip_uuid']) ?>">
-                                                    Import metadata (this clip)
-                                                </a>
-                                                <a href="/admin/projects/<?= $project_uuid ?>/days/<?= $day_uuid ?>/clips/<?= $r['clip_uuid'] ?>/poster">Generate poster</a>
-                                                <a href="/admin/projects/<?= $project_uuid ?>/days/<?= $day_uuid ?>/clips/<?= $r['clip_uuid'] ?>/delete" style="color:#d62828;">Delete</a>
+                                        <?php if ($isPowerUser): ?>
+                                            <div class="zd-actions-wrap">
+                                                <button class="zd-actions-btn" type="button">⋯</button>
+                                                <div class="zd-actions-menu">
+                                                    <a href="/admin/projects/<?= $project_uuid ?>/days/<?= $rowDayUuid ?>/clips/<?= $r['clip_uuid'] ?>/edit">Edit metadata</a>
+                                                    <a href="#" data-clip-import="<?= htmlspecialchars($r['clip_uuid']) ?>">Import metadata</a>
+                                                    <a href="/admin/projects/<?= $project_uuid ?>/days/<?= $rowDayUuid ?>/clips/<?= $r['clip_uuid'] ?>/poster">Generate poster</a>
+                                                    <a href="/admin/projects/<?= $project_uuid ?>/days/<?= $rowDayUuid ?>/clips/<?= $r['clip_uuid'] ?>/delete" style="color:#d62828;">Delete</a>
+                                                </div>
                                             </div>
-                                        </div>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
 
-
                             </tr>
+
                     <?php endforeach;
                     endif; ?>
                 </tbody>

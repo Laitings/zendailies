@@ -49,14 +49,23 @@ final class ProjectClipsController
         $pdo = DB::pdo();
 
         // === Fetch All Days (for dropdown) ===
-        $daysStmt = $pdo->prepare("
-            SELECT BIN_TO_UUID(id,1) as id, shoot_date, title
+        $sqlDays = "
+            SELECT BIN_TO_UUID(id,1) as id, shoot_date, title, published_at
             FROM days
             WHERE project_id = UUID_TO_BIN(:p,1)
-            ORDER BY shoot_date ASC
-        ");
+        ";
+
+        // Regular users: only see published days in the dropdown
+        if (!$isSuperuser && !$isProjectAdmin) {
+            $sqlDays .= " AND published_at IS NOT NULL";
+        }
+
+        $sqlDays .= " ORDER BY shoot_date ASC";
+
+        $daysStmt = $pdo->prepare($sqlDays);
         $daysStmt->execute([':p' => $projectUuid]);
         $allDays = $daysStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
 
         // === Check Mode: All Days or Single Day ===
         $isAllDays = ($dayUuid === 'all');
@@ -139,13 +148,17 @@ final class ProjectClipsController
             'text'   => $q['text'],
         ];
 
-        // === Sensitive-ACL visibility ===
+        // === Sensitive-ACL visibility + published-only for regular users ===
         $visibilitySql    = '';
         $visibilityParams = [];
+
         if (!$isSuperuser && !$isProjectAdmin) {
-            $visibilitySql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid, 1))";
+            $visibilitySql =
+                " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid, 1))" .
+                " AND d.published_at IS NOT NULL";
             $visibilityParams[':viewer_person_uuid'] = $personUuid ?? '00000000-0000-0000-0000-000000000000';
         }
+
 
         // === Use ClipRepository ===
         $clipRepo = new ClipRepository($pdo);

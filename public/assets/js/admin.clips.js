@@ -9,6 +9,7 @@
   const dayUuid = root.dataset.day || "";
   const converterCsrf = root.dataset.converterCsrf || "";
   const quickCsrf = root.dataset.quickCsrf || "";
+  const canEdit = root.dataset.canEdit === "1";
 
   // ---- DOM refs used across functions
   const tbodyEl = document.querySelector(".zd-table tbody");
@@ -258,17 +259,25 @@
       updateBulkUI();
     });
 
-    // Double-click → open edit
+    // Double-click → edit for admins, play for regular users
     tbodyEl.addEventListener("dblclick", (ev) => {
       const trEl = ev.target.closest("tr[data-clip-uuid]");
       if (!trEl) return;
       const clipUuid = trEl.getAttribute("data-clip-uuid");
       if (!clipUuid) return;
-      window.location.href = `/admin/projects/${encodeURIComponent(
+
+      // Use per-row day UUID when available (important for All-days mode)
+      const rowDayUuid = trEl.getAttribute("data-day-uuid") || dayUuid || "";
+
+      const base = `/admin/projects/${encodeURIComponent(
         projectUuid
-      )}/days/${encodeURIComponent(dayUuid)}/clips/${encodeURIComponent(
-        clipUuid
-      )}/edit`;
+      )}/days/${encodeURIComponent(rowDayUuid)}`;
+
+      const path = canEdit
+        ? `/clips/${encodeURIComponent(clipUuid)}/edit`
+        : `/player/${encodeURIComponent(clipUuid)}`;
+
+      window.location.href = base + path;
     });
   }
 
@@ -298,11 +307,13 @@
     if (!btn) return;
 
     const clipUuid = btn.getAttribute("data-clip");
+    const rowEl = document.querySelector(`#clip-${clipUuid}`);
+    const rowDayUuid = rowEl?.getAttribute("data-day-uuid") || dayUuid || "";
+
     const baseUrl = `/admin/projects/${encodeURIComponent(
       projectUuid
-    )}/days/${encodeURIComponent(dayUuid)}/converter/`;
+    )}/days/${encodeURIComponent(rowDayUuid)}/converter/`;
     const endpoint = baseUrl + "poster";
-    const rowEl = document.querySelector(`#clip-${clipUuid}`);
 
     btn.disabled = true;
     const originalTitle = btn.title;
@@ -464,24 +475,32 @@
         cancel();
         return;
       }
+
       try {
         const body = new URLSearchParams({
           _csrf: quickCsrf,
           field: field,
           value: newVal,
         });
+
+        // Use the row's real day UUID (important in "All days" mode)
+        const rowDayUuid = tr?.getAttribute("data-day-uuid") || dayUuid || "";
+
         const resp = await fetch(
           `/admin/projects/${encodeURIComponent(
             projectUuid
-          )}/days/${encodeURIComponent(dayUuid)}/clips/${encodeURIComponent(
+          )}/days/${encodeURIComponent(rowDayUuid)}/clips/${encodeURIComponent(
             clipUuid
           )}/quick`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
             body,
           }
         );
+
         const json = await resp.json();
         if (resp.ok && json.ok) {
           const show = json.display ?? newVal ?? "";
@@ -549,10 +568,14 @@
       const btn = ev.target.closest("button.star-toggle");
       if (!btn) return;
       ev.stopPropagation();
+
       const clipUuid = btn.getAttribute("data-clip");
       if (!clipUuid) return;
+
       const cur = parseInt(btn.getAttribute("data-selected") || "0", 10);
       const next = cur ? 0 : 1;
+
+      // Optimistic UI
       setStarVisual(btn, next);
       btn.setAttribute("data-selected", String(next));
 
@@ -561,25 +584,35 @@
           _csrf: quickCsrf,
           value: String(next),
         });
+
+        const tr = btn.closest("tr[data-clip-uuid]");
+        const rowDayUuid = tr?.getAttribute("data-day-uuid") || dayUuid || "";
+
         const resp = await fetch(
           `/admin/projects/${encodeURIComponent(
             projectUuid
-          )}/days/${encodeURIComponent(dayUuid)}/clips/${encodeURIComponent(
+          )}/days/${encodeURIComponent(rowDayUuid)}/clips/${encodeURIComponent(
             clipUuid
           )}/select`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
             body,
           }
         );
+
         const json = await resp.json();
         if (!(resp.ok && json.ok)) {
+          // Revert on server / validation error
           setStarVisual(btn, cur);
           btn.setAttribute("data-selected", String(cur));
           alert(json.error || "Failed to save");
         }
       } catch (e) {
+        console.error(e);
+        // Revert on JS / network error
         setStarVisual(btn, cur);
         btn.setAttribute("data-selected", String(cur));
         alert("Network error");

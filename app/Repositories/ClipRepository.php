@@ -343,6 +343,7 @@ final class ClipRepository
         $sql = "
             SELECT
                 BIN_TO_UUID(c.id,1) AS clip_uuid,
+                BIN_TO_UUID(c.day_id,1) AS day_uuid,
                 c.scene, c.slate, c.take, c.take_int, c.camera, c.reel, c.file_name,
                 c.tc_start, c.tc_end, c.duration_ms, c.rating, c.is_select, c.created_at,
                 d.shoot_date,
