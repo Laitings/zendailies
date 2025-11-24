@@ -12,7 +12,13 @@ $this->start('head'); ?>
 // Determine status chip class
 $status = $project['status'] ?? 'inactive';
 $statusClass = $status === 'active' ? 'zd-chip-ok' : 'zd-chip-danger';
+
+// Power-user flags coming from controller (superuser or project admin)
+$isSuperuser    = (int)($isSuperuser    ?? 0);
+$isProjectAdmin = (int)($isProjectAdmin ?? 0);
+$isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
 ?>
+
 
 <style>
     /* --- Button Style (Matched to Clips Page) --- */
@@ -56,10 +62,20 @@ $statusClass = $status === 'active' ? 'zd-chip-ok' : 'zd-chip-danger';
     /* --- Table styles from users/index.php --- */
     .zd-users-table-wrap {
         margin-top: 16px;
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
         border-radius: 12px;
         overflow: hidden;
         background: var(--panel, #111318);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    }
+
+    .page-head {
+        max-width: 900px;
+        /* same width you used for the table */
+        margin-left: auto;
+        margin-right: auto;
     }
 
     table.zd-users-table {
@@ -157,24 +173,33 @@ $statusClass = $status === 'active' ? 'zd-chip-ok' : 'zd-chip-danger';
 <div class="zd-page" data-project="<?= htmlspecialchars($project['project_uuid']) ?>" data-csrf="<?= htmlspecialchars(\App\Support\Csrf::token()) ?>">
 
     <header class="page-head">
-        <h1>Shooting days</h1>
-        <p class="subtitle">
-            Project: <?= htmlspecialchars($project['title'] ?? '') ?> &middot;
-            Code: <span class="zd-chip"><?= htmlspecialchars($project['code'] ?? '') ?></span> &middot;
-            Status: <span class="zd-chip <?= $statusClass ?>"><?= htmlspecialchars($status) ?></span>
-        </p>
-        <div class="actions">
-            <a class="zd-btn" href="<?= htmlspecialchars($routes['new_day'] ?? '') ?>">+ New Day</a>
-        </div>
+        <?php if ($isPowerUser): ?>
+            <h1>Shooting days</h1>
+            <p class="subtitle">
+                Project: <?= htmlspecialchars($project['title'] ?? '') ?> &middot;
+                Code: <span class="zd-chip"><?= htmlspecialchars($project['code'] ?? '') ?></span> &middot;
+                Status: <span class="zd-chip <?= $statusClass ?>"><?= htmlspecialchars($status) ?></span>
+            </p>
+            <div class="actions">
+                <a class="zd-btn" href="<?= htmlspecialchars($routes['new_day'] ?? '') ?>">+ New Day</a>
+            </div>
+        <?php else: ?>
+            <h1>Shooting days for <?= htmlspecialchars($project['title'] ?? '') ?></h1>
+        <?php endif; ?>
     </header>
 
     <div class="zd-users-table-wrap">
         <?php if (empty($days)): ?>
-            <div class="zd-empty">No days yet. (Try Import or add a day manually.)</div>
-            <div style="margin-top:10px">
-                <a class="zd-btn" href="<?= htmlspecialchars($routes['new_day'] ?? '') ?>">Create the first day</a>
-            </div>
+            <?php if ($isPowerUser): ?>
+                <div class="zd-empty">No days yet. (Try Import or add a day manually.)</div>
+                <div style="margin-top:10px">
+                    <a class="zd-btn" href="<?= htmlspecialchars($routes['new_day'] ?? '') ?>">Create the first day</a>
+                </div>
+            <?php else: ?>
+                <div class="zd-empty">No published days yet.</div>
+            <?php endif; ?>
         <?php else: ?>
+
             <table class="zd-users-table">
                 <?php
                 // Helper function to generate sortable header links
@@ -201,18 +226,30 @@ $statusClass = $status === 'active' ? 'zd-chip-ok' : 'zd-chip-danger';
                         <th style="width: 20%;"><?php $sortLink('shoot_date', 'Date'); ?></th>
                         <th style="width: 15%;"><?php $sortLink('unit', 'Unit'); ?></th>
                         <th style="width: 10%;"><?php $sortLink('clip_count', 'Clips'); ?></th>
-                        <th style="width: 10%; text-align: center;">Visibility</th>
-                        <th class="col-actions" style="text-align: right;">Actions</th>
+
+                        <?php if ($isPowerUser): ?>
+                            <th style="width: 10%; text-align: center;">Visibility</th>
+                            <th class="col-actions" style="text-align: right;">Actions</th>
+                        <?php endif; ?>
                     </tr>
                 </thead>
+
 
                 <tbody>
                     <?php foreach ($days as $d): ?>
                         <?php
-                        $dayUuid   = $d['day_uuid'];
-                        $viewUrl   = $routes['clips_base'] . '/' . $dayUuid . '/clips';
-                        $editUrl   = "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/edit";
-                        $delUrl    = "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/delete";
+                        $dayUuid = $d['day_uuid'];
+
+                        // Power users go to clips index, regular users go to player for that day
+                        if ($isPowerUser) {
+                            $viewUrl = $routes['clips_base'] . '/' . $dayUuid . '/clips';
+                        } else {
+                            $viewUrl = $routes['player_base'] . '/' . $dayUuid . '/player';
+                        }
+
+                        $editUrl = "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/edit";
+                        $delUrl  = "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/delete";
+
 
                         // NEW: publish / visibility info
                         $isPublished      = !empty($d['published_at'] ?? null);
@@ -231,77 +268,77 @@ $statusClass = $status === 'active' ? 'zd-chip-ok' : 'zd-chip-danger';
                             <td><?= htmlspecialchars($d['unit'] ?? '') ?></td>
                             <td><?= (int)$d['clip_count'] ?></td>
 
-                            <td class="td-visibility">
-                                <span class="<?= htmlspecialchars($visibilityClass, ENT_QUOTES, 'UTF-8') ?> zd-day-visibility-chip"
-                                    data-day-chip="<?= htmlspecialchars($dayUuid) ?>">
-                                    <?= htmlspecialchars($visibilityLabel, ENT_QUOTES, 'UTF-8') ?>
-                                </span>
-                            </td>
+                            <?php if ($isPowerUser): ?>
+                                <td class="td-visibility">
+                                    <span class="<?= htmlspecialchars($visibilityClass, ENT_QUOTES, 'UTF-8') ?> zd-day-visibility-chip"
+                                        data-day-chip="<?= htmlspecialchars($dayUuid) ?>">
+                                        <?= htmlspecialchars($visibilityLabel, ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                </td>
 
+                                <td class="col-actions">
+                                    <a href="<?= htmlspecialchars($editUrl) ?>"
+                                        class="icon-btn"
+                                        title="Edit day"
+                                        onclick="event.stopPropagation();">
+                                        <img src="/assets/icons/pencil.svg" alt="Edit" class="icon">
+                                    </a>
 
-                            <td class="col-actions">
-                                <a href="<?= htmlspecialchars($editUrl) ?>"
-                                    class="icon-btn"
-                                    title="Edit day"
-                                    onclick="event.stopPropagation();">
-                                    <img src="/assets/icons/pencil.svg" alt="Edit" class="icon">
-                                </a>
+                                    <?php
+                                    // Decide initial display for the two buttons
+                                    $pubDisplay   = $isPublished ? 'none'        : 'inline-flex';
+                                    $unpubDisplay = $isPublished ? 'inline-flex' : 'none';
+                                    ?>
 
-                                <?php
-                                // Decide initial display for the two buttons
-                                $pubDisplay   = $isPublished ? 'none'        : 'inline-flex';
-                                $unpubDisplay = $isPublished ? 'inline-flex' : 'none';
-                                ?>
+                                    <button type="button"
+                                        class="icon-btn zd-day-publish-btn"
+                                        title="Publish"
+                                        data-publish-url="<?= htmlspecialchars($publishUrl) ?>"
+                                        style="display: <?= $pubDisplay ?>;"
+                                        onclick="event.stopPropagation();">
+                                        <svg viewBox="0 0 24 24"
+                                            class="icon"
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M12 19V5" />
+                                            <path d="M5 12l7-7 7 7" />
+                                        </svg>
+                                    </button>
 
-                                <button type="button"
-                                    class="icon-btn zd-day-publish-btn"
-                                    title="Publish"
-                                    data-publish-url="<?= htmlspecialchars($publishUrl) ?>"
-                                    style="display: <?= $pubDisplay ?>;"
-                                    onclick="event.stopPropagation();">
-                                    <svg viewBox="0 0 24 24"
-                                        class="icon"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round">
-                                        <path d="M12 19V5" />
-                                        <path d="M5 12l7-7 7 7" />
-                                    </svg>
-                                </button>
+                                    <button type="button"
+                                        class="icon-btn zd-day-unpublish-btn"
+                                        title="Unpublish"
+                                        data-unpublish-url="<?= htmlspecialchars($unpublishUrl) ?>"
+                                        style="display: <?= $unpubDisplay ?>;"
+                                        onclick="event.stopPropagation();">
+                                        <svg viewBox="0 0 24 24"
+                                            class="icon"
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round">
+                                            <path d="M3 3l18 18" />
+                                            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-5 0-9.27-3.11-11-7.5a11.35 11.35 0 0 1 4.28-5.27" />
+                                            <path d="M9.53 9.53A3 3 0 0 1 12 9c1.66 0 3 1.34 3 3 0 .82-.33 1.57-.86 2.11" />
+                                            <path d="M14.47 14.47L9.53 9.53" />
+                                        </svg>
+                                    </button>
 
-                                <button type="button"
-                                    class="icon-btn zd-day-unpublish-btn"
-                                    title="Unpublish"
-                                    data-unpublish-url="<?= htmlspecialchars($unpublishUrl) ?>"
-                                    style="display: <?= $unpubDisplay ?>;"
-                                    onclick="event.stopPropagation();">
-                                    <svg viewBox="0 0 24 24"
-                                        class="icon"
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round">
-                                        <path d="M3 3l18 18" />
-                                        <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-5 0-9.27-3.11-11-7.5a11.35 11.35 0 0 1 4.28-5.27" />
-                                        <path d="M9.53 9.53A3 3 0 0 1 12 9c1.66 0 3 1.34 3 3 0 .82-.33 1.57-.86 2.11" />
-                                        <path d="M14.47 14.47L9.53 9.53" />
-                                    </svg>
-                                </button>
+                                    <a href="<?= htmlspecialchars($delUrl) ?>"
+                                        class="icon-btn danger"
+                                        title="Delete day"
+                                        onclick="event.stopPropagation();">
+                                        <img src="/assets/icons/trash.svg" alt="Delete" class="icon">
+                                    </a>
+                                </td>
 
-                                <a href="<?= htmlspecialchars($delUrl) ?>"
-                                    class="icon-btn danger"
-                                    title="Delete day"
-                                    onclick="event.stopPropagation();">
-                                    <img src="/assets/icons/trash.svg" alt="Delete" class="icon">
-                                </a>
-                            </td>
-
-
+                            <?php endif; ?>
 
                         </tr>
                     <?php endforeach; ?>

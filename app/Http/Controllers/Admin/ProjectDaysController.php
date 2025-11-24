@@ -79,6 +79,8 @@ class ProjectDaysController
         // Prefer person_uuid cached during login, but accept legacy keys
         $personUuid  = $session['person_uuid'] ?? ($session['person_id'] ?? null);
         $accountUuid = $session['account']['id'] ?? ($session['account_uuid'] ?? null);
+        // Track project-admin flag for view + filtering
+        $isProjectAdmin = false;
 
         // If not superuser and missing person_uuid, resolve via accounts_persons
         if (!$isSuper && !$personUuid && $accountUuid) {
@@ -104,23 +106,33 @@ class ProjectDaysController
                 echo "Forbidden (no person bound to session)";
                 return;
             }
+
             $stmt = $pdo->prepare("
-                SELECT 1
+                SELECT pm.is_project_admin
                 FROM project_members pm
                 WHERE pm.project_id = UUID_TO_BIN(:pid,1)
-                AND pm.person_id  = UUID_TO_BIN(:person_id,1)
+                  AND pm.person_id  = UUID_TO_BIN(:person_id,1)
                 LIMIT 1
             ");
             $stmt->execute([
-                ':pid'       => $projectUuid,   // or $id, match your route param
+                ':pid'       => $projectUuid,
                 ':person_id' => $personUuid,
             ]);
-            if (!$stmt->fetchColumn()) {
+
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$row) {
                 http_response_code(403);
                 echo "Forbidden";
                 return;
             }
+
+            // Store project-admin flag for later (view + filtering)
+            $isProjectAdmin = ((int)($row['is_project_admin'] ?? 0) === 1);
+        } else {
+            // Superusers are always treated as power users in the view
+            $isProjectAdmin = true;
         }
+
 
 
 
@@ -161,6 +173,12 @@ class ProjectDaysController
         $orderBy = $colMap[$sort] . ' ' . $dir;
 
         // --- Days + clip counts (single query) ---
+        // Regular users should only see published days
+        $where = "d.project_id = UUID_TO_BIN(:pid,1)";
+        if (!$isSuper && !$isProjectAdmin) {
+            $where .= " AND d.published_at IS NOT NULL";
+        }
+
         $sql = "
             SELECT
                 BIN_TO_UUID(d.id,1) AS day_uuid,
@@ -175,9 +193,10 @@ class ProjectDaysController
                 FROM clips
                 GROUP BY day_id
             ) c ON c.day_id = d.id
-            WHERE d.project_id = UUID_TO_BIN(:pid,1)
+            WHERE $where
             ORDER BY $orderBy, d.created_at DESC
         ";
+
 
         $daysStmt = $pdo->prepare($sql);
         $daysStmt->execute([':pid' => $projectUuid]);
@@ -185,19 +204,23 @@ class ProjectDaysController
 
         // --- Build route helpers for the view ---
         $routes = [
-            'days_base'  => "/admin/projects/{$projectUuid}/days",
-            'clips_base' => "/admin/projects/{$projectUuid}/days",
-            'new_day'    => "/admin/projects/{$projectUuid}/days/new",
+            'days_base'   => "/admin/projects/{$projectUuid}/days",
+            'clips_base'  => "/admin/projects/{$projectUuid}/days",
+            'player_base' => "/admin/projects/{$projectUuid}/days",
+            'new_day'     => "/admin/projects/{$projectUuid}/days/new",
         ];
 
         // --- Render view ---
         View::render('admin/days/index', [
-            'project'      => $projectRow,
-            'days'         => $days,
-            'routes'       => $routes,
-            'sort'         => $sort,
-            'dir'          => $dir,
+            'project'        => $projectRow,
+            'days'           => $days,
+            'routes'         => $routes,
+            'sort'           => $sort,
+            'dir'            => $dir,
+            'isSuperuser'    => $isSuper ? 1 : 0,
+            'isProjectAdmin' => $isProjectAdmin ? 1 : 0,
         ]);
+
         return; // Explicit return
     }
 

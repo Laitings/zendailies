@@ -123,6 +123,9 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/edit', [\App\Http\Controllers\Admin\ProjectDaysController::class, 'edit']);
 
 
+    // Project-level Clips (ALL days)
+    $r->get('/admin/projects/{projectUuid}/clips', [$projectClipsController, 'indexProject']);
+
 
     // Clips under a day
     $r->get('/admin/projects/{projectUuid}/days/{dayUuid}/clips', [$projectClipsController, 'index']);

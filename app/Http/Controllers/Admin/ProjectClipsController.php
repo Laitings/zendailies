@@ -8,6 +8,16 @@ use App\Repositories\ClipRepository;
 
 final class ProjectClipsController
 {
+    /**
+     * Project-level clips index (ALL days).
+     * Route: /admin/projects/{projectUuid}/clips
+     */
+    public function indexProject(string $projectUuid): void
+    {
+        // Use the existing index() but force "all" as the day
+        $this->index($projectUuid, 'all');
+    }
+
     public function index(string $projectUuid, string $dayUuid): void
     {
         if (!$projectUuid || !$dayUuid) {

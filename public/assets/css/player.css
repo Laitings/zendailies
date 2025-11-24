@@ -6,6 +6,7 @@
   --player-maxw: 1000px;
   --player-maxh: 92vh;
   --controls-h: 48px;
+  --clipcol-width: 360px;
 }
 
 /* =========================================================
@@ -481,9 +482,23 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
-  overflow: visible;
+  /* Prevent header controls from drawing into the player column */
+  overflow-x: hidden;
+  overflow-y: visible;
   position: relative;
   contain: none;
+}
+
+/* Sidebar header: allow it to wrap when the column is narrow */
+.zd-left-head {
+  flex-wrap: wrap;
+}
+
+/* Right-hand controls (sort / view / back): also allowed to wrap */
+.zd-left-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 4px;
 }
 
 /* Sidebar resizer */
@@ -1126,4 +1141,110 @@ details[open] > .zd-metadata-summary::before {
 .zd-player-frame.hide-cursor,
 .zd-player-frame.hide-cursor * {
   cursor: none !important;
+}
+
+/* Fix sidebar header overflow when column is too narrow */
+.zd-left-head {
+  display: grid !important;
+  grid-template-columns: 1fr; /* one column */
+  row-gap: 6px; /* space between rows */
+}
+
+/* First block (DAY / 55 Clips) */
+.zd-left-head > div:first-child {
+  min-width: 0; /* prevent overflow inside */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Second block (sort, arrows, view toggle, back) */
+.zd-left-head > div:last-child {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start; /* left in narrow mode */
+  gap: 6px;
+}
+
+/* =========================================================
+   PLAYER SIDEBAR HEADER (SAFE — DOES NOT BREAK RESIZER)
+   ========================================================= */
+
+.zd-header-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* ---------------- Row 1: Day / Clip count ---------------- */
+.hdr-row-1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.hdr-day-btn {
+  all: unset;
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.hdr-slash {
+  opacity: 0.5;
+}
+
+.hdr-count {
+  opacity: 0.8;
+}
+
+/* ---------------- Row 2: Sort left + icons right ---------------- */
+.hdr-row-2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Left side */
+.hdr-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.hdr-sort-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Right side */
+.hdr-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.hdr-back {
+  font-size: 12px;
+  text-decoration: none;
+  color: #3aa0ff;
+}
+
+/* Responsive fallback when extremely narrow */
+@media (max-width: 420px) {
+  .hdr-row-2 {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hdr-right {
+    justify-content: flex-start;
+  }
 }

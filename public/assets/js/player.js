@@ -136,17 +136,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Update header wording depending on which pane is visible
   function setHeaderForPane() {
-    if (activePane === "days") {
-      // Show "Days", hide "/ Clips"
-      currentDayNode.textContent = "Days";
-      headerSlash.style.display = "none";
-      headerClips.style.display = "none";
-    } else {
-      // Show lastSelectedDayLabel + "/ Clips"
-      currentDayNode.textContent = lastSelectedDayLabel || "Current Day";
-      headerSlash.style.display = "";
-      headerClips.style.display = "";
-    }
+    return;
   }
 
   function setToggleIcon(mode) {

@@ -141,22 +141,58 @@ if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
     ?>
         <div class="zd-subbar" role="navigation" aria-label="Project links">
             <nav class="zd-subnav">
-                <a class="<?= str_starts_with($reqUri, "/admin/projects/$puuid/days") ? 'active' : '' ?>"
-                    href="/admin/projects/<?= urlencode($puuid) ?>/days">Days</a>
-                <a class="<?= str_starts_with($reqUri, "/admin/projects/$puuid/player") ? 'active' : '' ?>"
-                    href="/admin/projects/<?= urlencode($puuid) ?>/player?pane=days">Player</a>
+
+                <?php
+                // Resolve project UUID for subnav links
+                $pid = $puuid
+                    ?? ($project['project_uuid'] ?? ($project_uuid ?? null));
+
+                // Resolve day if available (clips/index.php pages set $day_uuid)
+                $dayId = $day_uuid ?? null;
+                ?>
+
+                <!-- DAYS -->
+                <a href="/admin/projects/<?= htmlspecialchars($pid) ?>/days"
+                    class="<?= str_starts_with($reqUri, "/admin/projects/$pid/days") ? 'active' : '' ?>">
+                    Days
+                </a>
+
+                <!-- CLIPS -->
+                <?php
+                $clipsHref   = "/admin/projects/$pid/clips";
+                $clipsActive = str_starts_with($reqUri, "/admin/projects/$pid/clips");
+                ?>
+                <a href="<?= htmlspecialchars($clipsHref) ?>"
+                    class="zd-sub-link <?= $clipsActive ? 'is-active' : '' ?>">
+                    Clips
+                </a>
+
+
+
+                <!-- PLAYER -->
+                <a href="/admin/projects/<?= htmlspecialchars($pid) ?>/player?pane=days"
+                    class="<?= str_starts_with($reqUri, "/admin/projects/$pid/player") ? 'active' : '' ?>">
+                    Player
+                </a>
+
+                <!-- MEMBERS -->
                 <?php if ($isSuperuser || $isProjectAdmin): ?>
-                    <a class="<?= str_starts_with($reqUri, "/admin/projects/$puuid/members") ? 'active' : '' ?>"
-                        href="/admin/projects/<?= urlencode($puuid) ?>/members">Members</a>
+                    <a href="/admin/projects/<?= htmlspecialchars($pid) ?>/members"
+                        class="<?= str_starts_with($reqUri, "/admin/projects/$pid/members") ? 'active' : '' ?>">
+                        Members
+                    </a>
                 <?php endif; ?>
 
+                <!-- LEAVE PROJECT -->
                 <?php $showLeave = $isSuperuser || (int)($_SESSION['project_access_count'] ?? 0) > 1;
                 if ($showLeave): ?>
                     <form method="post" action="/projects/leave" class="zd-subnav-leave">
                         <button class="btn-link" type="submit" title="Leave project">Leave</button>
                     </form>
                 <?php endif; ?>
+
             </nav>
+
         </div>
     <?php endif; ?>
 

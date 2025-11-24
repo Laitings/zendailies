@@ -263,6 +263,32 @@ $this->extend('layout/main');
         max-height: none;
     }
 
+    .clipScrollOuter,
+    .dayScrollOuter {
+        max-height: 72vh;
+        position: relative;
+
+        overflow-y: auto;
+        overflow-x: hidden;
+        /* ← CRITICAL: prevent overlap over resizer */
+
+        padding: 0;
+        margin: 0;
+    }
+
+    .clipScrollInner,
+    .dayScrollInner {
+        overflow-y: auto;
+        overflow-x: hidden;
+        /* ← also critical */
+        max-height: 72vh;
+        padding: 10px;
+        margin: 0;
+        box-sizing: border-box;
+        position: relative;
+    }
+
+
     /* Divider styling */
     .sidebar-resizer {
         cursor: col-resize;
@@ -302,6 +328,32 @@ $this->extend('layout/main');
         -webkit-mask-image: url("/assets/icons/theater-exit.svg");
         mask-image: url("/assets/icons/theater-exit.svg");
     }
+
+    /* FIX: Prevent sidebar header from expanding the sidebar beyond its grid column */
+    .zd-header-wrap {
+        min-width: 0;
+        /* allow shrinking */
+        overflow: hidden;
+        /* prevent content from breaking resizer */
+    }
+
+    /* FIX: Prevent inner header rows from forcing sidebar wider */
+    .hdr-row-1,
+    .hdr-row-2 {
+        min-width: 0;
+    }
+
+    /* FIX: Sidebar must not use overflow:visible for width calculations */
+    .player-layout>aside {
+        overflow-x: hidden !important;
+    }
+
+    #sidebarResizer {
+        position: relative;
+        z-index: 5000;
+        /* sits ABOVE overflowing elements */
+        pointer-events: auto !important;
+    }
 </style>
 
 
@@ -335,29 +387,31 @@ if (!empty($clip_list) && is_array($clip_list)) {
         data-initial-mode="<?= htmlspecialchars($initial_mode ?? '') ?>">
 
 
-        <aside style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;overflow:visible;position:relative;">
+        <aside style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;overflow-y:visible;overflow-x:hidden;position:relative;">
 
-            <div class="zd-left-head" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
 
-                <div style="font-size:13px;font-weight:500;color:var(--text);display:flex;flex-wrap:wrap;align-items:center;gap:4px;">
-                    <button id="zd-day-switch-btn" style="all:unset;cursor:pointer;color:var(--accent);font-weight:600;">
+            <div class="zd-header-wrap">
+
+                <!-- Row 1: DAY 01 / 55 Clips -->
+                <div class="hdr-row-1">
+                    <button id="zd-day-switch-btn" class="hdr-day-btn">
                         <span id="zd-current-day-label">
                             <?= htmlspecialchars($current_day_label ?? ($day['title'] ?? 'Current Day')) ?>
                         </span>
                     </button>
 
-                    <span id="zd-header-slash" style="opacity:.5;">/</span>
+                    <span class="hdr-slash">/</span>
 
-                    <span id="zd-header-clips" style="opacity:.8;">
+                    <span class="hdr-count">
                         <?= (int)$clip_count . ' ' . ($clip_count === 1 ? 'Clip' : 'Clips') ?>
                     </span>
-
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;">
 
-                    <!-- Sort group (hidden in day mode) -->
-                    <div id="clipSortGroup" style="display:flex;align-items:center;gap:4px;">
-                        <span style="font-size:12px;color:var(--muted);">Sort by</span>
+                <!-- Row 2: Sort (left) + View/Back (right) -->
+                <div class="hdr-row-2">
+
+                    <div class="hdr-left">
+                        <span class="hdr-sort-label">Sort by</span>
 
                         <select id="clipSortMode" class="zd-sort-select" title="Sort clips">
                             <option value="scene">Scene</option>
@@ -371,38 +425,36 @@ if (!empty($clip_list) && is_array($clip_list)) {
                                 <option value="comments">Comments</option>
                             <?php endif; ?>
                         </select>
+
+                        <button id="sortDirBtn"
+                            class="icon-btn"
+                            type="button"
+                            title="Toggle sort direction"
+                            aria-label="Toggle sort direction"
+                            data-dir="asc">
+                            <svg viewBox="0 0 24 24" class="icon zd-sort-icon" aria-hidden="true">
+                                <path d="M12 4l-4 4h8z" />
+                                <path d="M12 20l4-4H8z" />
+                            </svg>
+                        </button>
                     </div>
 
+                    <div class="hdr-right">
+                        <button id="viewToggleBtn" class="icon-btn" title="Switch view" aria-label="Switch view">
+                            <img id="viewToggleIcon" src="/assets/icons/grid.svg" alt="" class="icon">
+                        </button>
 
+                        <a href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips"
+                            class="hdr-back">
+                            ← back
+                        </a>
+                    </div>
 
-                    <!-- Sort direction toggle -->
-                    <button id="sortDirBtn"
-                        class="icon-btn"
-                        type="button"
-                        title="Toggle sort direction"
-                        aria-label="Toggle sort direction"
-                        data-dir="asc">
-                        <svg viewBox="0 0 24 24" class="icon zd-sort-icon" aria-hidden="true">
-                            <!-- Up arrow -->
-                            <path d="M12 4l-4 4h8z" />
-                            <!-- Down arrow -->
-                            <path d="M12 20l4-4H8z" />
-                        </svg>
-                    </button>
-
-                    <!-- View toggle -->
-                    <button id="viewToggleBtn" class="icon-btn" title="Switch view" aria-label="Switch view">
-                        <img id="viewToggleIcon" src="/assets/icons/grid.svg" alt="" class="icon">
-                    </button>
-
-                    <a href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips"
-                        style="font-size:12px;text-decoration:none;color:#3aa0ff">
-                        ← back
-                    </a>
                 </div>
 
-
             </div>
+
+
 
 
             <?php

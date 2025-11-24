@@ -302,6 +302,24 @@ td[data-edit="take"] .zd-inline-input {
   opacity: 1;
 }
 
+/* Read-only selected star (regular users) */
+.zd-select-td {
+  text-align: center; /* make sure the cell itself centers content */
+}
+
+.zd-select-td .star-readonly {
+  display: inline-flex; /* same idea as the button version */
+  align-items: center;
+  justify-content: center;
+  width: 28px; /* match your button/star size */
+  height: 28px;
+  vertical-align: middle;
+}
+
+.zd-select-td .star-readonly svg.star {
+  display: block; /* avoid extra inline baseline offset */
+}
+
 /* Nice filename truncation for tighter layouts */
 .col-file .filename {
   max-width: 34vw;
