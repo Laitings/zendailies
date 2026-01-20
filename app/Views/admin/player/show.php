@@ -350,16 +350,105 @@ $this->extend('layout/main');
 
     #sidebarResizer {
         position: relative;
-        z-index: 5000;
+
         /* sits ABOVE overflowing elements */
         pointer-events: auto !important;
     }
-</style>
 
+    /* Styling for "Basic Metadata" and "Extended Metadata" headers */
+    .zd-metadata-summary {
+        font-family: 'Inter', sans-serif;
+        font-size: 11px;
+        /* Small and crisp */
+        text-transform: uppercase;
+        /* All caps */
+        letter-spacing: 0.08em;
+        /* Wide tracking */
+        font-weight: 600;
+        /* Semi-bold */
+        color: #9ca3af;
+        /* The "Pro" Muted Gray */
+        cursor: pointer;
+        margin-bottom: 8px;
+        /* Spacing between header and data */
+        user-select: none;
+        /* Prevents text selection when clicking */
+
+        /* Fixes thickness on Mac screens */
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+
+        /* Flex alignment to ensure the arrow lines up with text */
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: color 0.2s ease;
+    }
+
+    /* Hover state - Lightens up */
+    .zd-metadata-summary:hover {
+        color: #e5e7eb;
+    }
+
+    /* Optional: If you want to fix the color of the little arrow triangle */
+    .zd-metadata-summary::marker,
+    .zd-metadata-summary::-webkit-details-marker {
+        color: #9ca3af;
+    }
+
+    .zd-section-header {
+        font-family: 'Inter', sans-serif;
+        font-size: 11px;
+        /* Match metadata headers */
+        text-transform: uppercase;
+        /* All caps */
+        letter-spacing: 0.08em;
+        /* Wide tracking */
+        font-weight: 600;
+        /* Semi-bold */
+        color: #9ca3af;
+        /* Muted Gray */
+
+        /* Fix alignment since it's inside a flex container */
+        line-height: 1;
+
+        /* Crispness */
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+</style>
+<script>
+    // Anti-flicker: Apply saved sidebar width BEFORE the browser paints the UI
+    (function() {
+        const keyMode = "clipViewMode";
+        const savedMode = sessionStorage.getItem(keyMode) === "grid" ? "grid" : "list";
+        const savedWidth = sessionStorage.getItem(`clipcolWidth:${savedMode}`);
+
+        if (savedWidth) {
+            document.documentElement.style.setProperty('--clipcol-width', savedWidth + 'px');
+        }
+    })();
+</script>
 
 <?php $this->end(); ?>
 
 <?php $this->start('content'); ?>
+
+<div class="mobile-nav-helper" style="display:none; background:var(--bg); padding:10px; border-bottom:1px solid var(--border); position:sticky; top:0; z-index:100;">
+    <div style="display:flex; justify-content: space-around;">
+        <button onclick="document.getElementById('playerFrame').scrollIntoView({behavior:'smooth'})" style="all:unset; color:var(--accent); font-size:12px; font-weight:700; text-transform:uppercase;">Video</button>
+        <button onclick="document.querySelector('aside').scrollIntoView({behavior:'smooth'})" style="all:unset; color:var(--accent); font-size:12px; font-weight:700; text-transform:uppercase;">Clips</button>
+        <button onclick="document.querySelector('.player-meta').scrollIntoView({behavior:'smooth'})" style="all:unset; color:var(--accent); font-size:12px; font-weight:700; text-transform:uppercase;">Info</button>
+    </div>
+</div>
+
+<style>
+    @media (max-width: 900px) {
+        .mobile-nav-helper {
+            display: block !important;
+        }
+    }
+</style>
 
 <?php $clip_count = is_array($clip_list ?? null) ? count($clip_list) : 0; ?>
 
@@ -379,12 +468,32 @@ if (!empty($clip_list) && is_array($clip_list)) {
 }
 ?>
 
+<?php
+// Admin / superuser guard for poster-grab button
+$account = $_SESSION['account'] ?? null;
+$isSuperuser = (int)($account['is_superuser'] ?? 0);
+$isAdmin     = (int)($account['is_admin'] ?? 0); // if not set, this stays 0
+
+$canGrabPoster = ($isSuperuser === 1 || $isAdmin === 1);
+
+// Current clip UUID for JS (fallbacks to list's current_clip if needed)
+$currentClipUuid = $clip['clip_uuid'] ?? ($current_clip ?? '');
+?>
+<?php
+$activeScene = $_GET['scene'] ?? null;
+$isSceneMode = !empty($activeScene);
+$displayLabel = $isSceneMode ? "Scene " . htmlspecialchars($activeScene) : $current_day_label;
+?>
 
 <div class="zd-bleed">
 
     <div class="player-layout"
-        data-project-uuid="<?= htmlspecialchars($project_uuid) ?>"
-        data-initial-mode="<?= htmlspecialchars($initial_mode ?? '') ?>">
+        data-project-uuid="<?= htmlspecialchars($project_uuid, ENT_QUOTES, 'UTF-8') ?>"
+        data-day-uuid="<?= htmlspecialchars($day_uuid, ENT_QUOTES, 'UTF-8') ?>"
+        data-clip-uuid="<?= htmlspecialchars($currentClipUuid, ENT_QUOTES, 'UTF-8') ?>"
+        data-can-grab-poster="<?= $canGrabPoster ? '1' : '0' ?>"
+        data-initial-mode="<?= htmlspecialchars($initialMode, ENT_QUOTES, 'UTF-8') ?>">
+
 
 
         <aside style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;overflow-y:visible;overflow-x:hidden;position:relative;">
@@ -392,19 +501,30 @@ if (!empty($clip_list) && is_array($clip_list)) {
 
             <div class="zd-header-wrap">
 
-                <!-- Row 1: DAY 01 / 55 Clips -->
-                <div class="hdr-row-1">
-                    <button id="zd-day-switch-btn" class="hdr-day-btn">
-                        <span id="zd-current-day-label">
-                            <?= htmlspecialchars($current_day_label ?? ($day['title'] ?? 'Current Day')) ?>
-                        </span>
-                    </button>
+                <div class="hdr-row-1" style="justify-content: space-between; width: 100%;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <?php if ($isSceneMode): ?>
+                            <button id="breadcrumbParentScenes" class="hdr-day-btn" style="opacity: 0.6; font-weight: 400;">Scenes</button>
+                            <span class="hdr-slash">/</span>
+                            <span id="zd-current-day-label" style="font-weight: 600; color: var(--text);">
+                                <?= htmlspecialchars($displayLabel) ?>
+                            </span>
+                        <?php else: ?>
+                            <button id="breadcrumbParentDays" class="hdr-day-btn" style="opacity: 0.6; font-weight: 400;">Days</button>
+                            <span class="hdr-slash">/</span>
+                            <span id="zd-current-day-label" style="font-weight: 600; color: var(--text);">
+                                <?= htmlspecialchars($displayLabel) ?>
+                            </span>
+                        <?php endif; ?>
 
-                    <span class="hdr-slash">/</span>
+                        <span class="hdr-slash">/</span>
+                        <span class="hdr-count"><?= (int)$clip_count ?> Clips</span>
+                    </div>
 
-                    <span class="hdr-count">
-                        <?= (int)$clip_count . ' ' . ($clip_count === 1 ? 'Clip' : 'Clips') ?>
-                    </span>
+                    <div class="view-mode-toggle" style="display: flex; background: var(--bg); border-radius: 6px; padding: 2px;">
+                        <button id="switchToDays" class="mode-tab <?= $isSceneMode ? '' : 'active' ?>" style="all:unset; font-size:10px; padding:4px 8px; cursor:pointer; border-radius:4px;">DAYS</button>
+                        <button id="switchToScenes" class="mode-tab <?= $isSceneMode ? 'active' : '' ?>" style="all:unset; font-size:10px; padding:4px 8px; cursor:pointer; border-radius:4px;">SCENES</button>
+                    </div>
                 </div>
 
                 <!-- Row 2: Sort (left) + View/Back (right) -->
@@ -468,17 +588,44 @@ if (!empty($clip_list) && is_array($clip_list)) {
 
 
                         <?php if (empty($clip_list)) : ?>
-                            <div class="zd-meta">No clips on this day.</div>
+                            <div class="zd-meta">
+                                <?= $activeScene ? "No clips in this scene." : "No clips on this day." ?>
+                            </div>
                         <?php else : ?>
                             <?php foreach ($clip_list as $it) :
                                 $isActive = ($it['clip_uuid'] === ($current_clip ?? ''));
                                 $href = "/admin/projects/" . htmlspecialchars($project_uuid)
-                                    . "/days/" . htmlspecialchars($day_uuid)
-                                    . "/player/" . htmlspecialchars($it['clip_uuid']);
+                                    . "/days/" . htmlspecialchars($it['day_uuid'])
+                                    . "/player/" . htmlspecialchars($it['clip_uuid'])
+                                    . ($activeScene ? "?scene=" . urlencode($activeScene) : "");
+
+                                // --- CALCULATE LABEL FIRST ---
+                                $scene = trim((string)($it['scene'] ?? ''));
+                                $slate = trim((string)($it['slate'] ?? ''));
+                                $take  = trim((string)($it['take']  ?? ''));
+                                $titleParts = [];
+                                if ($scene !== '' && $slate !== '') {
+                                    $titleParts[] = $scene . ' / ' . $slate;
+                                } elseif ($scene !== '') {
+                                    $titleParts[] = $scene;
+                                } elseif ($slate !== '') {
+                                    $titleParts[] = $slate;
+                                }
+                                if ($take !== '') {
+                                    if (!empty($titleParts)) {
+                                        $titleParts[0] .= ' - ' . $take;
+                                    } else {
+                                        $titleParts[] = $take;
+                                    }
+                                }
+                                $clipLabel = $titleParts[0] ?? '';
+                                // ----------------------------
                             ?>
                                 <a class="clip-item <?= $isActive ? 'is-active' : '' ?>"
                                     href="<?= $href ?>"
+                                    onclick="sessionStorage.setItem('clipListScroll:clips:<?= $restoredMode ?>:' + location.pathname, document.getElementById('clipScrollInner').scrollTop);"
                                     data-is-select="<?= (int)($it['is_select'] ?? 0) ?>"
+                                    data-scene="<?= htmlspecialchars($scene, ENT_QUOTES, 'UTF-8') ?>"
                                     data-label="<?= htmlspecialchars($clipLabel, ENT_QUOTES, 'UTF-8') ?>"
                                     data-filename="<?= htmlspecialchars($it['file_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                     data-comment-count="<?= (int)($it['comment_count'] ?? 0) ?>">
@@ -544,13 +691,19 @@ if (!empty($clip_list) && is_array($clip_list)) {
                                     $commentCount = (int)($it['comment_count'] ?? 0);
                                     ?>
                                     <?php if (!empty($it['poster_path'])) : ?>
+                                        <?php
+                                        // Cache-bust per clip poster so we don’t see stale thumbs
+                                        $thumbUrl = (string)$it['poster_path'];
+                                        $thumbUrl .= (strpos($thumbUrl, '?') !== false ? '&' : '?') . 'v=' . time();
+                                        ?>
                                         <div class="thumb-wrap">
-                                            <img src="<?= htmlspecialchars($it['poster_path']) ?>" alt="Clip thumbnail">
+                                            <img src="<?= htmlspecialchars($thumbUrl, ENT_QUOTES, 'UTF-8') ?>" alt="Clip thumbnail">
                                         </div>
 
                                     <?php else : ?>
                                         <div class="thumb-wrap">
                                             <div class="no-thumb"></div>
+
 
                                         <?php endif; ?>
 
@@ -598,12 +751,19 @@ if (!empty($clip_list) && is_array($clip_list)) {
                             <?php foreach ($days as $d) :
                                 $thumb = $d['thumb_url'] ?? $placeholder_thumb_url;
                                 $title = $d['title'] ?? ($d['shoot_date'] ?? 'Untitled Day');
+
+                                // Cache-bust only real posters (not the generic placeholder)
+                                if (!empty($d['thumb_url'])) {
+                                    $thumb .= (strpos($thumb, '?') !== false ? '&' : '?') . 'v=' . time();
+                                }
+
                             ?>
                                 <button class="day-item" data-day-uuid="<?= htmlspecialchars($d['day_uuid']) ?>" data-day-label="<?= htmlspecialchars($title) ?>">
 
                                     <div class="day-thumb">
                                         <div class="day-thumb-inner">
-                                            <img src="<?= htmlspecialchars($thumb) ?>" alt="">
+                                            <img src="<?= htmlspecialchars($thumb, ENT_QUOTES, 'UTF-8') ?>" alt="">
+
                                             <div class="day-overlay-label">
                                                 <?= htmlspecialchars($title) ?>
                                             </div>
@@ -631,6 +791,34 @@ if (!empty($clip_list) && is_array($clip_list)) {
                     </div>
                 </div>
             </div>
+
+            <div class="sceneScrollOuter" style="display:none; margin-top:12px; max-height:72vh; position:relative; overflow:visible;">
+                <div id="sceneScrollInner" class="dayScrollInner" style="overflow-y:auto; overflow-x:hidden; max-height:72vh; padding-inline-end:10px; box-sizing:border-box; position:relative;">
+                    <div id="sceneListContainer" class="grid-view" style="position:relative; overflow:visible;">
+                        <?php foreach ($scenes as $s): ?>
+                            <button class="day-item scene-item" data-scene="<?= htmlspecialchars($s['scene']) ?>">
+                                <div class="day-thumb">
+                                    <div class="day-thumb-inner">
+                                        <img src="<?= htmlspecialchars($s['thumb_url'] ?: $placeholder_thumb_url) ?>">
+                                        <div class="day-overlay-label">Sc. <?= htmlspecialchars($s['scene']) ?></div>
+                                        <div class="day-overlay-meta"><?= $s['clip_count'] ?> clips · Dur: <?= $s['total_hms'] ?></div>
+                                    </div>
+                                </div>
+
+                                <div class="day-rowtext">
+                                    <div class="day-title-line">
+                                        Sc. <?= htmlspecialchars($s['scene']) ?>
+                                    </div>
+                                    <div class="day-rowmeta">
+                                        <?= (int)$s['clip_count'] ?> clips · Dur: <?= htmlspecialchars($s['total_hms']) ?>
+                                    </div>
+                                </div>
+                            </button>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+
         </aside>
         <div id="sidebarResizer" class="sidebar-resizer"></div>
         <section class="player-main">
@@ -716,57 +904,96 @@ if (!empty($clip_list) && is_array($clip_list)) {
 
                             ?>
 
+                            <?php
+                            // Cache-bust poster so we never see a stale frame
+                            $posterAttr = '';
+                            if (!empty($poster_url)) {
+                                $posterWithVer = $poster_url
+                                    . ((strpos($poster_url, '?') !== false) ? '&' : '?')
+                                    . 'v=' . time();
+                                $posterAttr = 'poster="' . htmlspecialchars($posterWithVer, ENT_QUOTES, 'UTF-8') . '"';
+                            }
+                            ?>
                             <video
                                 id="zdVideo"
                                 data-fps="<?= htmlspecialchars($fpsStr) ?>"
                                 data-fpsnum="<?= $fpsNum ?: '' ?>"
                                 data-fpsden="<?= $fpsDen ?: '' ?>"
                                 data-tc-start="<?= htmlspecialchars($clip['tc_start'] ?? '00:00:00:00') ?>"
-                                <?= $poster_url ? 'poster="' . htmlspecialchars($poster_url) . '"' : '' ?>>
+                                <?= $posterAttr ?>>
                                 <source src="<?= htmlspecialchars($proxy_url) ?>" type="video/mp4">
                                 Your browser does not support the video tag.
                             </video>
+                            <div id="zdFlash" style="position:absolute; inset:0; background:white; opacity:0; pointer-events:none; z-index:10; transition:none;"></div>
 
                             <div class="zd-controls" role="group" aria-label="Player controls">
-                                <input type="range"
-                                    id="scrubGlobal"
-                                    class="zd-scrub-global"
-                                    min="0" max="1000" step="1" value="0"
-                                    aria-label="Timeline" title="Timeline">
-                                <!-- Left group: transport + TC -->
-                                <button class="zd-btn" id="btnPlayPause" title="Play/Pause" aria-label="Play/Pause">
-                                    <span data-state="play">▶</span><span data-state="pause" style="display:none;">⏸</span>
-                                </button>
-                                <button class="zd-btn" id="btnStepBack" title="Step 1 frame back" aria-label="Step back 1 frame">◀ 1f</button>
-                                <button class="zd-btn" id="btnStepFwd" title="Step 1 frame forward" aria-label="Step forward 1 frame">1f ▶</button>
-                                <button id="tcChip" class="zd-tc-chip" type="button" title="Click to enter TC">00:00:00:00</button>
-
-                                <!-- Right group: aligned to right -->
-                                <div class="zd-controls-right">
-                                    <div class="zd-vol">
-                                        <button class="zd-btn" id="btnMute" title="Mute" aria-label="Mute">🔊</button>
-                                        <div class="zd-vol-popup">
-                                            <input
-                                                type="range"
-                                                id="vol"
-                                                min="0"
-                                                max="1"
-                                                step="0.01"
-                                                value="1"
-                                                aria-label="Volume">
-                                        </div>
+                                <div class="zd-controls-inner">
+                                    <div class="zd-controls-top">
+                                        <input type="range"
+                                            id="scrubGlobal"
+                                            class="zd-scrub-global"
+                                            min="0" max="1000" step="1" value="0"
+                                            aria-label="Timeline" title="Timeline">
                                     </div>
+                                    <div class="zd-controls-bottom">
+                                        <!-- Left group: transport + TC -->
+                                        <button class="zd-btn" id="btnPlayPause" title="Play/Pause" aria-label="Play/Pause">
+                                            <span data-state="play">▶</span><span data-state="pause" style="display:none;">⏸</span>
+                                        </button>
+                                        <button class="zd-btn" id="btnStepBack" title="Step 1 frame back" aria-label="Step back 1 frame">◀ 1f</button>
+                                        <button class="zd-btn" id="btnStepFwd" title="Step 1 frame forward" aria-label="Step forward 1 frame">1f ▶</button>
+                                        <button id="tcChip" class="zd-tc-chip" type="button" title="Click to enter TC">00:00:00:00</button>
 
-                                    <button class="zd-btn" id="btnTheater" title="Theater mode" aria-label="Theater mode">
-                                        <span class="theater-icon" data-state="enter"></span>
-                                        <span class="theater-icon theater-exit" data-state="exit" style="display:none;"></span>
-                                    </button>
+                                        <!-- Right group: aligned to right -->
+                                        <div class="zd-controls-right">
+                                            <?php if (!empty($canGrabPoster)): ?>
+                                                <button
+                                                    class="zd-btn zd-btn-icon"
+                                                    id="btnGrabPoster"
+                                                    title="Set poster from current frame"
+                                                    aria-label="Set poster from current frame">
+                                                    <img
+                                                        src="/assets/icons/poster.svg"
+                                                        class="zd-icon-poster"
+                                                        alt="">
+                                                </button>
+                                            <?php endif; ?>
 
-                                    <button class="zd-btn" id="btnFS" title="Fullscreen" aria-label="Fullscreen">⛶</button>
-                                </div>
-                            </div>
+                                            <div class="zd-blanking-wrap" style="position: relative; display: flex; align-items: center;">
+                                                <select id="selBlanking" class="zd-sort-select" style="width: 70px; height: 32px; padding: 2px 4px;" title="Aspect Ratio Blanking">
+                                                    <option value="none">Off</option>
+                                                    <option value="2.39">2.39</option>
+                                                    <option value="1.85">1.85</option>
+                                                    <option value="1.66">1.66</option>
+                                                    <option value="1.33">1.33</option>
+                                                </select>
+                                            </div>
 
+                                            <div class="zd-vol">
+                                                <button class="zd-btn" id="btnMute" title="Mute" aria-label="Mute">🔊</button>
+                                                <div class="zd-vol-popup">
+                                                    <input
+                                                        type="range"
+                                                        id="vol"
+                                                        min="0"
+                                                        max="1"
+                                                        step="0.01"
+                                                        value="1"
+                                                        aria-label="Volume">
+                                                </div>
+                                            </div>
 
+                                            <button class="zd-btn" id="btnTheater" title="Theater mode" aria-label="Theater mode">
+                                                <span class="theater-icon" data-state="enter"></span>
+                                                <span class="theater-icon theater-exit" data-state="exit" style="display:none;"></span>
+                                            </button>
+
+                                            <button class="zd-btn" id="btnFS" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+                                        </div>
+                                    </div> <!-- end .zd-controls-bottom -->
+                                </div> <!-- end .zd-controls-inner -->
+
+                            </div> <!-- end .zd-controls -->
                             <canvas id="lutCanvas" class="lut-canvas"></canvas>
                         </div>
                     <?php else : ?>
@@ -956,7 +1183,7 @@ if (!empty($clip_list) && is_array($clip_list)) {
                     }
                     ?>
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                        <div style="font-weight:600;color:var(--text);">Comments</div>
+                        <div class="zd-section-header">Comments</div>
 
                         <?php if ($commentLabel !== ''): ?>
                             <div style="font-size:11px;color:var(--muted);">

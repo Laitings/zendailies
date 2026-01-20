@@ -14,325 +14,392 @@ $this->extend('layout/main');
 
 <?php $this->start('head'); ?>
 <style>
-    .zd-form {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
+    /* --- ZD Professional Theme Variables --- */
+    :root {
+        --zd-bg-page: #0b0c10;
+        --zd-bg-panel: #13151b;
+        --zd-bg-input: #08090b;
+
+        --zd-border-subtle: #1f232d;
+        --zd-border-focus: #3aa0ff;
+
+        --zd-text-main: #eef1f5;
+        --zd-text-muted: #8b9bb4;
+
+        --zd-accent: #3aa0ff;
+        --zd-accent-hover: #2b8ce0;
+        --zd-success: #2ecc71;
     }
 
-    .zd-form .full {
+    /* --- Layout Structure --- */
+    .zd-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 30px 20px;
+        color: var(--zd-text-main);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    .zd-header {
+        margin-bottom: 24px;
+        border-bottom: 1px solid var(--zd-border-subtle);
+        padding-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+    }
+
+    .zd-header h1 {
+        font-size: 24px;
+        font-weight: 700;
+        margin: 0 0 6px 0;
+        letter-spacing: -0.02em;
+    }
+
+    .zd-breadcrumbs {
+        color: var(--zd-text-muted);
+        font-size: 13px;
+        font-weight: 500;
+    }
+
+    /* The Main Grid: Left Content (Form) + Right Sidebar (Status) */
+    .zd-layout-grid {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 24px;
+        align-items: start;
+    }
+
+    @media (max-width: 900px) {
+        .zd-layout-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* --- Panels & Cards --- */
+    .zd-panel {
+        background: var(--zd-bg-panel);
+        border: 1px solid var(--zd-border-subtle);
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+
+    .zd-panel-header {
+        background: rgba(255, 255, 255, 0.03);
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--zd-border-subtle);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+        color: var(--zd-text-muted);
+    }
+
+    .zd-panel-body {
+        padding: 20px;
+    }
+
+    /* --- Form Elements --- */
+    .zd-form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 20px;
+    }
+
+    .zd-form-full {
         grid-column: 1 / -1;
     }
 
-    .zd-input,
-    .zd-select,
-    .zd-textarea {
-        background: #0f1218;
-        color: #e9eef3;
-        border: 1px solid #1f2430;
-        border-radius: 8px;
-        padding: 8px;
-        width: 100%;
-        box-sizing: border-box;
+    .zd-field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
     }
 
     .zd-label {
-        font-size: 12px;
-        color: #9aa7b2;
-        margin-bottom: 4px;
-        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--zd-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
-    .zd-actions {
+    .zd-input,
+    .zd-select {
+        background: var(--zd-bg-input);
+        border: 1px solid var(--zd-border-subtle);
+        color: var(--zd-text-main);
+        padding: 10px 12px;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: all 0.2s ease;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .zd-input:focus,
+    .zd-select:focus {
+        outline: none;
+        border-color: var(--zd-border-focus);
+        box-shadow: 0 0 0 3px rgba(58, 160, 255, 0.15);
+    }
+
+    /* Monospace for technical data */
+    .font-mono {
+        font-family: 'JetBrains Mono', 'Menlo', 'Monaco', monospace;
+        letter-spacing: -0.02em;
+    }
+
+    /* --- The Select Toggle Card --- */
+    .zd-toggle-card {
         display: flex;
-        gap: 8px;
-        margin-top: 14px;
+        align-items: center;
+        gap: 12px;
+        background: var(--zd-bg-input);
+        border: 1px solid var(--zd-border-subtle);
+        padding: 12px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: border-color 0.2s;
     }
 
-    .zd-btn {
-        background: #3aa0ff;
-        color: #0b0c10;
-        border: none;
-        border-radius: 10px;
-        padding: 8px 12px;
+    .zd-toggle-card:hover {
+        border-color: var(--zd-text-muted);
+    }
+
+    .zd-checkbox {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--zd-success);
         cursor: pointer;
     }
 
-    .zd-btn.secondary {
-        background: #111318;
-        color: #e9eef3;
-        border: 1px solid #1f2430;
-    }
-
-    .zd-card {
-        background: #111318;
-        border: 1px solid #1f2430;
-        border-radius: 12px;
-        padding: 12px;
-    }
-
-    .zd-meta {
-        color: #9aa7b2;
+    /* --- Metadata Table --- */
+    .zd-meta-table {
+        width: 100%;
+        border-collapse: collapse;
         font-size: 12px;
     }
 
-    /* --- Edit page: make it comfortably wide and responsive, page-local only --- */
-    .zd-edit-page {
-        /* Adjust once if you want even wider later */
-        --page-max: 1200px;
-        max-width: var(--page-max);
-        margin-inline: auto;
-        padding-inline: 8px;
+    .zd-meta-table td {
+        padding: 8px 0;
+        border-bottom: 1px solid var(--zd-border-subtle);
     }
 
-    /* Your form grid (whatever class you use: zd-form or zd-grid) — scale columns up with width */
-    .zd-form,
-    .zd-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        /* 2 cols by default */
-        gap: 12px;
+    .zd-meta-table tr:last-child td {
+        border-bottom: none;
     }
 
-    /* >= 900px: 3 columns */
-    @media (min-width: 900px) {
-
-        .zd-form,
-        .zd-grid {
-            grid-template-columns: repeat(3, minmax(200px, 1fr));
-        }
+    .zd-meta-key {
+        color: var(--zd-text-muted);
+        width: 40%;
     }
 
-    /* >= 1200px: 4 columns */
-    @media (min-width: 1200px) {
-
-        .zd-form,
-        .zd-grid {
-            grid-template-columns: repeat(4, minmax(200px, 1fr));
-        }
+    .zd-meta-val {
+        color: var(--zd-text-main);
+        font-family: monospace;
     }
 
-    /* Ensure cards stretch to the new width */
-    .zd-card {
+    /* --- Buttons --- */
+    .zd-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .zd-btn {
+        display: flex;
+        justify-content: center;
+        align-items: center;
         width: 100%;
+        padding: 12px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 14px;
+        border: none;
+        cursor: pointer;
+        transition: background 0.2s;
+        text-decoration: none;
         box-sizing: border-box;
     }
 
-    /* Make any section with .full span all columns */
-    .full {
-        grid-column: 1 / -1;
+    .zd-btn-primary {
+        background: var(--zd-accent);
+        color: #fff;
     }
 
-    /* === Single-column layout override (Edit Clip) === */
-    .zd-edit-page.single-col {
-        max-width: 760px;
-        /* tweak if you want wider/narrower */
-        margin: 0 auto;
-        /* center horizontally */
-        padding: 0 12px;
-        /* small side padding */
+    .zd-btn-primary:hover {
+        background: var(--zd-accent-hover);
     }
 
-    .zd-edit-page.single-col .zd-form,
-    .zd-edit-page.single-col .zd-grid {
-        display: grid;
-        grid-template-columns: 1fr !important;
-        /* force 1 column */
-        gap: 12px;
-        float: none;
-        /* just in case */
+    .zd-btn-secondary {
+        background: transparent;
+        border: 1px solid var(--zd-border-subtle);
+        color: var(--zd-text-muted);
     }
 
-    .zd-edit-page.single-col .zd-card {
-        width: 100%;
-        box-sizing: border-box;
-        overflow: hidden;
-        /* ensures card background wraps any inner overflow */
-    }
-
-    /* --- Center the page & card, allow multi-column fields --- */
-    .zd-edit-page {
-        /* keep it to a nice readable width; tweak if you want wider */
-        --page-max: 1100px;
-        max-width: var(--page-max);
-        margin: 0 auto;
-        padding-inline: 16px;
-
-        /* defensive resets in case a parent layout uses CSS columns or floats */
-        column-count: 1;
-        display: block;
-    }
-
-    .zd-card {
-        /* the card itself should also be centered and full-width of the wrapper */
-        max-width: var(--page-max);
-        margin: 0 auto 24px;
-        width: 100%;
-        box-sizing: border-box;
-    }
-
-    /* Multi-column grid INSIDE the card */
-    .zd-form,
-    .zd-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(220px, 1fr));
-        /* 2 cols by default */
-        gap: 12px;
-        float: none;
-        /* defensive */
-    }
-
-    /* ≥ 1000px: 3 columns */
-    @media (min-width: 1000px) {
-
-        .zd-form,
-        .zd-grid {
-            grid-template-columns: repeat(3, minmax(220px, 1fr));
-        }
-    }
-
-    /* ≥ 1280px: 4 columns */
-    @media (min-width: 1280px) {
-
-        .zd-form,
-        .zd-grid {
-            grid-template-columns: repeat(4, minmax(220px, 1fr));
-        }
-    }
-
-    /* Rows that should span across (e.g., Created/Updated, button rows, metadata block) */
-    .full {
-        grid-column: 1 / -1;
+    .zd-btn-secondary:hover {
+        border-color: var(--zd-text-main);
+        color: var(--zd-text-main);
     }
 </style>
 <title>Edit Clip · Zentropa Dailies</title>
 <?php $this->end(); ?>
 
 <?php $this->start('content'); ?>
-<div class="zd-edit-page">
+<div class="zd-container">
 
-
-    <h1>Edit Clip <span class="zd-meta">· <?= htmlspecialchars($day_label ?: $day_uuid) ?></span></h1>
-    <p class="zd-meta"><?= htmlspecialchars($project['title'] ?? 'Project') ?> · Clip #<?= htmlspecialchars($clip['clip_uuid']) ?></p>
-
-    <div class="zd-card">
-        <form method="post" action="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/<?= htmlspecialchars($clip['clip_uuid']) ?>/edit" novalidate>
-            <input type="hidden" name="_csrf" value="<?= htmlspecialchars($_csrf) ?>">
-
-            <div class="zd-form">
-
-                <div>
-                    <label class="zd-label">Scene</label>
-                    <input class="zd-input" name="scene" value="<?= htmlspecialchars($clip['scene'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label class="zd-label">Slate</label>
-                    <input class="zd-input" name="slate" value="<?= htmlspecialchars($clip['slate'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label class="zd-label">Take</label>
-                    <input class="zd-input" name="take" value="<?= htmlspecialchars($clip['take'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label class="zd-label">Camera</label>
-                    <input class="zd-input" name="camera" value="<?= htmlspecialchars($clip['camera'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label class="zd-label">Reel</label>
-                    <input class="zd-input" name="reel" value="<?= htmlspecialchars($clip['reel'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label class="zd-label">File name</label>
-                    <input class="zd-input" name="file_name" value="<?= htmlspecialchars($clip['file_name'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label class="zd-label">TC In</label>
-                    <input class="zd-input" name="tc_start" value="<?= htmlspecialchars($clip['tc_start'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label class="zd-label">TC Out</label>
-                    <input class="zd-input" name="tc_end" value="<?= htmlspecialchars($clip['tc_end'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label class="zd-label">
-                        Duration (MM:SS:FF<?= isset($clip['fps']) && $clip['fps'] ? ' @ ' . htmlspecialchars((string)$clip['fps']) . ' fps' : '' ?>)
-                    </label>
-                    <input class="zd-input" name="duration_pretty" pattern="\d{2}:\d{2}:\d{2}"
-                        placeholder="MM:SS:FF"
-                        value="<?= htmlspecialchars($clip['duration_pretty'] ?? '') ?>">
-                    <!-- Optional: show raw ms as a hint (not used for saving) -->
-                    <div class="zd-meta" style="margin-top:4px;">
-                        Raw (ms): <?= htmlspecialchars((string)($clip['duration_ms'] ?? '')) ?>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="zd-label">Rating (1–5)</label>
-                    <select class="zd-select" name="rating">
-                        <option value="">—</option>
-                        <?php for ($i = 1; $i <= 5; $i++): ?>
-                            <option value="<?= $i ?>" <?= ((string)($clip['rating'] ?? '') === (string)$i) ? 'selected' : '' ?>><?= $i ?>★</option>
-                        <?php endfor; ?>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="zd-label">Select (Circle take)</label>
-                    <label style="display:flex; gap:8px; align-items:center;">
-                        <input type="checkbox" name="is_select" value="1" <?= !empty($clip['is_select']) ? 'checked' : '' ?>>
-                        <span class="zd-meta">Marked as Select</span>
-                    </label>
-                </div>
-
-                <div>
-                    <label class="zd-label">Ingest state</label>
-                    <select class="zd-select" name="ingest_state">
-                        <?php
-                        $state = (string)($clip['ingest_state'] ?? 'provisional');
-                        foreach (['provisional', 'ready', 'locked', 'archived'] as $opt) {
-                            $sel = ($state === $opt) ? 'selected' : '';
-                            echo "<option value=\"" . htmlspecialchars($opt) . "\" $sel>" . htmlspecialchars(ucfirst($opt)) . "</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
-
-                <div class="full">
-                    <div class="zd-meta" style="margin-top:6px;">
-                        Created: <?= htmlspecialchars($clip['created_at'] ?? '') ?> · Updated: <?= htmlspecialchars($clip['updated_at'] ?? '') ?>
-                    </div>
-                </div>
-            </div> <!-- end .zd-form -->
-
-            <div class="zd-actions">
-                <button class="zd-btn" type="submit">Save changes</button>
-                <a class="zd-btn secondary" href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips">Cancel</a>
+    <div class="zd-header">
+        <div>
+            <h1>Edit Clip</h1>
+            <div class="zd-breadcrumbs">
+                <?= htmlspecialchars($project['title'] ?? 'Project') ?> /
+                <?= htmlspecialchars($day_label ?: $day_uuid) ?> /
+                Clip #<?= htmlspecialchars($clip['clip_uuid']) ?>
             </div>
-        </form>
+        </div>
     </div>
-    <div class="full">
-        <?php if (!empty($meta_rows)): ?>
-            <div class="zd-card" style="margin-top:12px;">
-                <h3 style="margin-top:0;">Additional Metadata (read-only)</h3>
-                <div class="zd-meta">We’ll make these key–value pairs editable in a follow-up step.</div>
-                <div style="margin-top:8px;">
-                    <?php foreach ($meta_rows as $m): ?>
-                        <div style="display:grid; grid-template-columns: 220px 1fr; gap:8px; padding:6px 0; border-bottom:1px solid #1f2430;">
-                            <div class="zd-meta"><?= htmlspecialchars($m['meta_key']) ?></div>
-                            <div><?= nl2br(htmlspecialchars((string)$m['meta_value'])) ?></div>
+
+    <form method="post" action="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/<?= htmlspecialchars($clip['clip_uuid']) ?>/edit" novalidate>
+        <input type="hidden" name="_csrf" value="<?= htmlspecialchars($_csrf) ?>">
+
+        <div class="zd-layout-grid">
+
+            <div class="zd-col-main">
+
+                <div class="zd-panel">
+                    <div class="zd-panel-header">Slate Identification</div>
+                    <div class="zd-panel-body">
+                        <div class="zd-form-grid">
+                            <div class="zd-field">
+                                <label class="zd-label">Scene</label>
+                                <input class="zd-input font-mono" name="scene" value="<?= htmlspecialchars($clip['scene'] ?? '') ?>">
+                            </div>
+                            <div class="zd-field">
+                                <label class="zd-label">Slate</label>
+                                <input class="zd-input font-mono" name="slate" value="<?= htmlspecialchars($clip['slate'] ?? '') ?>">
+                            </div>
+                            <div class="zd-field">
+                                <label class="zd-label">Take</label>
+                                <input class="zd-input font-mono" name="take" value="<?= htmlspecialchars($clip['take'] ?? '') ?>">
+                            </div>
+                            <div class="zd-field">
+                                <label class="zd-label">Camera</label>
+                                <input class="zd-input" name="camera" value="<?= htmlspecialchars($clip['camera'] ?? '') ?>">
+                            </div>
+                            <div class="zd-field">
+                                <label class="zd-label">Reel</label>
+                                <input class="zd-input" name="reel" value="<?= htmlspecialchars($clip['reel'] ?? '') ?>">
+                            </div>
                         </div>
-                    <?php endforeach; ?>
+                    </div>
                 </div>
+
+                <div class="zd-panel">
+                    <div class="zd-panel-header">File & Timecode</div>
+                    <div class="zd-panel-body">
+                        <div class="zd-form-grid">
+                            <div class="zd-field zd-form-full">
+                                <label class="zd-label">Source File Name</label>
+                                <input class="zd-input font-mono" style="color: #9aa7b2;" name="file_name" value="<?= htmlspecialchars($clip['file_name'] ?? '') ?>">
+                            </div>
+
+                            <div class="zd-field">
+                                <label class="zd-label">Timecode In</label>
+                                <input class="zd-input font-mono" name="tc_start" value="<?= htmlspecialchars($clip['tc_start'] ?? '') ?>">
+                            </div>
+                            <div class="zd-field">
+                                <label class="zd-label">Timecode Out</label>
+                                <input class="zd-input font-mono" name="tc_end" value="<?= htmlspecialchars($clip['tc_end'] ?? '') ?>">
+                            </div>
+                            <div class="zd-field">
+                                <label class="zd-label">
+                                    Duration
+                                    <?= isset($clip['fps']) && $clip['fps'] ? '<span style="opacity:0.5; margin-left:4px;">@ ' . htmlspecialchars((string)$clip['fps']) . ' fps</span>' : '' ?>
+                                </label>
+                                <input class="zd-input font-mono" name="duration_pretty" placeholder="MM:SS:FF" value="<?= htmlspecialchars($clip['duration_pretty'] ?? '') ?>">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <?php if (!empty($meta_rows)): ?>
+                    <div class="zd-panel">
+                        <div class="zd-panel-header">Raw Metadata</div>
+                        <div class="zd-panel-body">
+                            <table class="zd-meta-table">
+                                <?php foreach ($meta_rows as $m): ?>
+                                    <tr>
+                                        <td class="zd-meta-key"><?= htmlspecialchars($m['meta_key']) ?></td>
+                                        <td class="zd-meta-val"><?= nl2br(htmlspecialchars((string)$m['meta_value'])) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </table>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
             </div>
-        <?php endif; ?>
-    </div>
-</div> <!-- /.zd-edit-page -->
+            <div class="zd-col-sidebar">
+
+                <div class="zd-panel">
+                    <div class="zd-panel-header">Actions</div>
+                    <div class="zd-panel-body">
+                        <div class="zd-actions">
+                            <button class="zd-btn zd-btn-primary" type="submit">Save Changes</button>
+                            <a class="zd-btn zd-btn-secondary" href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips">Discard</a>
+                        </div>
+                        <div style="margin-top: 15px; text-align: center; font-size: 11px; color: var(--zd-text-muted);">
+                            Last updated: <?= htmlspecialchars($clip['updated_at'] ?? 'N/A') ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="zd-panel">
+                    <div class="zd-panel-header">Clip Status</div>
+                    <div class="zd-panel-body">
+                        <div class="zd-field" style="margin-bottom: 20px;">
+                            <label class="zd-label">Editorial Decision</label>
+                            <label class="zd-toggle-card">
+                                <input type="checkbox" class="zd-checkbox" name="is_select" value="1" <?= !empty($clip['is_select']) ? 'checked' : '' ?>>
+                                <div>
+                                    <div style="font-weight: 600; font-size: 14px;">Select</div>
+                                    <div style="font-size: 11px; color: var(--zd-text-muted);">Mark as circle take</div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div class="zd-field" style="margin-bottom: 20px;">
+                            <label class="zd-label">Rating</label>
+                            <select class="zd-select" name="rating">
+                                <option value="">No Rating</option>
+                                <?php for ($i = 1; $i <= 5; $i++): ?>
+                                    <option value="<?= $i ?>" <?= ((string)($clip['rating'] ?? '') === (string)$i) ? 'selected' : '' ?>>
+                                        <?= $i ?> Stars <?= str_repeat('★', $i) ?>
+                                    </option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+
+                        <div class="zd-field">
+                            <label class="zd-label">Workflow Stage</label>
+                            <select class="zd-select" name="ingest_state">
+                                <?php
+                                $state = (string)($clip['ingest_state'] ?? 'provisional');
+                                foreach (['provisional', 'ready', 'locked', 'archived'] as $opt) {
+                                    $sel = ($state === $opt) ? 'selected' : '';
+                                    echo "<option value=\"" . htmlspecialchars($opt) . "\" $sel>" . htmlspecialchars(ucfirst($opt)) . "</option>";
+                                }
+                                ?>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </form>
+</div>
 <?php $this->end(); ?>

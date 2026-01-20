@@ -8,6 +8,8 @@ use App\Support\View;
 
 final class DashboardController
 {
+    // --- UPDATE YOUR DashboardController.php ---
+
     public function index(): void
     {
         if (session_status() === \PHP_SESSION_NONE) session_start();
@@ -15,6 +17,10 @@ final class DashboardController
         $acct = $_SESSION['account'] ?? [];
         $isSuper = !empty($acct['is_superuser']);
         $personUuid = $_SESSION['person_uuid'] ?? null;
+
+        // Detect device
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $isMobile = preg_match('/(android|iphone|ipad|mobile)/i', $ua);
 
         $repo = new ProjectRepository(DB::pdo());
 
@@ -34,7 +40,17 @@ final class DashboardController
 
         $_SESSION['project_access_count'] = count($projects);
 
-        View::render('dashboard/index', [
+        // Compute Avatar initial
+        $displayName = $_SESSION['person']['display_name'] ?? 'User';
+        $firstChar = mb_strtoupper(mb_substr($displayName, 0, 1));
+
+        // Switch View and Layout based on device
+        $viewFile = $isMobile ? 'dashboard/index_mobile' : 'dashboard/index';
+        $layoutFile = $isMobile ? 'layout/mobile' : 'layout/main';
+
+        View::render($viewFile, [
+            'layout'     => $layoutFile,
+            'firstChar'  => $firstChar,
             'projects'   => $projects,
             'isSuper'    => $isSuper,
             'personUuid' => $personUuid,

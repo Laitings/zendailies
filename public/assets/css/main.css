@@ -30,29 +30,35 @@ html {
   --danger: #d62828;
 }
 
+/* === Content offset under topbar / subbar === */
+
+/* Small breathing room below the bars */
 :root {
-  --content-top: 60px;
+  --content-gap: 32px;
 }
-/* Keep normal pages aligned to topbar only */
+
+/* Pages without project/subbar: topbar + gap */
 body:not(.has-subbar) .zd-main {
-  padding-top: var(--content-top);
+  padding-top: calc(var(--topbar-h) + var(--content-gap));
 }
 
-/* When a subbar is present, add a small gap under it */
+/* Project pages with subbar: topbar + subbar + gap */
 body.has-subbar .zd-main {
-  padding-top: calc(var(--content-top) + 60px);
-}
-
-/* === Content offset variables bound to body state === */
-body {
-  --content-top: var(--topbar-h);
+  padding-top: calc(var(--topbar-h) + var(--subbar-h) + var(--content-gap));
 }
 
 /* --- Base typography and layout --- */
 html,
 body {
-  font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif,
-    system-ui, -apple-system;
+  font-family:
+    "Inter",
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif,
+    system-ui,
+    -apple-system;
   font-weight: 400; /* add this */
   -webkit-font-smoothing: antialiased; /* add this (macOS) */
   font-size: 15px;
@@ -71,16 +77,29 @@ body {
   scrollbar-gutter: stable both-edges;
 }
 
-h1 {
-  color: var(--text);
-  font-weight: 600;
-  margin: 0 0 8px;
-}
-
 h1 .muted {
   color: #818b94; /* muted grey variant */
 }
 
+h1 {
+  font-family: "Inter", sans-serif;
+  /* Ensure it matches your theme */
+  text-transform: uppercase;
+  /* Forces all caps */
+  letter-spacing: 0.05em;
+  /* Adds the "nice" breathing room */
+  font-weight: 700;
+  /* Bold, but not too heavy */
+  font-size: 1.5rem;
+  /* Adjust size as needed */
+  line-height: 1.2;
+  /* Keeps multi-line headers tight */
+
+  /* Standard spacing below */
+
+  /* Optional: Makes it look sharper on Mac screens */
+  -webkit-font-smoothing: antialiased;
+}
 a {
   color: var(--accent);
   text-decoration: none;
@@ -886,10 +905,15 @@ select {
 /* Hover effect on the card (tint + subtle outline + lift) */
 .zd-card-grid .zd-card:hover {
   background: rgba(58, 160, 255, 0.05);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--accent) inset;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.45),
+    0 0 0 1px var(--accent) inset;
   transform: scale(1.02);
   /* gentle zoom instead of lift */
-  transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.2s ease;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    background 0.2s ease;
   isolation: isolate;
 }
 

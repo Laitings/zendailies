@@ -38,7 +38,7 @@
       root.classList.add(`hide-col-${col}`);
       // Uncheck the checkbox in popup
       const cb = document.querySelector(
-        `.zd-columns-item input[data-col="${col}"]`
+        `.zd-columns-item input[data-col="${col}"]`,
       );
       if (cb) cb.checked = false;
     }
@@ -156,7 +156,7 @@
   // Live filter: AJAX-refresh table while keeping focus & caret
   const filterForm = root.querySelector("form.zd-filter-form");
   const filterControls = root.querySelectorAll(
-    ".zd-filters input.zd-input, .zd-filters select.zd-select"
+    ".zd-filters input.zd-input, .zd-filters select.zd-select",
   );
 
   let filterDebounce = null;
@@ -327,8 +327,8 @@
       forceOn === true
         ? true
         : forceOn === false
-        ? false
-        : !selectedRows.has(clipUuid);
+          ? false
+          : !selectedRows.has(clipUuid);
     if (nowOn) {
       selectedRows.add(clipUuid);
       trEl.classList.add("zd-selected-row");
@@ -359,7 +359,7 @@
     tbodyEl.addEventListener("click", (ev) => {
       if (
         ev.target.closest(
-          "button.icon-btn, a.icon-btn, a[href], button[data-action], button.star-toggle"
+          "button.icon-btn, a.icon-btn, a[href], button[data-action], button.star-toggle, button.restrict-toggle",
         )
       )
         return;
@@ -393,7 +393,7 @@
       const rowDayUuid = trEl.getAttribute("data-day-uuid") || dayUuid || "";
 
       const base = `/admin/projects/${encodeURIComponent(
-        projectUuid
+        projectUuid,
       )}/days/${encodeURIComponent(rowDayUuid)}`;
 
       const path = canEdit
@@ -484,9 +484,9 @@
 
         const resp = await fetch(
           `/admin/projects/${encodeURIComponent(
-            projectUuid
+            projectUuid,
           )}/days/${encodeURIComponent(rowDayUuid)}/clips/${encodeURIComponent(
-            clipUuid
+            clipUuid,
           )}/quick`,
           {
             method: "POST",
@@ -494,7 +494,7 @@
               "Content-Type": "application/x-www-form-urlencoded",
             },
             body,
-          }
+          },
         );
 
         const json = await resp.json();
@@ -586,9 +586,9 @@
 
         const resp = await fetch(
           `/admin/projects/${encodeURIComponent(
-            projectUuid
+            projectUuid,
           )}/days/${encodeURIComponent(rowDayUuid)}/clips/${encodeURIComponent(
-            clipUuid
+            clipUuid,
           )}/select`,
           {
             method: "POST",
@@ -596,7 +596,7 @@
               "Content-Type": "application/x-www-form-urlencoded",
             },
             body,
-          }
+          },
         );
 
         const json = await resp.json();
@@ -611,6 +611,62 @@
         // Revert on JS / network error
         setStarVisual(btn, cur);
         btn.setAttribute("data-selected", String(cur));
+        alert("Network error");
+      }
+    });
+
+    // Toggle lock (restricted)
+    tbodyEl.addEventListener("click", async (ev) => {
+      const btn = ev.target.closest("button.restrict-toggle");
+      if (!btn) return;
+      ev.stopPropagation();
+
+      const clipUuid = btn.getAttribute("data-clip");
+      if (!clipUuid) return;
+
+      // Use the row's real day UUID (important in "All days" mode)
+      const tr = btn.closest("tr[data-clip-uuid]");
+      const rowDayUuid = tr?.getAttribute("data-day-uuid") || dayUuid || "";
+
+      const cur = parseInt(btn.getAttribute("data-restricted") || "0", 10);
+      const next = cur ? 0 : 1;
+
+      const body = new URLSearchParams({
+        _csrf: quickCsrf,
+        value: String(next),
+      });
+
+      try {
+        const resp = await fetch(
+          `/admin/projects/${encodeURIComponent(
+            projectUuid,
+          )}/days/${encodeURIComponent(rowDayUuid)}/clips/${encodeURIComponent(
+            clipUuid,
+          )}/restrict`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body,
+          },
+        );
+
+        const json = await resp.json();
+        if (!resp.ok || !json.ok) {
+          alert(json.error || "Toggle failed");
+          return;
+        }
+
+        // Update state + icon
+        btn.setAttribute("data-restricted", next ? "1" : "0");
+        const lockEl = btn.querySelector(".lock");
+        if (lockEl) {
+          lockEl.classList.toggle("on", !!next);
+          lockEl.classList.toggle("off", !next);
+        }
+      } catch (e) {
+        console.error(e);
         alert("Network error");
       }
     });
@@ -630,7 +686,7 @@
   if (liveFilterForm) {
     // Inputs to trigger live refresh
     const liveInputs = liveFilterForm.querySelectorAll(
-      'input[name="scene"], input[name="slate"], input[name="take"], input[name="text"]'
+      'input[name="scene"], input[name="slate"], input[name="take"], input[name="text"]',
     );
 
     // Debounce helper: wait 300ms after typing stops before fetching
@@ -716,7 +772,7 @@
 
     // ---- New: Live Filtering for Dropdowns ----
     const liveSelects = liveFilterForm.querySelectorAll(
-      'select[name="camera"], select[name="rating"], select[name="select"]'
+      'select[name="camera"], select[name="rating"], select[name="select"]',
     );
 
     liveSelects.forEach((sel) => {
@@ -828,7 +884,7 @@
 
     function getSelectedClipUuids() {
       return Array.from(
-        document.querySelectorAll(".zd-table tbody tr.zd-selected-row")
+        document.querySelectorAll(".zd-table tbody tr.zd-selected-row"),
       )
         .map((tr) => tr.dataset.clipUuid)
         .filter(Boolean);
@@ -1039,7 +1095,7 @@
             console.warn(
               "Poster failed:",
               data && data.error ? data.error : "Unknown error",
-              data
+              data,
             );
           }
           return false;
@@ -1048,7 +1104,7 @@
         // Success – update thumb in place
         if (data.href) {
           const row = document.querySelector(
-            `tr[data-clip-uuid="${clipUuid}"]`
+            `tr[data-clip-uuid="${clipUuid}"]`,
           );
           if (row) {
             const cell = row.querySelector(".col-thumb");
@@ -1113,7 +1169,7 @@
       e.preventDefault();
 
       const rows = Array.from(
-        document.querySelectorAll(".zd-table tbody tr.zd-selected-row")
+        document.querySelectorAll(".zd-table tbody tr.zd-selected-row"),
       );
 
       const jobs = rows

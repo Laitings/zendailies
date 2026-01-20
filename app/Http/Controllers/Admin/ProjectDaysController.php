@@ -210,8 +210,15 @@ class ProjectDaysController
             'new_day'     => "/admin/projects/{$projectUuid}/days/new",
         ];
 
-        // --- Render view ---
-        View::render('admin/days/index', [
+        // NEW: Detect device and choose layout
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $isMobile = preg_match('/(android|iphone|ipad|mobile)/i', $ua);
+
+        $viewFile = $isMobile ? 'admin/days/index_mobile' : 'admin/days/index';
+        $layoutFile = $isMobile ? 'layout/mobile' : 'layout/main';
+
+        View::render($viewFile, [
+            'layout'         => $layoutFile, // Pass dynamic layout
             'project'        => $projectRow,
             'days'           => $days,
             'routes'         => $routes,

@@ -33,6 +33,9 @@ final class AuthController
 
     // Handle POST /auth/login
     // Handle POST /auth/login
+    /**
+     * Handle POST /auth/login
+     */
     public function login(): void
     {
         if (session_status() === \PHP_SESSION_NONE) {
@@ -49,6 +52,7 @@ final class AuthController
             header('Location: /auth/login', true, 302);
             exit;
         }
+
         // One-time token — invalidate after successful check
         unset($_SESSION['csrf_login']);
 
@@ -59,7 +63,7 @@ final class AuthController
             $this->fail('Please enter email and password.', $email);
         }
 
-        // Authenticate
+        // Authenticate (Returns account data)
         $row = $this->auth->attempt($email, $pass);
         if (!$row) {
             $this->fail('Invalid credentials.', $email);
@@ -68,43 +72,60 @@ final class AuthController
         // Good practice on login
         session_regenerate_id(true);
 
+        // --- FETCH NAMES FROM PERSONS TABLE ---
+        // We join accounts_persons to persons to get the actual name data for the session
+        $firstName = null;
+        $lastName  = null;
+        $displayName = null;
+        $personUuid = null;
+
+        try {
+            $pdo = \App\Support\DB::pdo();
+            $stmt = $pdo->prepare("
+                SELECT 
+                    BIN_TO_UUID(p.id,1) AS person_uuid,
+                    p.first_name, 
+                    p.last_name, 
+                    p.display_name
+                FROM persons p
+                JOIN accounts_persons ap ON ap.person_id = p.id
+                WHERE ap.account_id = UUID_TO_BIN(:acc,1)
+                LIMIT 1
+            ");
+            $stmt->execute([':acc' => $row['account_id']]);
+            $person = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if ($person) {
+                $firstName   = $person['first_name'];
+                $lastName    = $person['last_name'];
+                $displayName = $person['display_name'];
+                $personUuid  = $person['person_uuid'];
+            }
+        } catch (\Throwable $e) {
+            error_log('Warning: unable to resolve names or person_uuid: ' . $e->getMessage());
+        }
+
         // Normalize session shape
         $_SESSION['account'] = [
             'id'           => $row['account_id'],
             'email'        => $row['email'],
             'is_superuser' => (int)($row['is_superuser'] ?? 0),
-            'user_role'    => $row['user_role'] ?? 'regular',   // <-- add this
-            'status'       => $row['status'] ?? null,           // optional, nice to have
-            'first_name'   => $row['first_name'] ?? null,
-            'display_name' => $row['display_name'] ?? null,
+            'user_role'    => $row['user_role'] ?? 'regular',
+            'status'       => $row['status'] ?? null,
+            'first_name'   => $firstName,
+            'last_name'    => $lastName,
+            'display_name' => $displayName,
         ];
-        // Back-compat alias
-        $_SESSION['user'] = $_SESSION['account'];
 
-
-        // ? New: resolve and cache person_uuid for RBAC / project access
-        try {
-            $pdo = \App\Support\DB::pdo();
-            $stmt = $pdo->prepare("
-            SELECT BIN_TO_UUID(person_id,1) AS person_uuid
-            FROM accounts_persons
-            WHERE account_id = UUID_TO_BIN(:acc,1)
-            LIMIT 1
-        ");
-            $stmt->execute([':acc' => $row['account_id']]);
-            $p = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-            if ($p && !empty($p['person_uuid'])) {
-                $_SESSION['person_uuid'] = $p['person_uuid'];
-            }
-        } catch (\Throwable $e) {
-            error_log('Warning: unable to resolve person_uuid: ' . $e->getMessage());
-        }
+        // Ensure layouts find the name data they need for initials
+        $_SESSION['person_uuid'] = $personUuid;
+        $_SESSION['person']      = $_SESSION['account'];
+        $_SESSION['user']        = $_SESSION['account'];
 
         // Clear any leftover prefill once success
         unset($_SESSION['last_login_email']);
 
-        // After normalizing $_SESSION['account']...
+        // Final redirect to the dashboard
         header('Location: /dashboard', true, 302);
         exit;
     }
@@ -132,5 +153,60 @@ final class AuthController
         $_SESSION['last_login_email'] = $emailForPrefill;
         header('Location: /auth/login', true, 302);
         exit;
+    }
+
+    public function showSetupPassword()
+    {
+        $token = $_GET['token'] ?? '';
+        if (!$token) {
+            return View::render('auth/error', ['message' => 'Invalid or missing invitation token.']);
+        }
+
+        $pdo = \App\Support\DB::pdo();
+        $stmt = $pdo->prepare("
+        SELECT id, email 
+        FROM accounts 
+        WHERE setup_token = :token AND setup_expires_at > NOW() 
+        LIMIT 1
+    ");
+        $stmt->execute([':token' => $token]);
+        $account = $stmt->fetch();
+
+        if (!$account) {
+            return View::render('auth/error', ['message' => 'This invitation has expired or is invalid.']);
+        }
+
+        return View::render('auth/setup-password', ['token' => $token, 'email' => $account['email']]);
+    }
+
+    public function handleSetupPassword()
+    {
+        $token = $_POST['token'] ?? '';
+        $pw    = $_POST['password'] ?? '';
+        $pwc   = $_POST['password_confirm'] ?? '';
+
+        if ($pw !== $pwc || strlen($pw) < 8) {
+            // Simple error handling for this demo
+            header("Location: /setup-password?token=$token&error=invalid");
+            exit;
+        }
+
+        $pdo = \App\Support\DB::pdo();
+        $hash = password_hash($pw, PASSWORD_BCRYPT);
+
+        $stmt = $pdo->prepare("
+        UPDATE accounts 
+        SET password_hash = :hash, 
+            setup_token = NULL, 
+            setup_expires_at = NULL,
+            status = 'active'
+        WHERE setup_token = :token
+    ");
+
+        if ($stmt->execute([':hash' => $hash, ':token' => $token])) {
+            // Automatically log them in or redirect to login
+            header('Location: /auth/login?setup_success=1');
+            exit;
+        }
     }
 }

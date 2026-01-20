@@ -18,8 +18,13 @@ $isSuperuser    = (int)($isSuperuser    ?? 0);
 $isProjectAdmin = (int)($isProjectAdmin ?? 0);
 $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
 
+// --- Permission for Creative Roles (DOP, Director, etc.) ---
+$userRole = $user_role ?? '';
+$creativeRoles = ['owner', 'admin', 'dit', 'dop', 'director', 'producer', 'editor'];
+$canToggleSelect = ($isPowerUser || in_array($userRole, $creativeRoles));
+
 // Column count for the table (power users see an extra Proxy/Job column)
-$colCount = $isPowerUser ? 12 : 11;
+$colCount = $isPowerUser ? 13 : 11;
 
 // Expect $project_uuid and $day_uuid from the controller
 $projectUuidSafe = htmlspecialchars($project_uuid ?? '');
@@ -83,6 +88,26 @@ function zd_sort_link(string $key, string $label, array $filters): string
         height: auto;
         border-radius: 8px;
         object-fit: cover;
+    }
+
+    h1 {
+        font-family: 'Inter', sans-serif;
+        /* Ensure it matches your theme */
+        text-transform: uppercase;
+        /* Forces all caps */
+        letter-spacing: 0.05em;
+        /* Adds the "nice" breathing room */
+        font-weight: 700;
+        /* Bold, but not too heavy */
+        font-size: 1.5rem;
+        /* Adjust size as needed */
+        line-height: 1.2;
+        /* Keeps multi-line headers tight */
+        margin: 0 0 1rem 0;
+        /* Standard spacing below */
+
+        /* Optional: Makes it look sharper on Mac screens */
+        -webkit-font-smoothing: antialiased;
     }
 </style>
 
@@ -309,9 +334,19 @@ if ($__publish_fb) {
                         <label class="zd-columns-item">
                             <input type="checkbox" data-col="camera" checked> Camera
                         </label>
-                        <label class="zd-columns-item">
-                            <input type="checkbox" data-col="selected" checked> Selected
-                        </label>
+                        <?php if ($isPowerUser): ?>
+                            <label class="zd-columns-item">
+                                <input type="checkbox" data-col="selected" checked> Selected
+                            </label>
+                            <label class="zd-columns-item">
+                                <input type="checkbox" data-col="restricted" checked> Restricted
+                            </label>
+                        <?php else: ?>
+                            <label class="zd-columns-item">
+                                <input type="checkbox" data-col="selected" checked> Selected
+                            </label>
+                        <?php endif; ?>
+
                         <label class="zd-columns-item">
                             <input type="checkbox" data-col="reel" checked> Reel
                         </label>
@@ -380,12 +415,13 @@ if ($__publish_fb) {
                             <div class="col-resize-handle"></div>
                         </th>
 
-                        <th class="col-selected zd-resizable">
-                            <div class="th-inner">
-                                <?= zd_sort_link('select', 'Selected', $filters) ?>
-                            </div>
-                            <div class="col-resize-handle"></div>
-                        </th>
+                        <!-- Selected -->
+                        <?php if ($isPowerUser): ?>
+                            <th class="col-selected">Selected</th>
+                            <th class="col-restricted">Restricted</th>
+                        <?php else: ?>
+                            <th class="col-selected">Selected</th>
+                        <?php endif; ?>
 
                         <th class="col-reel zd-resizable">
                             <div class="th-inner">
@@ -533,7 +569,7 @@ if ($__publish_fb) {
                                 <td class="col-selected zd-select-td" data-field="select">
                                     <?php $isSelected = (int)($r['is_select'] ?? 0) === 1; ?>
 
-                                    <?php if ($isPowerUser): ?>
+                                    <?php if ($canToggleSelect): ?>
                                         <button class="star-toggle"
                                             type="button"
                                             data-clip="<?= htmlspecialchars($r['clip_uuid']) ?>"
@@ -585,9 +621,30 @@ if ($__publish_fb) {
                                     <?php endif; ?>
                                 </td>
 
+                                <?php if ($isPowerUser): ?>
+                                    <!-- Restricted -->
+                                    <td class="col-restricted zd-restrict-td" data-field="restricted">
+                                        <?php $isRestricted = (int)($r['is_restricted'] ?? 0) === 1; ?>
+                                        <button class="restrict-toggle"
+                                            type="button"
+                                            data-clip="<?= htmlspecialchars($r['clip_uuid']) ?>"
+                                            data-restricted="<?= $isRestricted ? 1 : 0 ?>"
+                                            aria-label="Toggle restricted"
+                                            title="Toggle restricted">
+                                            <svg viewBox="0 0 24 24"
+                                                class="lock <?= $isRestricted ? 'on' : 'off' ?>"
+                                                width="16"
+                                                height="16"
+                                                aria-hidden="true">
+                                                <path d="M7 11V8a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h1zm2 0h6V8a3 3 0 0 0-6 0v3z" />
+                                            </svg>
+                                        </button>
+                                    </td>
+                                <?php endif; ?>
 
                                 <!-- Reel -->
                                 <td class="col-reel"><?= htmlspecialchars($r['reel'] ?? '') ?></td>
+
 
                                 <!-- File -->
                                 <td class="col-file">

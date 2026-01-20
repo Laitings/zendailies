@@ -37,7 +37,7 @@
 }
 
 .zd-table th {
-  font-weight: 600;
+  font-weight: 700;
   color: #e9eef3;
   text-align: left;
   background: #0b0c10;
@@ -298,6 +298,51 @@ td[data-edit="take"] .zd-inline-input {
   opacity: 0.18;
 }
 .star-toggle:hover .star {
+  transform: scale(1.07);
+  opacity: 1;
+}
+
+/* Restricted/lock column */
+.zd-restrict-td {
+  width: 54px;
+  text-align: center;
+}
+
+.restrict-toggle {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.restrict-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.lock {
+  width: 14px;
+  height: 14px;
+  display: block;
+  transition: transform 0.08s ease, opacity 0.12s ease;
+  fill: #9aa7b2;
+  opacity: 0.35;
+}
+
+.lock.on {
+  fill: #ff8a65; /* slightly warm to feel “hot”/sensitive */
+  opacity: 1;
+}
+
+.lock.off {
+  fill: #9aa7b2;
+  opacity: 0.35;
+}
+
+.restrict-toggle:hover .lock {
   transform: scale(1.07);
   opacity: 1;
 }
@@ -753,6 +798,9 @@ table.zd-clips-table {
   display: none;
 }
 .zd-clips-page.hide-col-selected .col-selected {
+  display: none;
+}
+.zd-clips-page.hide-col-restricted .col-restricted {
   display: none;
 }
 .zd-clips-page.hide-col-reel .col-reel {

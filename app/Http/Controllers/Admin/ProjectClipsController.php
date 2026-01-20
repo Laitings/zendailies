@@ -26,13 +26,36 @@ final class ProjectClipsController
             return;
         }
 
-        // Session context
-        $account      = $_SESSION['account'] ?? null;
-        $personUuid   = $_SESSION['person_uuid'] ?? null;
-        $isSuperuser  = (int)($account['is_superuser'] ?? 0);
+        if (session_status() === \PHP_SESSION_NONE) {
+            session_start();
+        }
 
-        // Basic project-admin check for visibility relaxation
+        // Session context
+        $account    = $_SESSION['account'] ?? null;
+        $personUuid = $_SESSION['person_uuid'] ?? null;
+        $isSuperuser = (int)($account['is_superuser'] ?? 0);
+
+        $pdo = DB::pdo();
+
+        // --- FETCH PROJECT MEMBER ROLE & ADMIN STATUS ---
         $isProjectAdmin = 0;
+        $userRole       = ''; // We fetch this so the View can allow "Selects" for DOPs/Directors
+        if ($personUuid) {
+            $stmtMember = $pdo->prepare("
+                SELECT pm.is_project_admin, pm.role
+                FROM project_members pm
+                WHERE pm.project_id = UUID_TO_BIN(:p, 1)
+                  AND pm.person_id  = UUID_TO_BIN(:person, 1)
+                LIMIT 1
+            ");
+            $stmtMember->execute([':p' => $projectUuid, ':person' => $personUuid]);
+            $member = $stmtMember->fetch(\PDO::FETCH_ASSOC);
+
+            if ($member) {
+                $isProjectAdmin = (int)($member['is_project_admin'] ?? 0);
+                $userRole       = strtolower($member['role'] ?? '');
+            }
+        }
 
         // Filters (GET)
         $q = [
@@ -55,9 +78,6 @@ final class ProjectClipsController
         // Pagination
         $offset = ($q['page'] - 1) * $q['per'];
 
-
-        $pdo = DB::pdo();
-
         // === Fetch All Days (for dropdown) ===
         $sqlDays = "
             SELECT BIN_TO_UUID(id,1) as id, shoot_date, title, published_at
@@ -75,7 +95,6 @@ final class ProjectClipsController
         $daysStmt = $pdo->prepare($sqlDays);
         $daysStmt->execute([':p' => $projectUuid]);
         $allDays = $daysStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-
 
         // === Check Mode: All Days or Single Day ===
         $isAllDays = ($dayUuid === 'all');
@@ -129,24 +148,6 @@ final class ProjectClipsController
             'status'       => ''
         ];
 
-        // Resolve project-admin for this project
-        $isProjectAdmin = 0;
-        if ($personUuid) {
-            $stmtAdmin = $pdo->prepare("
-                SELECT pm.is_project_admin
-                FROM project_members pm
-                JOIN projects p ON p.id = pm.project_id
-                WHERE p.id = UUID_TO_BIN(:project_uuid, 1)
-                  AND pm.person_id = UUID_TO_BIN(:person_uuid, 1)
-                LIMIT 1
-            ");
-            $stmtAdmin->execute([
-                ':project_uuid' => $projectUuid,
-                ':person_uuid'  => $personUuid,
-            ]);
-            $isProjectAdmin = (int)($stmtAdmin->fetchColumn() ?: 0);
-        }
-
         // === Filters ===
         $filters = [
             'scene'  => $q['scene'],
@@ -158,17 +159,24 @@ final class ProjectClipsController
             'text'   => $q['text'],
         ];
 
-        // === Sensitive-ACL visibility + published-only for regular users ===
+        // === Sensitive-ACL visibility + published-only for regular users + restricted flag ===
         $visibilitySql    = '';
         $visibilityParams = [];
 
         if (!$isSuperuser && !$isProjectAdmin) {
+            // Regular users must satisfy ALL of this:
+            // 1) The day is published
+            // 2) Clip is NOT restricted OR the user is in a sensitive group allowed for that clip
             $visibilitySql =
-                " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid, 1))" .
-                " AND d.published_at IS NOT NULL";
-            $visibilityParams[':viewer_person_uuid'] = $personUuid ?? '00000000-0000-0000-0000-000000000000';
-        }
+                " AND d.published_at IS NOT NULL"
+                . " AND ("
+                . "       c.is_restricted = 0"  // unrestricted → always allowed
+                . "       OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid,1)" // allowed via sensitive group
+                . "     )";
 
+            $visibilityParams[':viewer_person_uuid'] =
+                $personUuid ?? '00000000-0000-0000-0000-000000000000';
+        }
 
         // === Use ClipRepository ===
         $clipRepo = new ClipRepository($pdo);
@@ -183,9 +191,7 @@ final class ProjectClipsController
             'offset'    => $offset,
         ]);
 
-        // [New Logic to fetch both Unfiltered and Filtered stats]
-
-        // 1. Unfiltered Stats (Empty filters array)
+        // 1. Unfiltered Stats
         if ($isAllDays) {
             $totalUnfiltered    = $clipRepo->countForProject($projectUuid, [], $repoOptions);
             $durationUnfiltered = $clipRepo->sumDurationForProject($projectUuid, [], $repoOptions);
@@ -194,7 +200,7 @@ final class ProjectClipsController
             $durationUnfiltered = $clipRepo->sumDurationForDay($projectUuid, $dayUuid, [], $repoOptions);
         }
 
-        // 2. Filtered Stats (Uses $filters)
+        // 2. Filtered Stats
         if ($isAllDays) {
             $total              = $clipRepo->countForProject($projectUuid, $filters, $repoOptions);
             $rows               = $clipRepo->listForProject($projectUuid, $filters, $listOptions);
@@ -205,11 +211,10 @@ final class ProjectClipsController
             $dayTotalDurationMs = $clipRepo->sumDurationForDay($projectUuid, $dayUuid, $filters, $repoOptions);
         }
 
-        // Camera list (Fetch all available for this context, regardless of page)
+        // Camera list
         $cameraOptions = $clipRepo->getDistinctCameras($projectUuid, $isAllDays ? null : $dayUuid);
 
         // CSRF
-        if (session_status() === PHP_SESSION_NONE) session_start();
         $converterToken = bin2hex(random_bytes(32));
         $_SESSION['csrf_tokens']['converter'][$dayUuid] = $converterToken;
         $quickToken = \App\Support\Csrf::token();
@@ -221,7 +226,7 @@ final class ProjectClipsController
             'day_uuid'                => $dayUuid,
             'day_info'                => $dayInfo,
             'day_label'               => $dayLabel,
-            'all_days'                => $allDays, // Passed to view
+            'all_days'                => $allDays,
             'is_all_days'             => $isAllDays,
             'filters'                 => $q,
             'rows'                    => $rows,
@@ -231,6 +236,7 @@ final class ProjectClipsController
             'cameraOptions'           => $cameraOptions,
             'isSuperuser'             => $isSuperuser,
             'isProjectAdmin'          => $isProjectAdmin,
+            'user_role'               => $userRole, // <--- CRITICAL: Pass the role to the view
             'converter_csrf'          => $converterToken,
             'quick_csrf'              => $quickToken,
             'day_total_duration_ms'   => $dayTotalDurationMs,
@@ -339,13 +345,13 @@ final class ProjectClipsController
         // Resolve FPS from metadata (fallback keys)
         $fps = null;
         $fpsKeyStmt = $pdo->prepare("
-    SELECT meta_value
-    FROM clip_metadata
-    WHERE clip_id = UUID_TO_BIN(:clip,1)
-      AND meta_key IN ('fps','FPS','Camera FPS','Frame Rate','FrameRate','CameraFPS')
-    ORDER BY FIELD(meta_key,'fps','FPS','Camera FPS','Frame Rate','FrameRate','CameraFPS')
-    LIMIT 1
-");
+            SELECT meta_value
+            FROM clip_metadata
+            WHERE clip_id = UUID_TO_BIN(:clip,1)
+            AND meta_key IN ('fps','FPS','Camera FPS','Frame Rate','FrameRate','CameraFPS')
+            ORDER BY FIELD(meta_key,'fps','FPS','Camera FPS','Frame Rate','FrameRate','CameraFPS')
+            LIMIT 1
+        ");
         $fpsKeyStmt->execute([':clip' => $clipUuid]);
         $fpsRaw = $fpsKeyStmt->fetchColumn();
         if ($fpsRaw !== false && $fpsRaw !== null) {
@@ -738,30 +744,144 @@ final class ProjectClipsController
         }
     }
 
+    /**
+     * This function is from ProjectClipsController
+     * Toggles the 'is_select' flag for a clip.
+     * Route: POST /admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/select
+     */
     public function quickSelect(string $projectUuid, string $dayUuid, string $clipUuid): void
     {
-        if (session_status() === PHP_SESSION_NONE) session_start();
-        \App\Support\Csrf::validateOrAbort($_POST['_csrf'] ?? null);
+        // Set JSON header early
+        header('Content-Type: application/json');
 
-        header('Content-Type: application/json; charset=utf-8');
+        if (!$projectUuid || !$dayUuid || !$clipUuid) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Missing parameters']);
+            return;
+        }
 
+        if (session_status() === \PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        $account    = $_SESSION['account'] ?? null;
+        $personUuid = $_SESSION['person_uuid'] ?? null;
+        $isSuperuser = (int)($account['is_superuser'] ?? 0);
+
+        // Early validation
+        if (!$account) {
+            http_response_code(401);
+            echo json_encode(['ok' => false, 'error' => 'Not authenticated']);
+            return;
+        }
+
+        try {
+            $pdo = DB::pdo();
+
+            // --- Permission Check: Superuser OR allowed project roles ---
+            $canSelect = false;
+            if ($isSuperuser) {
+                $canSelect = true;
+            } elseif ($personUuid) {
+                $stmtPerm = $pdo->prepare("
+                SELECT pm.is_project_admin, pm.role
+                FROM project_members pm
+                WHERE pm.project_id = UUID_TO_BIN(:p,1)
+                  AND pm.is_active = 1
+                  AND pm.person_id  = UUID_TO_BIN(:person,1)
+                LIMIT 1
+            ");
+                $stmtPerm->execute([':p' => $projectUuid, ':person' => $personUuid]);
+                $member = $stmtPerm->fetch(\PDO::FETCH_ASSOC);
+
+                if ($member) {
+                    $allowedRoles = ['owner', 'admin', 'dit', 'dop', 'director', 'producer', 'editor'];
+                    $userRole = strtolower($member['role'] ?? '');
+
+                    if ((int)($member['is_project_admin'] ?? 0) === 1 || in_array($userRole, $allowedRoles)) {
+                        $canSelect = true;
+                    }
+                }
+            }
+
+            if (!$canSelect) {
+                http_response_code(403);
+                echo json_encode(['ok' => false, 'error' => 'You do not have permission to mark selects.']);
+                return;
+            }
+
+            // --- Verify the clip exists and belongs to this project/day ---
+            $stmtVerify = $pdo->prepare("
+            SELECT id, is_select 
+            FROM clips 
+            WHERE id = UUID_TO_BIN(:c,1)
+              AND project_id = UUID_TO_BIN(:p,1)
+              AND day_id = UUID_TO_BIN(:d,1)
+            LIMIT 1
+        ");
+            $stmtVerify->execute([
+                ':c' => $clipUuid,
+                ':p' => $projectUuid,
+                ':d' => $dayUuid
+            ]);
+            $clip = $stmtVerify->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$clip) {
+                http_response_code(404);
+                echo json_encode(['ok' => false, 'error' => 'Clip not found']);
+                return;
+            }
+
+            // --- Toggle Logic ---
+            $current = (int)$clip['is_select'];
+            $newState = ($current === 1) ? 0 : 1;
+
+            // Update database
+            $stmtUpdate = $pdo->prepare("
+            UPDATE clips 
+            SET is_select = :s 
+            WHERE id = UUID_TO_BIN(:c,1) 
+            LIMIT 1
+        ");
+            $stmtUpdate->execute([':s' => $newState, ':c' => $clipUuid]);
+
+            echo json_encode([
+                'ok' => true,
+                'is_select' => $newState
+            ]);
+        } catch (\PDOException $e) {
+            http_response_code(500);
+            error_log("Database error in quickSelect: " . $e->getMessage());
+            echo json_encode(['ok' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            error_log("Error in quickSelect: " . $e->getMessage());
+            echo json_encode(['ok' => false, 'error' => 'Server error: ' . $e->getMessage()]);
+        }
+    }
+
+    public function quick_restrict(string $projectUuid, string $dayUuid, string $clipUuid): void
+    {
+        // AuthN / CSRF
         $account     = $_SESSION['account'] ?? null;
         $personUuid  = $_SESSION['person_uuid'] ?? null;
         $isSuperuser = (int)($account['is_superuser'] ?? 0);
 
+        \App\Support\Csrf::validateOrAbort($_POST['_csrf'] ?? null);
+
         $pdo = DB::pdo();
 
-        // permission: superuser OR project admin
+        // Permission: superuser OR project admin (DIT) only
         $isProjectAdmin = 0;
         if ($personUuid) {
             $stmtAdmin = $pdo->prepare("
-            SELECT pm.is_project_admin
-            FROM project_members pm
-            JOIN projects p ON p.id = pm.project_id
-            WHERE p.id = UUID_TO_BIN(:p,1)
-              AND pm.person_id = UUID_TO_BIN(:person,1)
-            LIMIT 1
-        ");
+                SELECT pm.is_project_admin
+                FROM project_members pm
+                JOIN projects p ON p.id = pm.project_id
+                WHERE p.id = UUID_TO_BIN(:p,1)
+                  AND pm.person_id = UUID_TO_BIN(:person,1)
+                LIMIT 1
+            ");
             $stmtAdmin->execute([':p' => $projectUuid, ':person' => $personUuid]);
             $isProjectAdmin = (int)($stmtAdmin->fetchColumn() ?: 0);
         }
@@ -773,13 +893,13 @@ final class ProjectClipsController
 
         // ensure clip belongs to project+day
         $exists = $pdo->prepare("
-        SELECT is_select
-        FROM clips
-        WHERE id = UUID_TO_BIN(:c,1)
-          AND project_id = UUID_TO_BIN(:p,1)
-          AND day_id     = UUID_TO_BIN(:d,1)
-        LIMIT 1
-    ");
+            SELECT is_restricted
+            FROM clips
+            WHERE id         = UUID_TO_BIN(:c,1)
+              AND project_id = UUID_TO_BIN(:p,1)
+              AND day_id     = UUID_TO_BIN(:d,1)
+            LIMIT 1
+        ");
         $exists->execute([':c' => $clipUuid, ':p' => $projectUuid, ':d' => $dayUuid]);
         $cur = $exists->fetchColumn();
         if ($cur === false) {
@@ -788,7 +908,6 @@ final class ProjectClipsController
             return;
         }
 
-        // If client sent explicit value (0/1) use it; else toggle.
         $posted = $_POST['value'] ?? null;
         if ($posted === '0' || $posted === '1') {
             $next = (int)$posted;
@@ -798,21 +917,27 @@ final class ProjectClipsController
 
         try {
             $upd = $pdo->prepare("
-            UPDATE clips
-            SET is_select = :v
-            WHERE id = UUID_TO_BIN(:c,1)
-              AND project_id = UUID_TO_BIN(:p,1)
-              AND day_id     = UUID_TO_BIN(:d,1)
-            LIMIT 1
-        ");
-            $upd->execute([':v' => $next, ':c' => $clipUuid, ':p' => $projectUuid, ':d' => $dayUuid]);
+                UPDATE clips
+                SET is_restricted = :v
+                WHERE id         = UUID_TO_BIN(:c,1)
+                  AND project_id = UUID_TO_BIN(:p,1)
+                  AND day_id     = UUID_TO_BIN(:d,1)
+                LIMIT 1
+            ");
+            $upd->execute([
+                ':v' => $next,
+                ':c' => $clipUuid,
+                ':p' => $projectUuid,
+                ':d' => $dayUuid,
+            ]);
 
-            echo json_encode(['ok' => true, 'is_select' => $next]);
+            echo json_encode(['ok' => true, 'is_restricted' => $next]);
         } catch (\Throwable $e) {
             http_response_code(400);
             echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
         }
     }
+
 
 
     public function destroy(string $projectUuid, string $dayUuid, string $clipUuid): void

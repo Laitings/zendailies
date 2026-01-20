@@ -222,6 +222,84 @@ document.addEventListener("DOMContentLoaded", () => {
         tcChip.textContent = currentChipTC();
       }
 
+      // --- Poster Grab Logic ---
+      const btnGrabPoster = document.getElementById("btnGrabPoster");
+      const flashEl = document.getElementById("zdFlash");
+
+      if (btnGrabPoster && vid && flashEl) {
+        btnGrabPoster.addEventListener("click", async () => {
+          const layoutRoot = document.querySelector(".player-layout");
+          const pUuid = layoutRoot?.dataset.projectUuid;
+          const dUuid = layoutRoot?.dataset.dayUuid;
+          const cUuid = layoutRoot?.dataset.clipUuid;
+
+          if (!pUuid || !dUuid || !cUuid) return;
+
+          // 1. INSTANT WHITE FRAME (1 frame)
+          flashEl.style.transition = "none";
+          flashEl.style.opacity = "1";
+
+          // 2. TRIGGER FADE TO IMAGE (Next 3 frames ~125ms)
+          // We use requestAnimationFrame to ensure the white frame paints first
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              flashEl.style.transition = "opacity 0.240s ease-out";
+              flashEl.style.opacity = "0";
+            });
+          });
+
+          btnGrabPoster.disabled = true;
+          btnGrabPoster.style.opacity = "0.5";
+
+          try {
+            const response = await fetch(
+              `/admin/projects/${pUuid}/days/${dUuid}/clips/${cUuid}/poster-from-time`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-CSRF-TOKEN":
+                    document.querySelector('input[name="_csrf"]')?.value || "",
+                },
+                body: JSON.stringify({
+                  seconds: vid.currentTime, // Accurate frame extraction
+                }),
+              },
+            );
+
+            const result = await response.json();
+
+            if (response.ok && result.ok) {
+              // 3. Update Sidebar Thumbnail Immediately
+              const activeItem =
+                document.querySelector(`.clip-item.is-active`) ||
+                document.querySelector(`.clip-item[href*="${cUuid}"]`);
+
+              if (activeItem) {
+                const thumb = activeItem.querySelector(".thumb-wrap img");
+                if (thumb) {
+                  const freshUrl =
+                    result.poster_url +
+                    (result.poster_url.includes("?") ? "&" : "?") +
+                    "v=" +
+                    Date.now();
+                  thumb.src = freshUrl; // Force refresh
+                }
+              }
+            } else {
+              alert(
+                "Failed to update poster: " + (result.error || "Unknown error"),
+              );
+            }
+          } catch (err) {
+            console.error("Poster grab error:", err);
+          } finally {
+            btnGrabPoster.disabled = false;
+            btnGrabPoster.style.opacity = "1";
+          }
+        });
+      }
+
       // Overwrite typing: digits only, move caret to next writable slot, skip separators
       input.addEventListener("keydown", (e) => {
         const key = e.key;
@@ -318,29 +396,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const theaterEnterIcon = btnTheater?.querySelector('[data-state="enter"]');
   const theaterExitIcon = btnTheater?.querySelector('[data-state="exit"]');
 
-  const THEATER_KEY = "playerTheaterMode";
-
-  function setTheater(on) {
-    if (!layoutRoot) return;
-    layoutRoot.classList.toggle("is-theater", !!on);
-
-    // swap button glyphs
-    if (theaterEnterIcon && theaterExitIcon) {
-      theaterEnterIcon.style.display = on ? "none" : "";
-      theaterExitIcon.style.display = on ? "" : "none";
-    }
-  }
-
-  // restore last state
-  setTheater(sessionStorage.getItem(THEATER_KEY) === "1");
-
-  // wire button
-  btnTheater?.addEventListener("click", () => {
-    const now = !layoutRoot.classList.contains("is-theater");
-    setTheater(now);
-    sessionStorage.setItem(THEATER_KEY, now ? "1" : "0");
-  });
-
   const frame = document.getElementById("playerFrame"); // for fullscreen target
 
   // --- Controls idle/show logic ---
@@ -367,7 +422,7 @@ document.addEventListener("DOMContentLoaded", () => {
   ["mousemove", "pointerdown", "touchstart", "wheel", "keydown"].forEach(
     (ev) => {
       frame.addEventListener(ev, wakeControls, { passive: true });
-    }
+    },
   );
 
   // start the timer once video metadata is ready (or immediately if you like)
@@ -466,7 +521,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (vid.paused) vid.play();
       else vid.pause();
     },
-    true
+    true,
   ); // capture phase as well
 
   // --- Volume / Mute ---
@@ -601,4 +656,21 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   });
+
+  // --- Aspect Ratio Blanking ---
+  const selBlanking = document.getElementById("selBlanking");
+  if (selBlanking && frame) {
+    selBlanking.addEventListener("change", () => {
+      frame.dataset.blanking = selBlanking.value;
+    });
+
+    // Optional: Restore last selection from session
+    const savedBlanking = sessionStorage.getItem("playerBlanking") || "none";
+    selBlanking.value = savedBlanking;
+    frame.dataset.blanking = savedBlanking;
+
+    selBlanking.addEventListener("change", () => {
+      sessionStorage.setItem("playerBlanking", selBlanking.value);
+    });
+  }
 });

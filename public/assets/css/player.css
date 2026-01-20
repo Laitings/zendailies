@@ -52,7 +52,9 @@
 #btnStepFwd,
 #btnMute,
 #btnTheater,
-#btnFS {
+#btnFS,
+#btnGrabPoster,
+#selBlanking {
   pointer-events: auto;
 }
 
@@ -105,7 +107,12 @@
   padding: 6px 10px;
   border-radius: 8px;
   cursor: text;
-  font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font:
+    13px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
   min-width: 118px;
   text-align: center;
 }
@@ -121,7 +128,12 @@
   color: var(--text);
   border-radius: 8px;
   padding: 6px 10px;
-  font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font:
+    13px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
   width: 118px;
   text-align: center;
   outline: none;
@@ -138,7 +150,9 @@
   transform: translateY(56px);
   opacity: 0;
   pointer-events: none;
-  transition: transform 0.18s ease, opacity 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
 }
 
 .zd-player-frame:hover .zd-tc-chip,
@@ -161,7 +175,9 @@
   padding: 6px 12px;
   cursor: pointer;
   backdrop-filter: saturate(1.2) blur(2px);
-  transition: background 0.15s ease, transform 0.08s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.08s ease;
 }
 
 .frame-controls button:hover {
@@ -186,20 +202,49 @@
   left: 12px;
   right: 12px;
   bottom: 12px;
-  z-index: 4;
+  z-index: 20;
+
+  /* flex again so contents are vertically centered */
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: var(--controls-h);
+  justify-content: center;
+
+  /* let the content + padding define the height */
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 8px;
+  padding: 20px;
   backdrop-filter: blur(2px);
-  transition: transform 0.18s ease, opacity 0.18s ease;
-  overflow: visible;
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
+  overflow: hidden;
 }
 
+.zd-controls-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  /* slightly narrower than the outer box on X-axis */
+  width: calc(100% - 6px); /* 6px margin on left + right */
+  margin: 0 auto;
+  overflow: hidden; /* inner box clips everything inside */
+}
+/* Scrub bar row */
+.zd-controls-top {
+  padding-top: 2px; /* extra spacing above the bar */
+  padding-bottom: 2px; /* spacing between bar and buttons */
+}
+
+/* Buttons row */
+.zd-controls-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start; /* stay left-aligned */
+  gap: 10px;
+  width: 100%; /* so margin-left:auto can push right group */
+}
 /* Right-aligned controls group */
 .zd-controls-right {
   margin-left: auto;
@@ -231,6 +276,31 @@
   padding: 6px 10px;
   border-radius: 8px;
   cursor: pointer;
+}
+
+/* Icon-only buttons (e.g. grab-poster) */
+.zd-btn.zd-btn-icon {
+  padding: 6px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#btnPoster svg {
+  fill: #ffffff;
+  width: 20px;
+  height: 20px;
+}
+
+/* Poster icon inside the button */
+.zd-btn-icon .zd-icon-poster {
+  width: 18px;
+  height: 18px;
+  display: block;
+  /* optional subtle boost if the SVG is a bit dark */
+  filter: brightness(1.1);
 }
 
 .zd-btn:hover {
@@ -303,7 +373,9 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.15s ease, visibility 0s linear 0.15s;
+  transition:
+    opacity 0.15s ease,
+    visibility 0s linear 0.15s;
 }
 
 /* Show popup on hover */
@@ -312,7 +384,9 @@
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transition: opacity 0.15s ease, visibility 0s linear 0s;
+  transition:
+    opacity 0.15s ease,
+    visibility 0s linear 0s;
 }
 
 /* Vertical volume slider */
@@ -392,7 +466,9 @@
   background: transparent;
   pointer-events: auto;
   cursor: pointer;
-  transition: transform 0.18s ease, opacity 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
 }
 
 /* Scrubber hide animation */
@@ -474,7 +550,8 @@
   grid-template-columns: var(--clipcol-width, 360px) 10px 1fr;
   column-gap: 8px;
   align-items: stretch;
-  transition: grid-template-columns 0.2s ease;
+  /* Add smooth width transition for the sidebar */
+  transition: grid-template-columns 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .player-layout > aside {
@@ -530,7 +607,8 @@
 }
 
 .clipScrollInner,
-.dayScrollInner {
+.dayScrollInner,
+#sceneScrollInner {
   overflow-y: auto;
   overflow-x: visible;
   max-height: 72vh;
@@ -593,7 +671,7 @@ body::-webkit-scrollbar-thumb:hover,
 #clipListContainer,
 #dayListContainer {
   position: relative;
-  overflow: visible !important;
+  overflow: clip; /* Changed from visible !important */
   padding: 10px 12px 10px 10px;
   margin: -10px -12px -10px -10px;
   box-sizing: border-box;
@@ -606,17 +684,25 @@ body::-webkit-scrollbar-thumb:hover,
 
 /* List view layout */
 #clipListContainer.list-view,
-#dayListContainer.list-view {
+#dayListContainer.list-view,
+#sceneListContainer.grid-view {
   display: block;
 }
 
 /* Grid view layout */
 #clipListContainer.grid-view,
-#dayListContainer.grid-view {
+#dayListContainer.grid-view,
+#sceneListContainer.grid-view {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 12px;
   overflow: visible !important;
+}
+
+#sceneListContainer.grid-view {
+  gap: 18px;
+  padding-left: 10px;
+  margin-left: -10px;
 }
 
 #dayListContainer.grid-view {
@@ -640,7 +726,10 @@ body::-webkit-scrollbar-thumb:hover,
   margin-bottom: 8px;
   min-width: 0;
   isolation: isolate;
-  transition: background 0.15s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
   transform-origin: center center;
 }
 
@@ -975,7 +1064,10 @@ body::-webkit-scrollbar-thumb:hover,
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  transition: background 0.15s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
   transform-origin: center center;
 }
 
@@ -1009,7 +1101,9 @@ body::-webkit-scrollbar-thumb:hover,
   display: block;
   filter: brightness(0.7);
   transform: scale(1);
-  transition: transform 0.18s ease, filter 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    filter 0.18s ease;
 }
 
 .day-item:hover .day-thumb-inner img {
@@ -1029,7 +1123,9 @@ body::-webkit-scrollbar-thumb:hover,
   text-align: center;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
   opacity: 1;
-  transition: opacity 0.18s ease, background 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    background 0.18s ease;
   line-height: 1.3;
   padding: 10px 8px;
   box-sizing: border-box;
@@ -1193,6 +1289,18 @@ details[open] > .zd-metadata-summary::before {
   font-weight: 600;
 }
 
+/* Add after your .hdr-day-btn styles */
+.hdr-day-btn:hover {
+  color: var(--text);
+  opacity: 1 !important;
+}
+
+.hdr-slash {
+  color: var(--muted);
+  margin: 0 2px;
+  font-weight: 400;
+}
+
 .hdr-slash {
   opacity: 0.5;
 }
@@ -1247,4 +1355,167 @@ details[open] > .zd-metadata-summary::before {
   .hdr-right {
     justify-content: flex-start;
   }
+}
+/* =========================================================
+   MOBILE REDESIGN (Max-width: 900px)
+   ========================================================= */
+
+@media (max-width: 900px) {
+  /* 1. Kill the Grid - Force Vertical Stack */
+  .player-layout,
+  .player-layout.is-theater {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-areas: none !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  /* 2. Remove Resizers - They are useless on touch */
+  #sidebarResizer,
+  #innerResizer {
+    display: none !important;
+  }
+
+  /* 3. Reorder: Video is Always King at the top */
+  .player-main {
+    order: -1; /* Moves player section to the top */
+    width: 100% !important;
+  }
+
+  .zd-player-frame {
+    border-radius: 0; /* Bleed to edges on mobile */
+    aspect-ratio: 16 / 9;
+    max-height: 35vh;
+  }
+
+  /* 4. Sidebar (Clip List) Adjustments */
+  .player-layout > aside {
+    width: 100% !important;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    margin-top: 10px;
+  }
+
+  /* 5. Make the Clip Grid more mobile-friendly */
+  #clipListContainer.grid-view {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+  }
+
+  /* 6. Metadata Redesign: Single Column */
+  .zd-meta-grid {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  .zd-meta-cell {
+    padding: 10px;
+  }
+
+  /* 7. Hide desktop-only clutter */
+  #btnTheater,
+  .hdr-back {
+    display: none !important;
+  }
+
+  /* 8. Make the 'Day Switch' button bigger for thumbs */
+  .hdr-day-btn {
+    padding: 8px 0;
+    font-size: 1.1rem;
+  }
+
+  /* 9. Floating Comments - Give them more breathing room */
+  .zd-comment-item {
+    margin-left: 0 !important; /* Remove deep indent on mobile */
+    border-left: 3px solid var(--accent) !important;
+  }
+}
+
+/* Update this block at the bottom of player.css */
+.zd-player-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* <--- CRITICAL: This allows clicks to pass through to the controls */
+  z-index: 8; /* Sit above video (z:1) and LUT (z:2), but BELOW controls (z:4? no, controls are z:4) */
+  background: black;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Mask for 2.39 (Horizontal Letterbox) */
+.zd-player-frame[data-blanking="2.39"]::after {
+  opacity: 1;
+  clip-path: polygon(
+    0% 0%,
+    100% 0%,
+    100% 12.5%,
+    0% 12.5%,
+    0% 87.5%,
+    100% 87.5%,
+    100% 100%,
+    0% 100%
+  );
+}
+
+/* Mask for 1.85 (Thin Horizontal Letterbox) */
+.zd-player-frame[data-blanking="1.85"]::after {
+  opacity: 1;
+  clip-path: polygon(
+    0% 0%,
+    100% 0%,
+    100% 2%,
+    0% 2%,
+    0% 98%,
+    100% 98%,
+    100% 100%,
+    0% 100%
+  );
+}
+
+/* Mask for 1.66 (Thin Pillarbox) */
+.zd-player-frame[data-blanking="1.66"]::after {
+  opacity: 1;
+  clip-path: polygon(
+    0% 0%,
+    3% 0%,
+    3% 100%,
+    0% 100%,
+    0% 0%,
+    100% 0%,
+    100% 100%,
+    97% 100%,
+    97% 0%,
+    100% 0%
+  );
+}
+
+/* Mask for 1.33 (4:3 Pillarbox) */
+.zd-player-frame[data-blanking="1.33"]::after {
+  opacity: 1;
+  clip-path: polygon(
+    0% 0%,
+    12.5% 0%,
+    12.5% 100%,
+    0% 100%,
+    0% 0%,
+    100% 0%,
+    100% 100%,
+    87.5% 100%,
+    87.5% 0%,
+    100% 0%
+  );
+}
+
+.mode-tab {
+  color: var(--muted);
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.mode-tab.active {
+  background: var(--panel) !important;
+  color: var(--accent) !important;
+  font-weight: 700;
 }

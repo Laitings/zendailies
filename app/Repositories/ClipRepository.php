@@ -170,21 +170,23 @@ final class ClipRepository
         $offset = max(0, (int)($options['offset'] ?? 0));
 
         $sql = "
-            SELECT
-                BIN_TO_UUID(c.id,1) AS clip_uuid,
-                c.scene,
-                c.slate,
-                c.take,
-                c.take_int,
-                c.camera,
-                c.reel,
-                c.file_name,
-                c.tc_start,
-                c.tc_end,
-                c.duration_ms,
-                c.rating,
-                c.is_select,
-                c.created_at,
+                SELECT
+                    BIN_TO_UUID(c.id,1)              AS clip_uuid,
+                    BIN_TO_UUID(c.day_id,1)          AS day_uuid,
+                    c.scene,
+                    c.slate,
+                    c.take,
+                    c.take_int,
+                    c.camera,
+                    c.rating,
+                    c.is_select,
+                    c.is_restricted,
+                    c.created_at,
+                    c.reel,
+                    c.file_name,
+                    c.tc_start,
+                    c.duration_ms,
+                    c.fps,
 
                 -- Poster / proxy path (latest by created_at)
                 MAX(CASE WHEN a.asset_type = 'poster'    THEN a.storage_path END) AS poster_path,
@@ -345,7 +347,7 @@ final class ClipRepository
                 BIN_TO_UUID(c.id,1) AS clip_uuid,
                 BIN_TO_UUID(c.day_id,1) AS day_uuid,
                 c.scene, c.slate, c.take, c.take_int, c.camera, c.reel, c.file_name,
-                c.tc_start, c.tc_end, c.duration_ms, c.rating, c.is_select, c.created_at,
+                c.tc_start, c.tc_end, c.duration_ms, c.rating, c.is_select, c.is_restricted, c.created_at,
                 d.shoot_date,
                 MAX(CASE WHEN a.asset_type = 'poster'    THEN a.storage_path END) AS poster_path,
                 MAX(CASE WHEN a.asset_type = 'proxy_web' THEN a.storage_path END) AS proxy_path,

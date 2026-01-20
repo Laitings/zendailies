@@ -10,7 +10,12 @@ $this->start('content'); ?>
 
 </div>
 
-
+<?php if (isset($_GET['setup_success'])): ?>
+  <div class="success-alert" style="background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.3); color: #2ecc71; padding: 12px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; text-align: center;">
+    <strong>Account Activated!</strong><br>
+    Your password has been set. You can now sign in.
+  </div>
+<?php endif; ?>
 
 <?php if (!empty($error)): ?>
   <div class="error"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>

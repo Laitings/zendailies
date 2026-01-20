@@ -11,9 +11,20 @@ class ProjectRepository
 
     public function listAll(): array
     {
-        $sql = "SELECT BIN_TO_UUID(id,1) AS id, title, code, status, created_at
-                FROM projects
-                ORDER BY created_at DESC";
+        // Fix: Join 'days' instead of 'shooting_days'
+        $sql = "
+        SELECT 
+            BIN_TO_UUID(p.id, 1) AS id, 
+            p.title, 
+            p.code, 
+            p.status, 
+            p.created_at,
+            COUNT(d.id) AS day_count
+        FROM projects p
+        LEFT JOIN days d ON d.project_id = p.id
+        GROUP BY p.id
+        ORDER BY p.created_at DESC";
+
         return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -53,6 +64,24 @@ class ProjectRepository
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':pid' => $personUuid]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    public function listAllAvailableUsers(): array
+    {
+        $pdo = \App\Support\DB::pdo();
+        $sql = "
+        SELECT 
+            BIN_TO_UUID(p.id, 1) as person_uuid, 
+            p.first_name, 
+            p.last_name, 
+            a.email
+        FROM persons p
+        JOIN accounts_persons ap ON p.id = ap.person_id
+        JOIN accounts a ON ap.account_id = a.id
+        WHERE a.status = 'active'
+        ORDER BY p.last_name ASC, p.first_name ASC
+    ";
+        return $pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     public function personHasProject(string $personUuid, string $projectUuid): bool

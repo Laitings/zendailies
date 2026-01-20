@@ -66,33 +66,30 @@ final class ResolveCsvImportService
             $fileName = $csvFileNameRaw ? basename((string)$csvFileNameRaw) : null;
             $filePath = $csvRow['Source File'] ?? $csvRow['Clip Directory'] ?? null;
 
-            $scene    = $csvRow['Scene'] ?? null;
-            $take     = $csvRow['Take'] ?? null;
-            $slate    = null;
+            // Resolve exports differ a bit between versions/presets.
+            // For the *correct* Resolve CSV:
+            //   - Scene is in "Scene"
+            //   - Slate (shot) is in "Shot"
+            // For the *incorrect/legacy* one, scene/slate might be baked into "Scene" (e.g. "55-16").
 
-            // Scene may contain "009-003" → scene/slate split
-            if ($scene && strpos($scene, '-') !== false) {
-                [$s1, $s2] = explode('-', $scene, 2);
-                $scene = trim($s1);
-                $slate = trim($s2 ?: '');
-            }
-            if (($slate === null || $slate === '') && !empty($csvRow['Scene/Slate/Take'])) {
-                $sst = (string)$csvRow['Scene/Slate/Take'];
-                if (strpos($sst, '-') !== false) {
-                    [$sc, $rest] = explode('-', $sst, 2);
-                    $scene = $scene ?: trim($sc);
-                    $slateGuess = trim(preg_split('~[ /]~', $rest, 2)[0] ?? '');
-                    if ($slateGuess !== '') $slate = $slateGuess;
-                }
-            }
+            $scene = $csvRow['Scene'] ?? null;
 
-            $camera   = $csvRow['Camera #'] ?? $csvRow['Camera'] ?? null;
+            // Slate lives in the Shot column in the correct CSV
+            $slate = $csvRow['Shot'] ?? ($csvRow['Slate'] ?? null);
+
+            $take  = $csvRow['Take'] ?? null;
+
+            // The fallbacks were here - they are now gone.
+
+            $camera = $csvRow['Camera #'] ?? $csvRow['Camera'] ?? null;
+
             if ($camera !== null) $camera = rtrim((string)$camera, '_');
 
-            $reel     = $csvRow['Reel'] ?? $csvRow['Reel Name'] ?? null;
+            // Prefer Reel Number (e.g. "A_0003_1CAN"). Reel Name is often the clip basename.
+            $reel = $csvRow['Reel Number'] ?? ($csvRow['Reel'] ?? ($csvRow['Reel Name'] ?? null));
 
-            $tcStart  = $csvRow['Start TC'] ?? null;
-            $tcEnd    = $csvRow['End TC']   ?? null;
+            $tcStart = $csvRow['Start TC'] ?? null;
+            $tcEnd   = $csvRow['End TC']   ?? null;
 
             // --- Normalize key-ish fields to strip control chars & bad whitespace ---
             $fileName = $this->normalizeKeyField($fileName, 255);
@@ -521,13 +518,35 @@ final class ResolveCsvImportService
         $succeeded = [];
 
         while ($r = $rows->fetch(PDO::FETCH_ASSOC)) {
-            $csvFileNameRaw = $r['file_name'] ?? $r['file_path'] ?? null;
-            $csvBase = strtolower($this->baseNoExt($csvFileNameRaw));
-            if ($csvBase === '' || !isset($clipIndex[$csvBase])) {
-                $unmatched[] = ['row' => (int)$r['row_index'], 'reason' => 'no clip match in this day', 'csv_name' => $csvFileNameRaw];
+            $csvName = $r['file_name'] ?? null;
+            $csvPath = $r['file_path'] ?? null;
+
+            $csvFileNameRaw = $csvName ?? $csvPath ?? null;
+
+            // Try multiple match keys (exact basename first, then resilient clip-id key)
+            $candidates = [
+                $this->matchKey(is_string($csvName) ? $csvName : null),
+                $this->clipIdKey(is_string($csvName) ? $csvName : null),
+                $this->matchKey(is_string($csvPath) ? $csvPath : null),
+                $this->clipIdKey(is_string($csvPath) ? $csvPath : null),
+            ];
+
+            $clip = null;
+            foreach ($candidates as $k) {
+                if ($k !== '' && isset($clipIndex[$k])) {
+                    $clip = $clipIndex[$k];
+                    break;
+                }
+            }
+
+            if (!$clip) {
+                $unmatched[] = [
+                    'row'      => (int)$r['row_index'],
+                    'reason'   => 'no clip match in this day',
+                    'csv_name' => $csvFileNameRaw,
+                ];
                 continue;
             }
-            $clip = $clipIndex[$csvBase];
             // Limit to user-selected clips if provided
             if (!empty($limitUuids) && !in_array($clip['clip_uuid'], $limitUuids, true)) {
                 continue;
@@ -617,8 +636,43 @@ final class ResolveCsvImportService
     private function baseNoExt(?string $name): string
     {
         if (!$name) return '';
-        $base = preg_replace('/\.[^.]+$/', '', $name);
+
+        // Normalize, strip control chars, etc.
+        $n = $this->normalizeKeyField($name, 1024);
+        if ($n === null || $n === '') return '';
+
+        // Make basename work for both Windows and Unix paths
+        $n = str_replace('\\', '/', $n);
+        $n = basename($n);
+
+        $base = preg_replace('/\.[^.]+$/', '', $n);
         return $base ?? '';
+    }
+
+    /** Normalized matching key: basename (no ext) → lowercase. */
+    private function matchKey(?string $name): string
+    {
+        $b = $this->baseNoExt($name);
+        return $b === '' ? '' : strtolower($b);
+    }
+
+    /**
+     * Resilient "clip-id" key extracted from filenames like:
+     *   A_0003C008_240819_083237_h1CP7(.mp4)
+     *   A_0003C008_251125_101505_h1CAN(.mxf)
+     * This returns "a_0003c008" which tends to survive transcodes/renames where
+     * only date/time/reel suffixes change.
+     */
+    private function clipIdKey(?string $name): string
+    {
+        $b = $this->baseNoExt($name);
+        if ($b === '') return '';
+
+        if (preg_match('/^([A-Za-z]_[0-9]{4}C[0-9]{3})/u', $b, $m)) {
+            return strtolower($m[1]);
+        }
+
+        return '';
     }
 
     /** Resolve often exports UTF-16LE CSV; convert on the fly to UTF-8. */

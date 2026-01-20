@@ -204,8 +204,11 @@ $fb = $feedback ?? null;
 
     <script>
         (function() {
-            const fb = <?= json_encode($fb, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+            // Data from PHP
+            const fb = <?= json_encode($fb, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?> || null;
+            if (!fb) return;
 
+            // Elements
             const backdrop = document.getElementById('zdImportBackdrop');
             const modal = document.getElementById('zdImportModal');
             const listOk = document.getElementById('zdListOk');
@@ -213,64 +216,99 @@ $fb = $feedback ?? null;
             const countOk = document.getElementById('zdCountOk');
             const countErr = document.getElementById('zdCountErr');
 
-            const okCount = fb.counts && typeof fb.counts.succeeded === 'number' ? fb.counts.succeeded : (fb.succeeded ? fb.succeeded.length : 0);
-            const errCount = fb.counts && typeof fb.counts.missing === 'number' ? fb.counts.missing : (fb.unmatched ? fb.unmatched.length : 0);
+            if (!backdrop || !modal || !listOk || !listErr || !countOk || !countErr) return;
 
+            // Normalize arrays safely
+            const succeededArr = Array.isArray(fb.succeeded) ? fb.succeeded : [];
+            const unmatchedArr = Array.isArray(fb.unmatched) ? fb.unmatched : [];
+
+            // Robust counts: prefer numeric counts, fallback to array lengths
+            let okCount = 0;
+            if (fb.counts && typeof fb.counts.succeeded === 'number') okCount = fb.counts.succeeded;
+            else if (fb.counts && typeof fb.counts.applied === 'number') okCount = fb.counts.applied;
+            else okCount = succeededArr.length;
+
+            let errCount = 0;
+            if (fb.counts && typeof fb.counts.missing === 'number') errCount = fb.counts.missing;
+            else errCount = unmatchedArr.length;
+
+            // Set chip labels
             countOk.textContent = 'Succeeded: ' + okCount;
             countErr.textContent = 'Missing: ' + errCount;
 
-            // Build list items
-            const addOk = (name, uuid) => {
+            // Clear lists (in case of hot reload / partial reuse)
+            listOk.innerHTML = '';
+            listErr.innerHTML = '';
+
+            // Render list items
+            function addOk(name, uuid) {
                 const wrap = document.createElement('div');
                 wrap.className = 'zd-item zd-item--ok';
+
                 const title = document.createElement('div');
                 title.className = 'zd-item__name';
                 title.textContent = name || '';
                 wrap.appendChild(title);
+
                 if (uuid) {
                     const sub = document.createElement('div');
                     sub.className = 'zd-item__sub';
                     sub.textContent = uuid;
                     wrap.appendChild(sub);
                 }
-                listOk.appendChild(wrap);
-            };
 
-            const addErr = (name) => {
+                listOk.appendChild(wrap);
+            }
+
+            function addErr(label, reason) {
                 const wrap = document.createElement('div');
                 wrap.className = 'zd-item zd-item--err';
+
                 const title = document.createElement('div');
                 title.className = 'zd-item__name';
-                title.textContent = name || '(no filename)';
+                title.textContent = label || '(no filename)';
                 wrap.appendChild(title);
-                listErr.appendChild(wrap);
-            };
 
-            if (Array.isArray(fb.unmatched)) {
-                fb.unmatched.forEach(um => addErr(um && um.csv_name ? um.csv_name : '(no filename)'));
+                if (reason) {
+                    const sub = document.createElement('div');
+                    sub.className = 'zd-item__sub';
+                    sub.textContent = reason;
+                    wrap.appendChild(sub);
+                }
+
+                listErr.appendChild(wrap);
             }
-            if (Array.isArray(fb.succeeded)) {
-                fb.succeeded.forEach(s => addOk(s && s.csv_name ? s.csv_name : '', s && s.clip_uuid ? s.clip_uuid : ''));
-            }
+
+            unmatchedArr.forEach(function(um) {
+                const label = um && um.csv_name ? um.csv_name : '(no filename)';
+                const reason = um && um.reason ? um.reason : '';
+                addErr(label, reason);
+            });
+
+            succeededArr.forEach(function(s) {
+                const name = s && s.csv_name ? s.csv_name : '';
+                const uuid = s && s.clip_uuid ? s.clip_uuid : '';
+                addOk(name, uuid);
+            });
 
             // Show modal
             backdrop.style.display = 'block';
             modal.style.display = 'block';
 
-            // Close on backdrop click or ESC
-            backdrop.addEventListener('click', zdCloseImportModal);
-            document.addEventListener('keydown', function onEsc(e) {
-                if (e.key === 'Escape') {
-                    zdCloseImportModal();
-                }
+            // Close handlers
+            function close() {
+                backdrop.style.display = 'none';
+                modal.style.display = 'none';
+            }
+
+            // expose for the ✕ button / Close button (your HTML calls zdCloseImportModal())
+            window.zdCloseImportModal = close;
+
+            backdrop.addEventListener('click', close);
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') close();
             });
         })();
-
-        function zdCloseImportModal() {
-            const b = document.getElementById('zdImportBackdrop');
-            const m = document.getElementById('zdImportModal');
-            if (b) b.style.display = 'none';
-            if (m) m.style.display = 'none';
-        }
     </script>
+
 <?php endif; ?>

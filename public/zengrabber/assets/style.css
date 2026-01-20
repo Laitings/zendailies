@@ -1,0 +1,1300 @@
+/* ==========================================================================
+   ZENGRABBER STYLESHEET
+   A professional video grab interface for Zentropa Post
+   ========================================================================== */
+
+/* ==========================================================================
+   CSS VARIABLES
+   ========================================================================== */
+:root {
+  --zg-bg: #05070b;
+  --zg-bg-elevated: #10131a;
+  --zg-border: #252b3a;
+  --zg-text: #e5ecf5;
+  --zg-text-muted: #9aa4b6;
+  --zg-accent: #3aa0ff;
+  --zg-danger: #f25f5c;
+  --zg-radius: 10px;
+  --zg-font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --zg-mono: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+}
+
+/* ==========================================================================
+   SCROLLBAR STYLING
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: #05070b;
+}
+::-webkit-scrollbar-track {
+  background: #05070b;
+  border-left: 1px solid #1a1e29;
+}
+::-webkit-scrollbar-thumb {
+  background: #252b3a;
+  border-radius: 99px;
+  border: 2px solid #05070b;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3aa0ff;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #252b3a #05070b;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   BASE STYLES
+   ========================================================================== */
+body.zg-body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(
+    circle at top left,
+    #101320 0,
+    #05070b 45%,
+    #020308 100%
+  );
+  color: var(--zg-text);
+  font-family: var(--zg-font);
+  min-height: 100vh;
+}
+
+/* ==========================================================================
+   TOPBAR / HEADER
+   ========================================================================== */
+.zg-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  background: rgba(5, 7, 11, 0.96);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(58, 160, 255, 0.25);
+  justify-content: space-between;
+}
+.zg-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.zg-logo-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle at 30% 30%,
+    #ffffff,
+    #3aa0ff 55%,
+    #0061ab 100%
+  );
+  box-shadow: 0 0 16px rgba(58, 160, 255, 0.9);
+}
+.zg-logo-img {
+  height: 24px;
+  width: auto;
+  display: block;
+}
+.zg-topbar-title {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+}
+.zg-topbar-subtitle {
+  font-size: 0.85rem;
+  color: var(--zg-text-muted);
+}
+
+/* ==========================================================================
+   ACTIONS MENU
+   ========================================================================== */
+
+/* Admin Invites – row actions dropdown */
+.zg-actions-cell {
+  position: relative;
+}
+
+.zg-actions-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.zg-actions-toggle {
+  white-space: nowrap;
+}
+
+/* Base menu */
+.zg-actions-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  min-width: 200px; /* Slightly wider */
+  padding: 6px; /* Padding around the items creates a floating effect */
+  border-radius: 10px;
+
+  /* Glassmorphism style */
+  border: 1px solid rgba(58, 160, 255, 0.15);
+  background: rgba(16, 19, 26, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+
+  /* Deeper shadow for depth */
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  opacity: 0;
+  transform: translateY(-8px) scale(0.98); /* Slide down effect */
+  transform-origin: top right;
+  pointer-events: none;
+  z-index: 1000; /* Ensure it sits on top of everything */
+  transition: all 0.15s cubic-bezier(0.2, 0, 0.13, 1.5); /* Bouncy transition */
+}
+
+/* Open state */
+.zg-actions-menu.zg-actions-menu--open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Fold-up variant (when close to bottom) */
+.zg-actions-menu.zg-actions-menu--up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 4px;
+  transform-origin: bottom right;
+}
+
+/* Items */
+.zg-actions-item,
+.zg-actions-item-btn {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  color: #cdd6e0;
+  border-radius: 6px; /* Rounded items inside the menu */
+  margin-bottom: 2px;
+  transition: all 0.1s;
+  font-family: var(--zg-font);
+}
+
+.zg-actions-item:last-child,
+.zg-actions-item-btn:last-child {
+  margin-bottom: 0;
+}
+
+.zg-actions-item:hover,
+.zg-actions-item-btn:hover {
+  background: rgba(58, 160, 255, 0.1);
+  color: #fff;
+  transform: translateX(2px); /* Subtle movement on hover */
+}
+
+.zg-actions-item-form {
+  margin: 0;
+}
+
+.zg-actions-item-btn {
+  border-radius: 0;
+}
+
+/* Danger action */
+.zg-actions-item-danger {
+  color: #f97373;
+}
+
+.zg-actions-item-danger:hover {
+  background: rgba(248, 113, 113, 0.18);
+}
+
+/* ==========================================================================
+   BUTTONS
+   ========================================================================== */
+
+/* Base Button Style */
+.zg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: transparent;
+  color: var(--zg-text);
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+/* Primary Button (Accent Gradient) */
+.zg-btn-primary {
+  background: linear-gradient(120deg, #0061ab, #3aa0ff);
+  border-color: rgba(58, 160, 255, 0.9);
+  box-shadow: 0 9px 18px rgba(0, 0, 0, 0.7);
+}
+.zg-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.85);
+}
+
+/* Small Button Variant */
+.zg-btn-small {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border: 1px solid rgba(58, 160, 255, 0.3);
+}
+.zg-btn-small:hover {
+  background: rgba(58, 160, 255, 0.1);
+  border-color: var(--zg-accent);
+}
+
+/* Ghost Button (Outlined) */
+.zg-btn-ghost {
+  border-color: rgba(58, 160, 255, 0.35);
+  background: rgba(12, 16, 26, 0.9);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.zg-btn-ghost:hover {
+  background: rgba(18, 24, 39, 0.95);
+}
+
+/* Icon Buttons (Player Controls) */
+.zg-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--zg-accent);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s ease, opacity 0.15s ease;
+  flex-shrink: 0;
+}
+.zg-icon-btn:hover {
+  background: rgba(58, 160, 255, 0.15);
+}
+.zg-icon-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  display: block;
+  pointer-events: none;
+}
+
+/* Primary Icon Button (Highlighted) */
+.zg-icon-primary {
+  background: rgba(58, 160, 255, 0.3);
+}
+.zg-icon-primary:hover {
+  background: rgba(58, 160, 255, 0.45);
+}
+
+/* Wide Grab Button (Camera Icon + Label) */
+.zg-btn-grab {
+  padding: 0 16px;
+  min-width: 110px;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.zg-btn-grab-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Danger Icon Button (Delete) */
+.zg-btn-icon-danger {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--zg-text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.zg-btn-icon-danger:hover {
+  color: var(--zg-danger);
+  background: rgba(242, 95, 92, 0.1);
+}
+
+/* ==========================================================================
+   LAYOUT CONTAINERS
+   ========================================================================== */
+
+/* General Layout (Admin Pages) */
+.zg-main {
+  max-width: 1100px;
+  margin: 40px auto;
+  padding: 0 20px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Full Screen Layout (Grab Interface) */
+.zg-main-full {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  max-width: none;
+  background: #020305;
+}
+
+/* ==========================================================================
+   CARDS
+   ========================================================================== */
+.zg-card {
+  background: radial-gradient(
+    circle at top,
+    #171b27,
+    #10131a 32%,
+    #0a0c12 100%
+  );
+  border-radius: var(--zg-radius);
+  border: 1px solid rgba(37, 43, 58, 0.9);
+  padding: 24px;
+  overflow: visible;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.zg-card-title {
+  margin: 0 0 20px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* ==========================================================================
+   FORMS
+   ========================================================================== */
+.zg-form {
+  display: grid;
+  gap: 16px;
+  max-width: 600px;
+}
+.zg-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zg-form-row label {
+  font-size: 0.85rem;
+  color: var(--zg-text-muted);
+  font-weight: 500;
+}
+.zg-form-row input,
+.zg-form-row textarea {
+  background: rgba(4, 7, 12, 0.6);
+  border-radius: 8px;
+  border: 1px solid var(--zg-border);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  color: var(--zg-text);
+  outline: none;
+  transition: all 0.14s ease;
+}
+.zg-form-row input:focus {
+  border-color: var(--zg-accent);
+  background: #000;
+}
+.zg-help {
+  font-size: 0.75rem;
+  color: var(--zg-text-muted);
+}
+.zg-form-actions {
+  margin-top: 8px;
+}
+
+/* ==========================================================================
+   TABLES
+   ========================================================================== */
+.zg-table-wrapper {
+  /* overflow-x: auto;  <-- Removed to prevent menu clipping */
+  overflow: visible; /* Allows the dropdown to float outside the box */
+  border-radius: 8px;
+  border: 1px solid var(--zg-border);
+  margin-bottom: 60px; /* Adds space at bottom so last row menu isn't cut off by page edge */
+}
+.zg-table {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  text-align: left;
+}
+.zg-table th {
+  background: rgba(16, 19, 26, 0.8);
+  color: var(--zg-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--zg-border);
+  font-weight: 600;
+}
+.zg-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--zg-text);
+}
+.zg-table tr:last-child td {
+  border-bottom: none;
+}
+.zg-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+.zg-mono {
+  font-family: var(--zg-mono);
+  font-size: 0.85rem;
+  color: var(--zg-text-muted);
+}
+
+#zg-add-movie-panel {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+  max-height: 0;
+  opacity: 0;
+}
+
+#zg-add-movie-panel.zg-open {
+  max-height: 2000px; /* plenty for your form */
+  opacity: 1;
+}
+
+/* ==========================================================================
+   COMMENTS
+   ========================================================================== */
+
+.zg-comment-panel {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: var(--zg-radius);
+  background: var(--zg-bg-elevated);
+  border: 1px solid var(--zg-border);
+  display: none; /* JS switches to flex when a grab is active */
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.zg-comment-thumb-wrap {
+  flex: 0 0 180px;
+}
+
+.zg-comment-thumb {
+  width: 90%;
+  display: block;
+  border-radius: 4px;
+  background: #000;
+}
+
+.zg-comment-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zg-comment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--zg-text-muted);
+}
+
+.zg-comment-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  color: var(--zg-text-muted);
+}
+
+.zg-comment-tc {
+  font-family: var(--zg-mono);
+  font-size: 0.9rem;
+  color: var(--zg-text);
+}
+
+.zg-comment-text {
+  width: 100%;
+  min-height: 70px;
+  max-height: 160px;
+  resize: vertical;
+  border-radius: 6px;
+  border: 1px solid var(--zg-border);
+  background: #05070b;
+  color: var(--zg-text);
+  padding: 8px 10px;
+  font-family: var(--zg-font);
+  font-size: 0.9rem;
+}
+
+.zg-comment-text:focus {
+  outline: none;
+  border-color: var(--zg-accent);
+  box-shadow: 0 0 0 1px rgba(58, 160, 255, 0.35);
+}
+
+.zg-comment-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.zg-comment-status {
+  font-size: 0.8rem;
+  color: var(--zg-text-muted);
+}
+
+/* ==========================================================================
+   ALERTS & MESSAGES
+   ========================================================================== */
+.zg-alert {
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+}
+.zg-alert-error {
+  background: rgba(242, 95, 92, 0.1);
+  border: 1px solid rgba(242, 95, 92, 0.4);
+  color: #ffbaba;
+}
+.zg-empty-state {
+  font-size: 0.95rem;
+  color: var(--zg-text-muted);
+  font-style: italic;
+}
+
+/* ==========================================================================
+   SPLIT PANE LAYOUT (Main Grab Interface)
+   ========================================================================== */
+.zg-split-container {
+  display: flex;
+  height: calc(100vh - 56px);
+  width: 100%;
+  overflow: hidden;
+  padding: 16px;
+  gap: 0;
+}
+
+/* Left Pane: Grab List */
+.zg-pane-list {
+  width: 320px;
+  min-width: 240px;
+  max-width: 80%;
+  background: #10131a;
+  border: 1px solid rgba(37, 43, 58, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  z-index: 5;
+}
+.zg-pane-header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid rgba(37, 43, 58, 0.5);
+  background: rgba(16, 19, 26, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.zg-grab-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  background: rgba(8, 11, 19, 0.3);
+}
+.zg-pane-footer {
+  padding: 16px;
+  border-top: 1px solid rgba(37, 43, 58, 0.5);
+  background: rgba(16, 19, 26, 0.95);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  text-align: center;
+}
+
+/* Resizer Handle Between Panes */
+.zg-resizer {
+  width: 16px;
+  cursor: col-resize;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+.zg-resizer::after {
+  content: "";
+  width: 4px;
+  height: 32px;
+  background: rgba(58, 160, 255, 0.15);
+  border-radius: 99px;
+  transition: all 0.2s;
+}
+.zg-resizer:hover::after,
+.zg-resizer.is-resizing::after {
+  background: var(--zg-accent);
+  height: 48px;
+  box-shadow: 0 0 10px rgba(58, 160, 255, 0.4);
+}
+
+/* Right Pane: Video Player */
+.zg-pane-player {
+  flex: 1;
+  min-width: 400px;
+  background: #10131a;
+  border: 1px solid rgba(37, 43, 58, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  position: relative;
+  padding: 0;
+}
+.zg-player-content {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  user-select: none;
+}
+
+/* ==========================================================================
+   GRAB GRID & CARDS
+   ========================================================================== */
+.zg-grab-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.zg-grab-card {
+  background: rgba(8, 11, 19, 0.8);
+  border: 1px solid rgba(37, 43, 58, 0.9);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.zg-grab-card:hover {
+  border-color: var(--zg-accent);
+  transform: translateY(-2px);
+}
+
+/* Active/Focused Grab Card */
+.zg-grab-card.zg-grab-active {
+  outline: 2px solid var(--zg-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Flash Animation for Newly Created Grabs */
+@keyframes zg-flash-anim {
+  0% {
+    box-shadow: 0 0 25px rgba(58, 160, 255, 0.9),
+      0 0 0 4px rgba(58, 160, 255, 0.9), inset 0 0 0 4px rgba(58, 160, 255, 1);
+    border-color: var(--zg-accent) !important;
+    transform: scale(1.03);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(58, 160, 255, 0.9),
+      0 0 0 4px rgba(58, 160, 255, 0.9), inset 0 0 0 4px rgba(58, 160, 255, 1);
+    border-color: var(--zg-accent) !important;
+    transform: scale(1.03);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(58, 160, 255, 0), 0 0 0 0 rgba(58, 160, 255, 0),
+      inset 0 0 0 0 rgba(58, 160, 255, 0);
+    border-color: rgba(37, 43, 58, 0.9) !important;
+    transform: scale(1);
+  }
+}
+.zg-flash-new {
+  animation: zg-flash-anim 2s ease-out forwards;
+  z-index: 100 !important;
+  position: relative;
+}
+
+/* Grab Card Media Container */
+.zg-grab-media {
+  position: relative;
+  aspect-ratio: 16/9;
+  width: 100%;
+  background: #000;
+}
+.zg-grab-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.zg-grab-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-family: var(--zg-mono);
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  backdrop-filter: blur(2px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Grab Card Info Section */
+.zg-grab-info {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zg-grab-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.zg-grab-tc {
+  font-family: var(--zg-mono);
+  font-size: 0.8rem;
+  color: var(--zg-accent);
+  font-weight: 600;
+}
+.zg-grab-note {
+  font-size: 0.75rem;
+  color: var(--zg-text-muted);
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+/* ==========================================================================
+   VIDEO PLAYER
+   ========================================================================== */
+.zg-player-shell {
+  position: relative;
+  display: flex; /* NEW: Enable flexbox */
+  flex-direction: column; /* NEW: Stack children vertically */
+  /* ... keep background, border, etc ... */
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--zg-border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+}
+.zg-video {
+  width: 100%;
+  display: block;
+  background: #000;
+  max-height: 75vh;
+}
+
+/* Grab Success Toast Notification */
+#zg-grab-toast {
+  position: absolute;
+  top: 24px;
+  /* Keep 24px inset from the right edge of the central 16:9 picture area */
+  right: max(24px, calc((100vw - (100vh * 16 / 9)) / 2 + 24px));
+  background: var(--zg-accent);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #fff;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+  z-index: 2147483648 !important;
+}
+
+/* Toast forced visible (independent of UI idle state) */
+.zg-player-shell.zg-toast-visible #zg-grab-toast {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  pointer-events: none !important;
+}
+
+/* ==========================================================================
+   TIMELINE & SEEKBAR
+   ========================================================================== */
+.zg-timeline {
+  position: relative;
+  width: 100%;
+
+  /* Adjusted padding: adds a little space inside the timeline block */
+  padding: 12px 12px 4px;
+
+  /* IMPORTANT: Set margin to 0 so it touches the controls below */
+  margin-bottom: 0;
+
+  z-index: 3;
+  transition: opacity 0.4s ease;
+
+  /* The background styles you added */
+  background: linear-gradient(to right, #05070b, #10131a);
+  border-top: 1px solid rgba(37, 43, 58, 0.8);
+}
+
+.zg-timeline-inner {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+/* Seekbar Slider */
+.zg-seek {
+  flex: 1;
+  margin: 0;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(37, 43, 58, 0.95);
+  outline: none;
+}
+.zg-seek::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--zg-accent);
+  cursor: pointer;
+}
+.zg-seek::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--zg-accent);
+  cursor: pointer;
+}
+.zg-seek:disabled {
+  opacity: 0.5;
+}
+
+/* Timeline Grab Markers */
+.zg-timeline-markers {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 50%;
+  height: 8px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.zg-timeline-marker {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  background: rgba(58, 160, 255, 0.9);
+  border-radius: 999px;
+}
+
+/* ==========================================================================
+   PLAYER CONTROLS BAR
+   ========================================================================== */
+.zg-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border-top: none;
+  background: linear-gradient(to right, #05070b, #10131a);
+  width: 100%;
+  height: auto;
+  z-index: 20;
+  transition: opacity 0.4s ease;
+}
+
+/* Timecode Display */
+.zg-tc-display {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(4, 7, 12, 0.9);
+  border: 1px solid rgba(37, 43, 58, 0.9);
+}
+.zg-tc-label {
+  font-size: 0.7rem;
+  color: var(--zg-text-muted);
+  text-transform: uppercase;
+}
+.zg-tc-value {
+  font-family: var(--zg-mono);
+  font-size: 0.9rem;
+}
+
+/* Playback Speed Indicator */
+#zg-speed-indicator {
+  width: 60px;
+  text-align: center;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Volume Slider */
+#zg-volume {
+  appearance: none;
+  width: 70px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(37, 43, 58, 0.95);
+  outline: none;
+  padding: 0;
+  margin: 0;
+}
+#zg-volume::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(37, 43, 58, 0.95);
+}
+#zg-volume::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--zg-accent);
+  margin-top: -3px;
+  cursor: pointer;
+}
+#zg-volume::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(37, 43, 58, 0.95);
+}
+#zg-volume::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--zg-accent);
+  cursor: pointer;
+}
+
+/* Flexible Spacer */
+.zg-spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ==========================================================================
+   IDLE STATE & AUTO-HIDE BEHAVIOR
+   ========================================================================== */
+
+/* Hide cursor when player is idle */
+.zg-player-shell.zg-idle {
+  cursor: none;
+}
+
+/* Auto-hide controls and timeline when idle */
+.zg-player-shell.zg-idle .zg-controls,
+.zg-player-shell.zg-idle .zg-timeline {
+  opacity: 0;
+  transform: translateY(20px);
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   FULLSCREEN MODE
+   ========================================================================== */
+
+/* Fullscreen Container */
+.zg-player-shell:fullscreen,
+.zg-player-shell:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 0;
+}
+
+/* Fullscreen Video Sizing */
+.zg-player-shell:fullscreen .zg-video,
+.zg-player-shell:-webkit-full-screen .zg-video {
+  max-height: 100vh;
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+}
+
+/* Fullscreen Controls Overlay */
+.zg-player-shell:fullscreen .zg-controls,
+.zg-player-shell:-webkit-full-screen .zg-controls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 2147483647;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.9) 0%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  border-top: none;
+  padding: 20px 20px 30px;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+
+/* Put the timeline clearly above the controls in fullscreen */
+.zg-player-shell:fullscreen .zg-timeline,
+.zg-player-shell:-webkit-full-screen .zg-timeline {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 110px;
+  z-index: 2147483648;
+  pointer-events: auto;
+  padding: 0;
+  background: none;
+  margin-bottom: 0; /* <--- NEW: Reset margin so absolute positioning stays accurate */
+}
+
+/* Auto-hide controls in fullscreen when idle */
+.zg-player-shell.zg-idle .zg-controls {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* ==========================================================================
+   UTILITY CLASSES
+   ========================================================================== */
+
+/* Mirror Transform (for Play Reverse icon) */
+.zg-mirror {
+  transform: scaleX(-1);
+  transform-origin: center;
+  display: block;
+}
+
+/* Hide Element */
+.zg-d-none {
+  display: none !important;
+}
+
+/* ==========================================================================
+   UPLOAD PROGRESS BAR
+   ========================================================================== */
+.zg-upload-progress {
+  margin-top: 16px;
+}
+.zg-upload-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--zg-text-muted);
+  margin-bottom: 6px;
+}
+.zg-upload-bar-outer {
+  width: 100%;
+  height: 8px;
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.zg-upload-bar-inner {
+  width: 0%;
+  height: 100%;
+  background: var(--zg-accent);
+  border-radius: 999px;
+  transition: width 0.2s ease-out;
+}
+
+/* ==========================================================================
+   KEYBOARD SHORTCUTS DISPLAY
+   ========================================================================== */
+.key-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  background: #1f2430;
+  border: 1px solid #363c4e;
+  border-radius: 6px;
+  color: #fff;
+  font-family: var(--zg-mono);
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-right: 10px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* ==========================================================================
+   RESPONSIVE LAYOUT (Mobile/Tablet)
+   ========================================================================== */
+@media (max-width: 900px) {
+  .zg-split-container {
+    flex-direction: column-reverse;
+    padding: 12px;
+    gap: 12px;
+    overflow-y: auto;
+  }
+  .zg-pane-list,
+  .zg-pane-player {
+    width: 100% !important;
+    max-width: 100%;
+    max-height: none;
+    flex: none;
+  }
+  .zg-resizer {
+    display: none;
+  }
+  .zg-pane-list {
+    height: 500px;
+  }
+}
+
+/* ===========================
+   Modal (Resolve marker color)
+   =========================== */
+.zg-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+}
+.zg-modal.zg-modal--open {
+  display: block;
+}
+
+.zg-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+.zg-modal-panel {
+  position: relative;
+  width: min(720px, calc(100vw - 24px));
+  margin: 10vh auto 0;
+  background: var(--zg-bg-elevated);
+  border: 1px solid var(--zg-border);
+  border-radius: 12px;
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+}
+
+.zg-modal-header,
+.zg-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--zg-border);
+}
+.zg-modal-footer {
+  border-bottom: none;
+  border-top: 1px solid var(--zg-border);
+}
+
+.zg-modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.zg-modal-body {
+  padding: 14px 16px;
+}
+
+.zg-color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.zg-color-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--zg-border);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  user-select: none;
+}
+.zg-color-tile:hover {
+  border-color: var(--zg-accent);
+}
+.zg-color-tile.zg-color-tile--selected {
+  border-color: var(--zg-accent);
+  box-shadow: 0 0 0 2px rgba(58, 160, 255, 0.25) inset;
+}
+
+.zg-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+}
+.zg-color-name {
+  font-size: 0.9rem;
+  color: var(--zg-text);
+}
+.zg-color-code {
+  font-size: 0.75rem;
+  color: var(--zg-text-muted);
+  font-family: var(--zg-mono);
+}

@@ -37,6 +37,7 @@ final class AccountRepository
                 a.user_role,
                 a.is_superuser,
                 a.status,
+                a.setup_token,
                 p.first_name,
                 p.last_name,
                 em.value              AS person_email,
@@ -63,11 +64,12 @@ final class AccountRepository
 
             $params = [];
 
-            // If a specific project is chosen, restrict to users that belong to that project
+            // Base filter: exclude soft-deleted users
+            $sql .= " WHERE a.status != 'deleted' ";
+
+            // If a specific project is chosen, append it to the existing WHERE clause
             if ($projectFilterUuid !== null) {
-                $sql .= "
-            WHERE pm.project_id = UUID_TO_BIN(:proj, 1)
-            ";
+                $sql .= " AND pm.project_id = UUID_TO_BIN(:proj, 1) ";
                 $params[':proj'] = $projectFilterUuid;
             }
 
@@ -97,6 +99,7 @@ final class AccountRepository
                 a.user_role,
                 a.is_superuser,
                 a.status,
+                a.setup_token,
                 p.id,
                 p.first_name,
                 p.last_name,
@@ -110,7 +113,7 @@ final class AccountRepository
             return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         }
 
-        // ---------- NON-SUPERUSER ADMIN: only see projects they are project_admin on ----------
+        // ---------- NON-SUPERUSER ADMIN: Global View with Project Privacy ----------
         $sql = "
         SELECT
             BIN_TO_UUID(a.id, 1) AS account_uuid,
@@ -118,11 +121,16 @@ final class AccountRepository
             a.user_role,
             a.is_superuser,
             a.status,
+            a.setup_token,
             p.first_name,
             p.last_name,
             em.value              AS person_email,
             ph.value              AS person_phone,
-            GROUP_CONCAT(DISTINCT pr.title ORDER BY pr.title SEPARATOR ', ') AS project_list
+            -- PRIVACY FIX: Only show project titles if the viewer is an admin on them
+            GROUP_CONCAT(DISTINCT 
+                CASE WHEN vpm.is_project_admin = 1 THEN pr.title END 
+                ORDER BY pr.title SEPARATOR ', '
+            ) AS project_list
         FROM accounts a
         JOIN accounts_persons ap
             ON ap.account_id = a.id
@@ -136,15 +144,15 @@ final class AccountRepository
             ON ph.person_id = p.id
            AND ph.type = 'phone'
            AND ph.is_primary = 1
-        -- User's project memberships
-        JOIN project_members pm
+        -- Look at all project memberships for the users
+        LEFT JOIN project_members pm
             ON pm.person_id = p.id
-        JOIN projects pr
+        LEFT JOIN projects pr
             ON pr.id = pm.project_id
-        -- Viewer must be project_admin on those projects
-        JOIN project_members vpm
-            ON vpm.project_id    = pm.project_id
-           AND vpm.person_id     = UUID_TO_BIN(:viewer_pid, 1)
+        -- Check if the VIEWING DIT is an admin on those specific projects
+        LEFT JOIN project_members vpm
+            ON vpm.project_id = pm.project_id
+           AND vpm.person_id  = UUID_TO_BIN(:viewer_pid, 1)
            AND vpm.is_project_admin = 1
     ";
 
@@ -152,14 +160,16 @@ final class AccountRepository
             ':viewer_pid' => $viewerPersonUuid,
         ];
 
+        // Base filter: hide soft-deleted users
+        $sql .= " WHERE a.status != 'deleted' ";
+
+        // If a specific project is chosen, append it
         if ($projectFilterUuid !== null) {
-            $sql .= "
-        AND pm.project_id = UUID_TO_BIN(:proj, 1)
-        ";
+            $sql .= " AND pm.project_id = UUID_TO_BIN(:proj, 1) ";
             $params[':proj'] = $projectFilterUuid;
         }
 
-        // Sort logic for non-superusers (same as above)
+        // Sort logic (Matching Superuser logic)
         $sortMap = [
             'name'     => 'p.first_name ' . $dir . ', p.last_name ' . $dir,
             'email'    => 'a.email ' . $dir,
@@ -168,24 +178,12 @@ final class AccountRepository
             'projects' => 'project_list ' . $dir,
         ];
 
-        $orderBy = $sortMap[$sortColumn] ?? null;
-
-        if (!$orderBy) {
-            $orderBy = 'p.last_name ASC, p.first_name ASC';
-        }
+        $orderBy = $sortMap[$sortColumn] ?? 'p.last_name ASC, p.first_name ASC';
 
         $sql .= "
         GROUP BY
-            a.id,
-            a.email,
-            a.user_role,
-            a.is_superuser,
-            a.status,
-            p.id,
-            p.first_name,
-            p.last_name,
-            em.value,
-            ph.value
+            a.id, a.email, a.user_role, a.is_superuser, a.status, a.setup_token,
+            p.id, p.first_name, p.last_name, em.value, ph.value
         ORDER BY {$orderBy}
     ";
 

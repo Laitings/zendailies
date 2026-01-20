@@ -16,9 +16,22 @@ final class FFmpegService
     }
 
     /**
+     * Convenience wrapper: generate a poster at arbitrary second offset
+     * using a float seconds value (e.g. from HTML5 video).
+     */
+    public function generatePosterFromTime(string $input, string $output, float $seconds, int $targetWidth = 640): array
+    {
+        // Keep the full float seconds, clamp at 0.0
+        $seekSeconds = max(0.0, $seconds);
+
+        return $this->generatePoster($input, $output, $seekSeconds, $targetWidth);
+    }
+
+
+    /**
      * Generate a poster JPG at $dest. Returns ['ok'=>bool, 'err'=>string|null]
      */
-    function generatePoster(string $input, string $output, int $seekSeconds, int $targetWidth = 640): array
+    function generatePoster(string $input, string $output, float $seekSeconds, int $targetWidth = 640): array
     {
         // Ensure dir exists (controller already does this, but safe)
         $dir = dirname($output);
@@ -32,9 +45,10 @@ final class FFmpegService
 
         // We will try at the requested seek first, and if that fails (e.g. clip too short),
         // we fall back once to 0 seconds (first frame).
-        $attemptSeek   = max(0, $seekSeconds);
+        $attemptSeek   = max(0.0, (float)$seekSeconds);
         $attempt       = 0;
         $lastErrorText = null;
+
 
         while ($attempt < 2) {
             $attempt++;
@@ -53,7 +67,7 @@ final class FFmpegService
 
                 // accurate seek
                 '-ss',
-                (string)$attemptSeek,
+                sprintf('%.6f', $attemptSeek),
 
                 // filters + single frame
                 '-vf',

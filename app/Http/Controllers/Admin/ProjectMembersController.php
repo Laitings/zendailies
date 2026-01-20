@@ -108,13 +108,17 @@ class ProjectMembersController
             return;
         }
 
+        // Find where you fetch $members and add this line:
+        $allUsers = $this->projects->listAllAvailableUsers(); // We will add this to the repo
+
         $members = $this->projects->listMembers($projectUuid);
         View::render('admin/projects/members', [
-            'project' => $proj,
-            'members' => $members,
-            'csrf'    => Csrf::token(),
-            'errors'  => [],
-            'old'     => [],
+            'project'   => $proj,
+            'members'   => $members,
+            'all_users' => $allUsers, // Pass the new list to the view
+            'csrf'      => Csrf::token(),
+            'errors'    => [],
+            'old'       => [],
         ]);
     }
 

@@ -5,7 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Support\DB;
 use App\Support\View;
 use App\Support\Csrf;
+use App\Services\StoragePaths;
+use App\Services\FFmpegService;
 use PDO;
+
+
 
 final class ClipPlayerController
 {
@@ -260,334 +264,294 @@ final class ClipPlayerController
             return;
         }
 
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $isMobile = preg_match('/(android|iphone|ipad|mobile)/i', $ua);
         if (session_status() === \PHP_SESSION_NONE) session_start();
 
-        // Session context
         $account      = $_SESSION['account'] ?? [];
         $isSuperuser  = !empty($account['is_superuser']);
         $personUuid   = $_SESSION['person_uuid'] ?? null;
-
         $pdo = DB::pdo();
 
-        // === Guard: regular users cannot access unpublished days ===
-        $dayStmt = $pdo->prepare("
-            SELECT 
-                d.id,
-                d.published_at
-            FROM days d
-            WHERE d.project_id = UUID_TO_BIN(:p, 1)
-              AND d.id        = UUID_TO_BIN(:d, 1)
-            LIMIT 1
-        ");
-        $dayStmt->execute([
-            ':p' => $projectUuid,
-            ':d' => $dayUuid,
-        ]);
+        // Guard: Day access
+        $dayStmt = $pdo->prepare("SELECT id, published_at FROM days WHERE project_id = UUID_TO_BIN(:p, 1) AND id = UUID_TO_BIN(:d, 1) LIMIT 1");
+        $dayStmt->execute([':p' => $projectUuid, ':d' => $dayUuid]);
         $dayRow = $dayStmt->fetch(\PDO::FETCH_ASSOC);
-
         if (!$dayRow) {
             http_response_code(404);
             echo 'Day not found';
             return;
         }
 
-        // Project
-        $projStmt = $pdo->prepare("
-            SELECT BIN_TO_UUID(p.id,1) AS project_uuid, p.title, p.code, p.status
-            FROM projects p
-            WHERE p.id = UUID_TO_BIN(:p,1)
-            LIMIT 1
-        ");
-        $projStmt->execute([':p' => $projectUuid]);
-        $project = $projStmt->fetch(PDO::FETCH_ASSOC);
-        if (!$project) {
-            http_response_code(404);
-            echo "Project not found";
-            return;
-        }
+        // Project & Day Context
+        $project = $pdo->prepare("SELECT BIN_TO_UUID(id,1) AS project_uuid, title, code FROM projects WHERE id = UUID_TO_BIN(:p,1) LIMIT 1");
+        $project->execute([':p' => $projectUuid]);
+        $project = $project->fetch(PDO::FETCH_ASSOC);
 
-        // Day (ensure belongs to project)
-        $dayStmt = $pdo->prepare("
-            SELECT BIN_TO_UUID(d.id,1) AS day_uuid, d.shoot_date, d.title, d.unit
-            FROM days d
-            WHERE d.id = UUID_TO_BIN(:d,1)
-              AND d.project_id = UUID_TO_BIN(:p,1)
-            LIMIT 1
-        ");
-        $dayStmt->execute([':d' => $dayUuid, ':p' => $projectUuid]);
-        $day = $dayStmt->fetch(PDO::FETCH_ASSOC);
-        if (!$day) {
-            http_response_code(404);
-            echo "Day not found";
-            return;
-        }
+        $dayContext = $pdo->prepare("SELECT BIN_TO_UUID(id,1) AS day_uuid, shoot_date, title FROM days WHERE id = UUID_TO_BIN(:d,1) LIMIT 1");
+        $dayContext->execute([':d' => $dayUuid]);
+        $day = $dayContext->fetch(PDO::FETCH_ASSOC);
 
-        // >>> ADDED: label shown in "(DAY NAME) / Clips"
-        $currentDayLabel = $day['title'] ?: $day['shoot_date'];
-
-        // Determine if current user is a project admin for this project
+        // ACL Logic
         $isProjectAdmin = 0;
         if (!$isSuperuser && $personUuid) {
-            $admStmt = $pdo->prepare("
-                SELECT pm.is_project_admin
-                FROM project_members pm
-                WHERE pm.project_id = UUID_TO_BIN(:p,1)
-                  AND pm.person_id  = UUID_TO_BIN(:person,1)
-                LIMIT 1
-            ");
+            $admStmt = $pdo->prepare("SELECT is_project_admin FROM project_members WHERE project_id = UUID_TO_BIN(:p,1) AND person_id = UUID_TO_BIN(:person,1) LIMIT 1");
             $admStmt->execute([':p' => $projectUuid, ':person' => $personUuid]);
             $isProjectAdmin = (int)($admStmt->fetchColumn() ?: 0);
         }
 
-
-        // We will reuse these fragments in multiple queries below
-        $aclSql          = '';
+        $aclSql = '';
         $dayVisibilitySql = '';
-        $viewerParam     = null;
-
+        $viewerParam = null;
         if (!$isSuperuser && !$isProjectAdmin) {
-            // ACL: only see clips not in sensitive group OR explicitly whitelisted
             $aclSql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid,1))";
             $viewerParam = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
-
-            // Visibility: regular users only see published days
             $dayVisibilitySql = " AND d.published_at IS NOT NULL";
         }
 
+        // --- GLOBAL SCENE SEARCH ---
+        $targetScene = $_GET['scene'] ?? null;
+        $clipListParams = [':p' => $projectUuid];
+        $currentDayLabel = ($targetScene) ? "Scene " . $targetScene : ($day['title'] ?: $day['shoot_date']);
 
+        $sceneFilterSql = $targetScene ? " AND c.scene = :sc " : " AND c.day_id = UUID_TO_BIN(:d,1) ";
+        if ($targetScene) $clipListParams[':sc'] = $targetScene;
+        else $clipListParams[':d'] = $dayUuid;
+        if ($viewerParam !== null) $clipListParams[':viewer_person_uuid'] = $viewerParam;
 
-        // Day's clip list (with latest poster), respecting sensitive ACL — always load it
-        $clipListParams = [
-            ':p' => $projectUuid,
-            ':d' => $dayUuid,
-        ];
-        if ($viewerParam !== null) {
-            $clipListParams[':viewer_person_uuid'] = $viewerParam;
-        }
-
-        // BEGIN: day’s clip list query
         $clipListSql = "
-            SELECT
-                BIN_TO_UUID(c.id,1)        AS clip_uuid,
-                c.scene, c.slate, c.take, c.take_int, c.camera,
-                c.file_name,
+            SELECT BIN_TO_UUID(c.id,1) AS clip_uuid, BIN_TO_UUID(c.day_id,1) AS day_uuid,
+                c.scene, c.slate, c.take, c.take_int, c.camera, c.file_name,
                 CAST(c.is_select AS UNSIGNED) AS is_select,
-                (
-                    SELECT COUNT(*)
-                    FROM comments cm
-                    WHERE cm.clip_id = c.id
-                ) AS comment_count,
-                (
-                    SELECT storage_path
-                    FROM clip_assets a
-                    WHERE a.clip_id = c.id
-                    AND a.asset_type = 'poster'
-                    ORDER BY a.created_at DESC
-                    LIMIT 1
-                ) AS poster_path
+                (SELECT storage_path FROM clip_assets WHERE clip_id = c.id AND asset_type IN ('proxy_web', 'original') ORDER BY FIELD(asset_type, 'proxy_web', 'original') LIMIT 1) AS proxy_url,
+                (SELECT COUNT(*) FROM comments cm WHERE cm.clip_id = c.id) AS comment_count,
+                (SELECT storage_path FROM clip_assets a WHERE a.clip_id = c.id AND a.asset_type = 'poster' ORDER BY a.created_at DESC LIMIT 1) AS poster_path
             FROM clips c
             JOIN days d ON d.id = c.day_id
             LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
             LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-            WHERE c.project_id = UUID_TO_BIN(:p,1)
-            AND c.day_id     = UUID_TO_BIN(:d,1)
-            $aclSql
-            $dayVisibilitySql
-            ORDER BY
-                c.scene IS NULL, c.scene,
-                c.slate IS NULL, c.slate,
-                c.take_int IS NULL, c.take_int,
-                c.take IS NULL, c.take,
-                c.camera IS NULL, c.camera,
-                c.created_at
-            LIMIT 500
-        ";
-        // END: day’s clip list query
+            WHERE c.project_id = UUID_TO_BIN(:p,1) $sceneFilterSql $aclSql $dayVisibilitySql
+            ORDER BY c.scene, c.slate, c.take_int, c.camera LIMIT 500";
 
         $listStmt = $pdo->prepare($clipListSql);
         foreach ($clipListParams as $k => $v) $listStmt->bindValue($k, $v);
         $listStmt->execute();
         $clipList = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Clip + basic fields (single clip being viewed), respecting same ACL
-        $clipParams = [
-            ':p' => $projectUuid,
-            ':d' => $dayUuid,
-            ':c' => $clipUuid,
-        ];
-        if ($viewerParam !== null) {
-            $clipParams[':viewer_person_uuid'] = $viewerParam;
-        }
-
-        $clipSql = "
-            SELECT 
-                BIN_TO_UUID(c.id,1)         AS clip_uuid,
-                BIN_TO_UUID(c.project_id,1) AS project_uuid,
-                BIN_TO_UUID(c.day_id,1)     AS day_uuid,
-                c.scene, c.slate, c.take, c.camera, c.reel,
-                c.file_name, c.tc_start, c.tc_end, c.duration_ms,
-                c.fps, c.fps_num, c.fps_den,
-                c.rating, CAST(c.is_select AS UNSIGNED) AS is_select, c.created_at
-            FROM clips c
-            JOIN days d ON d.id = c.day_id
-            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-            WHERE c.id         = UUID_TO_BIN(:c,1)
-              AND c.project_id = UUID_TO_BIN(:p,1)
-              AND c.day_id     = UUID_TO_BIN(:d,1)
-              $aclSql
-              $dayVisibilitySql
-            LIMIT 1
-        ";
-        $clipStmt = $pdo->prepare($clipSql);
-        foreach ($clipParams as $k => $v) $clipStmt->bindValue($k, $v);
-        $clipStmt->execute();
+        // Fetch Main Clip (Relaxed day constraint for scene browsing)
+        $clipStmt = $pdo->prepare("SELECT BIN_TO_UUID(id,1) AS clip_uuid, BIN_TO_UUID(day_id,1) AS day_uuid, scene, slate, take, camera, reel, file_name, tc_start, tc_end, duration_ms, fps, rating, is_select FROM clips WHERE id = UUID_TO_BIN(:c,1) AND project_id = UUID_TO_BIN(:p,1) LIMIT 1");
+        $clipStmt->execute([':p' => $projectUuid, ':c' => $clipUuid]);
         $clip = $clipStmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$clip) {
             http_response_code(404);
-            echo "Clip not found or not visible";
+            echo "Clip not found";
             return;
         }
 
-        // Handle new comment POST (add or reply)
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['comment_body'])) {
-            if (!$personUuid) {
-                http_response_code(403);
-                echo "You must be logged in to comment on clips.";
-                return;
-            }
-
-            Csrf::validateOrAbort($_POST['_csrf'] ?? null);
-
-            $body = trim((string)($_POST['comment_body'] ?? ''));
-            $startTc = trim((string)($_POST['start_tc'] ?? ''));
-            $parentUuid = trim((string)($_POST['parent_comment_uuid'] ?? ''));
-
-            if ($body !== '') {
-                // Validate / normalise timecode: allow empty or HH:MM:SS:FF
-                if ($startTc === '' || !preg_match('/^\d{2}:\d{2}:\d{2}:\d{2}$/', $startTc)) {
-                    $startTc = null;
-                }
-
-                // Validate that parent (if any) belongs to this clip
-                if ($parentUuid !== '') {
-                    $chk = $pdo->prepare("
-                        SELECT 1
-                        FROM comments
-                        WHERE id = UUID_TO_BIN(:parent_uuid,1)
-                          AND clip_id = UUID_TO_BIN(:clip_uuid,1)
-                        LIMIT 1
-                    ");
-                    $chk->execute([
-                        ':parent_uuid' => $parentUuid,
-                        ':clip_uuid'   => $clipUuid,
-                    ]);
-                    if (!$chk->fetchColumn()) {
-                        $parentUuid = null;
-                    }
-                } else {
-                    $parentUuid = null;
-                }
-
-                $insert = $pdo->prepare("
-                    INSERT INTO comments (clip_id, parent_id, author_id, body, start_tc)
-                    VALUES (
-                        UUID_TO_BIN(:clip_uuid,1),
-                        UUID_TO_BIN(:parent_uuid,1),
-                        UUID_TO_BIN(:author_uuid,1),
-                        :body,
-                        :start_tc
-                    )
-                ");
-
-                $insert->execute([
-                    ':clip_uuid'   => $clipUuid,
-                    ':parent_uuid' => $parentUuid,
-                    ':author_uuid' => $personUuid,
-                    ':body'        => $body,
-                    ':start_tc'    => $startTc,
-                ]);
-            }
-
-            // PRG: redirect after POST to avoid duplicate submissions
-            $selfUrl = $_SERVER['REQUEST_URI'] ?? '';
-            header('Location: ' . $selfUrl);
-            exit;
-        }
-        // Assets: pick latest proxy_web and poster
-        // Assets: pick latest proxy_web or original for playback, plus poster
-        $assetStmt = $pdo->prepare("
-            SELECT asset_type, storage_path, byte_size, width, height, codec, created_at
-            FROM clip_assets
-            WHERE clip_id = UUID_TO_BIN(:c,1)
-            AND asset_type IN ('proxy_web','original','poster')
-            ORDER BY created_at DESC
-        ");
-
-        $assetStmt->execute([':c' => $clipUuid]);
-        $assets = $assetStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $proxyUrl  = null;  // “playable” file: proxy_web if exists, else original
+        $assets = $pdo->prepare("SELECT asset_type, storage_path FROM clip_assets WHERE clip_id=UUID_TO_BIN(:c,1) AND asset_type IN ('proxy_web','original','poster') ORDER BY created_at DESC");
+        $assets->execute([':c' => $clipUuid]);
+        $proxyUrl = null;
         $posterUrl = null;
-
-        foreach ($assets as $a) {
-            if ($proxyUrl === null && $a['asset_type'] === 'proxy_web') {
-                $proxyUrl = $a['storage_path'];
-            } elseif ($proxyUrl === null && $a['asset_type'] === 'original') {
-                $proxyUrl = $a['storage_path'];
-            }
-
-            if ($posterUrl === null && $a['asset_type'] === 'poster') {
-                $posterUrl = $a['storage_path'];
-            }
-
-            if ($proxyUrl && $posterUrl) {
-                break;
-            }
+        foreach ($assets->fetchAll() as $a) {
+            if (!$proxyUrl && ($a['asset_type'] === 'proxy_web' || $a['asset_type'] === 'original')) $proxyUrl = $a['storage_path'];
+            if (!$posterUrl && $a['asset_type'] === 'poster') $posterUrl = $a['storage_path'];
         }
 
+        $metadata = $pdo->prepare("SELECT meta_key, meta_value FROM clip_metadata WHERE clip_id=UUID_TO_BIN(:c,1) ORDER BY meta_key");
+        $metadata->execute([':c' => $clipUuid]);
 
-        // Metadata (key/value)
-        $metaStmt = $pdo->prepare("
-            SELECT meta_key, meta_value
-            FROM clip_metadata
-            WHERE clip_id = UUID_TO_BIN(:c,1)
-            ORDER BY meta_key
-        ");
-        $metaStmt->execute([':c' => $clipUuid]);
-        $metadata = $metaStmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // Comments (threaded: root + replies)
-        $comments = $this->loadCommentsThreaded($pdo, $clipUuid);
-
-
-        $daysOut = $this->fetchDaysWithThumbs($pdo, $projectUuid, $dayVisibilitySql, $aclSql, $viewerParam);
-
-
-        // >>> ADDED: placeholder thumb path for days with no clips
-        $placeholderThumbUrl = '/assets/img/empty_day_placeholder.png';
-
-        // Render
-        View::render('admin/player/show', [
-            'project'               => $project,
-            'day'                   => $day,
-            'clip'                  => $clip,
-            'proxy_url'             => $proxyUrl,
-            'poster_url'            => $posterUrl,
-            'metadata'              => $metadata,
-            'comments'              => $comments,
-            'project_uuid'          => $projectUuid,
-            'day_uuid'              => $dayUuid,
-            'clip_list'             => $clipList,
-            'current_clip'          => $clipUuid,
-
-            // >>> ADDED for the updated show.php
-            'current_day_label'     => $currentDayLabel,
-            'days'                  => $daysOut,
-            'placeholder_thumb_url' => $placeholderThumbUrl,
+        View::render($isMobile ? 'admin/player/show_mobile' : 'admin/player/show', [
+            'layout' => $isMobile ? 'layout/mobile' : 'layout/main',
+            'project' => $project,
+            'day' => $day,
+            'clip' => $clip,
+            'proxy_url' => $proxyUrl,
+            'poster_url' => $posterUrl,
+            'metadata' => $metadata->fetchAll(),
+            'comments' => $this->loadCommentsThreaded($pdo, $clipUuid),
+            'project_uuid' => $projectUuid,
+            'day_uuid' => $dayUuid,
+            'clip_list' => $clipList,
+            'current_clip' => $clipUuid,
+            'current_day_label' => $currentDayLabel,
+            'days' => $this->fetchDaysWithThumbs($pdo, $projectUuid, $dayVisibilitySql, $aclSql, $viewerParam),
+            'scenes' => $this->fetchScenesWithThumbs($pdo, $projectUuid, $aclSql, $viewerParam),
+            'placeholder_thumb_url' => '/assets/img/empty_day_placeholder.png'
         ]);
     }
+
+    /**
+     * Admin / DIT-only endpoint:
+     * Grab a new poster from the exact time the player is paused at.
+     *
+     * Expects JSON body: { "seconds": 12.08 }
+     * Returns JSON: { ok: true, poster_url: "..." } or error.
+     */
+    public function posterFromTime(string $projectUuid, string $dayUuid, string $clipUuid): void
+    {
+        if (session_status() === \PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        $account     = $_SESSION['account'] ?? [];
+        $personUuid  = $_SESSION['person_uuid'] ?? null;
+        $isSuperuser = !empty($account['is_superuser']);
+
+        $pdo = DB::pdo();
+
+
+        // --- Project-admin (DIT) check: same logic as elsewhere ---
+        $isProjectAdmin = 0;
+        if (!$isSuperuser && $personUuid) {
+            $adminCheck = $pdo->prepare("
+                SELECT COUNT(*) 
+                FROM project_members pm
+                JOIN projects p ON p.id = pm.project_id
+                WHERE pm.person_id = UUID_TO_BIN(:person_uuid,1)
+                  AND p.id         = UUID_TO_BIN(:proj_uuid,1)
+                  AND pm.role IN ('owner','admin','dit')
+                  AND pm.is_active = 1
+            ");
+            $adminCheck->execute([
+                ':person_uuid' => $personUuid,
+                ':proj_uuid'   => $projectUuid,
+            ]);
+            $isProjectAdmin = (int)$adminCheck->fetchColumn();
+        }
+
+        if (!$isSuperuser && !$isProjectAdmin) {
+            http_response_code(403);
+            if (!headers_sent()) {
+                header('Content-Type: application/json; charset=utf-8');
+            }
+            echo json_encode(['ok' => false, 'error' => 'Forbidden']);
+            return;
+        }
+
+        // --- Read JSON body: { "seconds": 12.08 } ---
+        $raw = file_get_contents('php://input') ?: '';
+        $body = json_decode($raw, true) ?: [];
+        $seconds = isset($body['seconds']) ? (float)$body['seconds'] : null;
+
+        if ($seconds === null || !is_finite($seconds) || $seconds < 0) {
+            http_response_code(400);
+            if (!headers_sent()) {
+                header('Content-Type: application/json; charset=utf-8');
+            }
+            echo json_encode(['ok' => false, 'error' => 'Missing or invalid seconds']);
+            return;
+        }
+
+        // --- Find the original asset for this exact project/day/clip ---
+        $assetStmt = $pdo->prepare("
+            SELECT ca.storage_path
+            FROM clips c
+            JOIN clip_assets ca ON ca.clip_id = c.id
+            WHERE c.id         = UUID_TO_BIN(:clip_uuid,1)
+              AND c.project_id = UUID_TO_BIN(:proj_uuid,1)
+              AND c.day_id     = UUID_TO_BIN(:day_uuid,1)
+              AND ca.asset_type = 'original'
+            ORDER BY ca.created_at DESC
+            LIMIT 1
+        ");
+        $assetStmt->execute([
+            ':clip_uuid' => $clipUuid,
+            ':proj_uuid' => $projectUuid,
+            ':day_uuid'  => $dayUuid,
+        ]);
+        $asset = $assetStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$asset || empty($asset['storage_path'])) {
+            http_response_code(404);
+            if (!headers_sent()) {
+                header('Content-Type: application/json; charset=utf-8');
+            }
+            echo json_encode(['ok' => false, 'error' => 'Original asset not found']);
+            return;
+        }
+
+        $publicBase = rtrim(getenv('ZEN_STOR_PUBLIC_BASE') ?: '/data/zendailies/uploads', '/');
+        $fsBase     = rtrim(getenv('ZEN_STOR_DIR') ?: '/var/www/html/data/zendailies/uploads', '/');
+
+        $sourcePublic = $asset['storage_path']; // e.g. /data/zendailies/uploads/...
+        $sourceAbs    = $sourcePublic;
+
+        // If storage_path is a public URL, map it back to a filesystem path
+        if (strpos($sourcePublic, $publicBase . '/') === 0) {
+            $suffix    = substr($sourcePublic, strlen($publicBase));
+            $sourceAbs = $fsBase . $suffix;
+        }
+
+        // --- Derive poster paths next to the original (same pattern as ClipUploadController) ---
+        $posterAbsPath = preg_replace('/\.(mp4|mov|mxf)$/i', '', $sourceAbs) . '.poster.jpg';
+        if ($posterAbsPath === $sourceAbs) {
+            $posterAbsPath = $sourceAbs . '.poster.jpg';
+        }
+
+        $posterPublicPath = preg_replace('/\.(mp4|mov|mxf)$/i', '', $sourcePublic) . '.poster.jpg';
+        if ($posterPublicPath === $sourcePublic) {
+            $posterPublicPath = $sourcePublic . '.poster.jpg';
+        }
+
+        // --- Generate poster at EXACT time ---
+        $ff = new FFmpegService();
+
+        $res = $ff->generatePoster($sourceAbs, $posterAbsPath, $seconds, 640);
+
+        if (!($res['ok'] ?? false)) {
+            http_response_code(500);
+            if (!headers_sent()) {
+                header('Content-Type: application/json; charset=utf-8');
+            }
+            echo json_encode([
+                'ok'    => false,
+                'error' => $res['err'] ?? 'Failed to generate poster',
+            ]);
+            return;
+        }
+
+        // --- Stat the new poster (size + dimensions) ---
+        $bytes   = @filesize($posterAbsPath) ?: null;
+        $width   = null;
+        $height  = null;
+        $imgInfo = @getimagesize($posterAbsPath);
+        if (\is_array($imgInfo)) {
+            $width  = isset($imgInfo[0]) ? (int)$imgInfo[0] : null;
+            $height = isset($imgInfo[1]) ? (int)$imgInfo[1] : null;
+        }
+
+        // --- Upsert into clip_assets as asset_type='poster' ---
+        $up = $pdo->prepare("
+            INSERT INTO clip_assets (clip_id, asset_type, storage_path, byte_size, width, height, codec)
+            VALUES (UUID_TO_BIN(:clip_uuid,1), 'poster', :path, :size, :w, :h, 'jpg')
+            ON DUPLICATE KEY UPDATE
+                storage_path = VALUES(storage_path),
+                byte_size    = VALUES(byte_size),
+                width        = VALUES(width),
+                height       = VALUES(height),
+                codec        = VALUES(codec)
+        ");
+
+        $up->execute([
+            ':clip_uuid' => $clipUuid,
+            ':path'      => $posterPublicPath,
+            ':size'      => $bytes,
+            ':w'         => $width,
+            ':h'         => $height,
+        ]);
+
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+        }
+
+        echo json_encode([
+            'ok'         => true,
+            'poster_url' => $posterPublicPath,
+        ]);
+    }
+
+
 
     public function overview(string $projectUuid): void
     {
@@ -641,9 +605,57 @@ final class ClipPlayerController
             $dayVisibilitySql = " AND d.published_at IS NOT NULL";
         }
 
+        // --- If scene=... is present on overview, jump into the real player route (day+clip) ---
+        $targetScene = isset($_GET['scene']) ? trim((string)$_GET['scene']) : '';
+        if ($targetScene !== '') {
+
+            // Respect the same visibility rules as lists (published-only for regular users)
+            // and the same sensitive ACL rules.
+            $sceneJumpSql = "
+                SELECT
+                    BIN_TO_UUID(c.id,1)     AS clip_uuid,
+                    BIN_TO_UUID(c.day_id,1) AS day_uuid
+                FROM clips c
+                JOIN days d ON d.id = c.day_id
+                LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
+                LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
+                WHERE c.project_id = UUID_TO_BIN(:p,1)
+                AND c.scene = :sc
+                $aclSql
+                $dayVisibilitySql
+                ORDER BY c.created_at ASC
+                LIMIT 1
+            ";
+
+            $st = $pdo->prepare($sceneJumpSql);
+            $st->bindValue(':p', $projectUuid);
+            $st->bindValue(':sc', $targetScene);
+            if ($viewerParam !== null) {
+                $st->bindValue(':viewer_person_uuid', $viewerParam);
+            }
+            $st->execute();
+            $hit = $st->fetch(\PDO::FETCH_ASSOC);
+
+            if ($hit && !empty($hit['day_uuid']) && !empty($hit['clip_uuid'])) {
+                $dest = "/admin/projects/" . rawurlencode($projectUuid)
+                    . "/days/" . rawurlencode($hit['day_uuid'])
+                    . "/player/" . rawurlencode($hit['clip_uuid'])
+                    . "?scene=" . rawurlencode($targetScene)
+                    . "&pane=clips";
+
+                header("Location: " . $dest, true, 302);
+                exit;
+            }
+
+            // If the scene exists but user can't see any clips in it, fall through to overview render
+            // (you can optionally set a flash message here later).
+        }
+
+
         // Build the same days list with thumbs via helper
         $daysOut = $this->fetchDaysWithThumbs($pdo, $projectUuid, $dayVisibilitySql, $aclSql, $viewerParam);
 
+        $scenesOut = $this->fetchScenesWithThumbs($pdo, $projectUuid, $aclSql, $viewerParam);
 
         // Reuse the SAME view; no clip/day selected. JS handles ?pane=days
         \App\Support\View::render('admin/player/show', [
@@ -660,7 +672,64 @@ final class ClipPlayerController
             'current_clip'          => null,
             'current_day_label'     => 'Days',
             'days'                  => $daysOut,
+            'scenes'                => $scenesOut,
             'placeholder_thumb_url' => '/assets/img/empty_day_placeholder.png',
         ]);
+    }
+
+    // Insert after fetchDaysWithThumbs around line 133
+    private function fetchScenesWithThumbs(PDO $pdo, string $projectUuid, string $aclSql, ?string $viewerParam): array
+    {
+        $sql = "
+            SELECT 
+                c.scene,
+                COUNT(*) as clip_count,
+                SUM(c.duration_ms) as tot_ms,
+                (
+                    SELECT a.storage_path
+                    FROM clip_assets a
+                    INNER JOIN clips c3 ON a.clip_id = c3.id
+                    WHERE c3.project_id = UUID_TO_BIN(:p_sub, 1)
+                      AND c3.scene = c.scene
+                      AND a.asset_type = 'poster'
+                    ORDER BY c3.created_at ASC, a.created_at DESC
+                    LIMIT 1
+                ) AS thumb_url
+            FROM clips c
+            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
+            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
+            WHERE c.project_id = UUID_TO_BIN(:p_main, 1)
+              AND c.scene IS NOT NULL AND c.scene != ''
+              $aclSql
+            GROUP BY c.scene
+            ORDER BY 
+                CASE WHEN c.scene REGEXP '^[0-9]+$' THEN CAST(c.scene AS UNSIGNED) ELSE 999999 END ASC, 
+                c.scene ASC
+        ";
+
+        $st = $pdo->prepare($sql);
+        $st->bindValue(':p_sub', $projectUuid);
+        $st->bindValue(':p_main', $projectUuid);
+        if ($viewerParam) {
+            $st->bindValue(':viewer_person_uuid', $viewerParam);
+        }
+        $st->execute();
+
+        $scenes = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $ms = (int)$row['tot_ms'];
+            $ss = intdiv($ms, 1000);
+            $mm = intdiv($ss, 60);
+            $hh = intdiv($mm, 60);
+            $hms = sprintf('%02d:%02d:%02d', $hh, $mm % 60, $ss % 60);
+
+            $scenes[] = [
+                'scene'      => $row['scene'],
+                'thumb_url'  => $row['thumb_url'],
+                'clip_count' => (int)$row['clip_count'],
+                'total_hms'  => $hms
+            ];
+        }
+        return $scenes;
     }
 }

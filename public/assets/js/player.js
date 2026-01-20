@@ -10,30 +10,29 @@ document.addEventListener("DOMContentLoaded", function () {
   // LIST roots (just content, not scroll)
   const clipContainer = document.getElementById("clipListContainer");
   const dayContainer = document.getElementById("dayListContainer");
+  const sceneContainer = document.getElementById("sceneListContainer");
 
   // OUTER wrappers (shown/hidden as panes)
   const clipWrapper = document.querySelector(".clipScrollOuter");
   const dayWrapper = document.querySelector(".dayScrollOuter");
+  const sceneWrapper = document.querySelector(".sceneScrollOuter");
 
   const daySwitchBtn = document.getElementById("zd-day-switch-btn");
   const currentDayNode = document.getElementById("zd-current-day-label");
-  const headerSlash = document.getElementById("zd-header-slash");
-  const headerClips = document.getElementById("zd-header-clips");
 
   const layout = document.querySelector(".player-layout");
   const resizer = document.getElementById("sidebarResizer");
   const innerResizer = document.getElementById("innerResizer");
 
-  const mainSection = document.querySelector("section.player-main"); // inner grid in theater
+  const mainSection = document.querySelector("section.player-main");
   const isTheater = () => layout.classList.contains("is-theater");
 
-  // Which CSS variable are we driving right now?
   function currentVarName() {
     return isTheater() ? "--meta-width" : "--clipcol-width";
   }
 
-  const theaterBtn = document.getElementById("theaterToggleBtn");
-  const theaterIcon = document.getElementById("theaterToggleIcon");
+  const theaterBtn = document.getElementById("btnTheater");
+  const theaterIcon = document.querySelector("#btnTheater .theater-icon");
 
   if (
     !btnToggleView ||
@@ -44,7 +43,6 @@ document.addEventListener("DOMContentLoaded", function () {
     !clipScrollInner ||
     !dayScrollInner ||
     !layout ||
-    !daySwitchBtn ||
     !currentDayNode
   ) {
     return;
@@ -53,24 +51,30 @@ document.addEventListener("DOMContentLoaded", function () {
   // Read project UUID from the page (set by PHP)
   const zdRoot = document.querySelector(".player-layout");
   const ZD_PROJECT_UUID = zdRoot?.dataset.projectUuid || "";
+  const ZD_DAY_UUID = zdRoot?.dataset.dayUuid || "";
+  const ZD_CURRENT_CLIP = zdRoot?.dataset.clipUuid || "";
 
   const THEATER_KEY = "playerTheaterMode";
   function setTheater(on) {
     if (!zdRoot) return;
     zdRoot.classList.toggle("is-theater", !!on);
-    // Swap header icon only if it exists
-    if (theaterIcon) {
-      theaterIcon.src = on
-        ? "/assets/icons/theater-exit.svg"
-        : "/assets/icons/theater.svg";
+
+    // Update icon state
+    const enterIcon = document.querySelector(
+      '#btnTheater .theater-icon[data-state="enter"]',
+    );
+    const exitIcon = document.querySelector(
+      '#btnTheater .theater-icon[data-state="exit"]',
+    );
+    if (enterIcon && exitIcon) {
+      enterIcon.style.display = on ? "none" : "";
+      exitIcon.style.display = on ? "" : "none";
     }
   }
 
-  // Restore from session
   const theaterSaved = sessionStorage.getItem(THEATER_KEY);
   setTheater(theaterSaved === "1");
 
-  // Wire the button
   if (theaterBtn) {
     theaterBtn.addEventListener("click", () => {
       const nowOn = !zdRoot.classList.contains("is-theater");
@@ -79,51 +83,28 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Day grid: navigate when a day is clicked
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest(".day-item");
-    if (!btn) return;
-
-    const dayUuid = btn.dataset.dayUuid;
-    if (!ZD_PROJECT_UUID || !dayUuid) return;
-
-    // Build server route purely in JS (no PHP in .js files!)
-    const url = `/admin/projects/${encodeURIComponent(
-      ZD_PROJECT_UUID
-    )}/days/${encodeURIComponent(dayUuid)}/player`;
-    window.location.assign(url);
-  });
-
   // -------------------------------------------------
   // STATE
   // -------------------------------------------------
-  // Which pane is currently visible in the sidebar: 'clips' or 'days'
   let activePane = "clips";
-
-  // Remember the last chosen day label (what we show before "/ Clips")
   let lastSelectedDayLabel = currentDayNode.textContent.trim();
 
-  // defaults per mode for sidebar width
   const defaults = {
     list: 360,
     grid: 720,
   };
 
-  const keyMode = "clipViewMode"; // persist list/grid choice
+  const keyMode = "clipViewMode";
   const keyW = (m) => `clipcolWidth:${m}`;
 
   const basePath = location.pathname.replace(/\/player\/[^/]+$/, "/player");
-  // we now scope scroll state by pane ('clips' or 'days') + mode ('list'/'grid')
   const keyScroll = (m, pane) => `clipListScroll:${pane}:${m}:${basePath}`;
+  const keyPane = () => `activePane:${basePath}`;
 
-  // remember which pane was active when we navigated away
-  const keyPane = (pane) => `activePane:${basePath}`;
-
-  // helper to save pane + mode before leaving page
   function persistStateBeforeNav(pane, mode) {
     sessionStorage.setItem(keyPane(), pane);
-    sessionStorage.setItem(keyMode, mode); // you already do this elsewhere too but repeat here so it's fresh
-    saveScroll(mode); // save scroll for that pane/mode
+    sessionStorage.setItem(keyMode, mode);
+    saveScroll(mode);
   }
 
   // -------------------------------------------------
@@ -134,13 +115,7 @@ document.addEventListener("DOMContentLoaded", function () {
     return clipContainer.classList.contains("grid-view") ? "grid" : "list";
   }
 
-  // Update header wording depending on which pane is visible
-  function setHeaderForPane() {
-    return;
-  }
-
   function setToggleIcon(mode) {
-    // mode is CURRENT mode, so button shows TARGET
     const isGrid = mode === "grid";
     iconToggleView.src = isGrid
       ? "/assets/icons/list.svg"
@@ -150,37 +125,53 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function getScrollElForPane(paneName) {
-    // the actual scrolling elements
+    if (paneName === "scenes") {
+      return document.getElementById("sceneScrollInner");
+    }
     return paneName === "clips" ? clipScrollInner : dayScrollInner;
   }
 
   function saveScroll(mode) {
     const pane = activePane;
     const scEl = getScrollElForPane(pane);
-    sessionStorage.setItem(keyScroll(mode, pane), String(scEl.scrollTop));
+    if (scEl) {
+      sessionStorage.setItem(keyScroll(mode, pane), String(scEl.scrollTop));
+    }
   }
 
   function restoreScroll(mode) {
     const pane = activePane;
     const scEl = getScrollElForPane(pane);
+    if (!scEl) return;
+
+    // 1. First, try to restore the exact pixel position from sessionStorage
     const saved = sessionStorage.getItem(keyScroll(mode, pane));
-    if (!saved) return;
-    const y = parseInt(saved, 10) || 0;
-    requestAnimationFrame(() => {
-      scEl.scrollTop = y;
-    });
+    if (saved) {
+      scEl.scrollTop = parseInt(saved, 10) || 0;
+    }
+
+    // 2. Second, if we are looking at clips, make sure the active clip is visible
+    if (pane === "clips") {
+      requestAnimationFrame(() => {
+        const activeClip = scEl.querySelector(".clip-item.is-active");
+        if (activeClip) {
+          activeClip.scrollIntoView({
+            behavior: "instant", // Use instant so it doesn't "slide" on load
+            block: "nearest", // Only scrolls if it's actually off-screen
+          });
+        }
+      });
+    }
   }
 
-  // adjust day items for list vs grid (layout + which label is visible)
-  function layoutDaysForMode(mode) {
-    const dayItems = dayContainer.querySelectorAll(".day-item");
-    dayItems.forEach((card) => {
+  function layoutModeForCards(mode) {
+    const cards = document.querySelectorAll(".day-item, .scene-item");
+    cards.forEach((card) => {
       const overlay = card.querySelector(".day-overlay-label");
       const rowtext = card.querySelector(".day-rowtext");
       const thumbWrap = card.querySelector(".day-thumb");
 
       if (mode === "grid") {
-        // GRID MODE: cards behave like tiles inside CSS grid
         card.style.display = "block";
         card.style.gridTemplateColumns = "";
         card.style.alignItems = "";
@@ -190,16 +181,14 @@ document.addEventListener("DOMContentLoaded", function () {
           thumbWrap.style.width = "100%";
           thumbWrap.style.borderBottom = "1px solid var(--border)";
         }
-
-        if (overlay) overlay.style.display = ""; // show centered overlay
-        if (rowtext) rowtext.style.display = "none"; // hide row title
+        if (overlay) overlay.style.display = "";
+        if (rowtext) rowtext.style.display = "none";
 
         const overlayMeta = card.querySelector(".day-overlay-meta");
         const rowMeta = card.querySelector(".day-rowmeta");
-        if (overlayMeta) overlayMeta.style.display = ""; // show on thumb
-        if (rowMeta) rowMeta.style.display = "none"; // hide row meta
+        if (overlayMeta) overlayMeta.style.display = "";
+        if (rowMeta) rowMeta.style.display = "none";
       } else {
-        // LIST MODE: cards behave like 2-col rows
         card.style.display = "grid";
         card.style.gridTemplateColumns = "120px 1fr";
         card.style.alignItems = "center";
@@ -209,32 +198,32 @@ document.addEventListener("DOMContentLoaded", function () {
           thumbWrap.style.width = "120px";
           thumbWrap.style.borderBottom = "none";
         }
-
-        if (overlay) overlay.style.display = "none"; // hide overlay in list rows
-        if (rowtext) rowtext.style.display = "block"; // show row title
+        if (overlay) overlay.style.display = "none";
+        if (rowtext) rowtext.style.display = "block";
 
         const overlayMeta = card.querySelector(".day-overlay-meta");
         const rowMeta = card.querySelector(".day-rowmeta");
-        if (overlayMeta) overlayMeta.style.display = "none"; // hide on thumb
-        if (rowMeta) rowMeta.style.display = "block"; // show under title
+        if (overlayMeta) overlayMeta.style.display = "none";
+        if (rowMeta) rowMeta.style.display = "block";
       }
     });
   }
 
-  // Switch list/grid styling for both containers
   function applyMode(mode) {
-    // save scroll before we flip classes
     saveScroll(getMode());
 
     clipContainer.classList.remove("list-view", "grid-view");
     dayContainer.classList.remove("list-view", "grid-view");
+    if (sceneContainer) {
+      sceneContainer.classList.remove("list-view", "grid-view");
+      sceneContainer.classList.add(mode + "-view");
+    }
 
     clipContainer.classList.add(mode + "-view");
     dayContainer.classList.add(mode + "-view");
 
-    layoutDaysForMode(mode);
+    layoutModeForCards(mode);
 
-    // sidebar width memory based on mode
     const savedW = sessionStorage.getItem(keyW(mode));
     const width = parseInt(savedW || defaults[mode], 10);
     layout.style.setProperty("--clipcol-width", width + "px");
@@ -242,134 +231,363 @@ document.addEventListener("DOMContentLoaded", function () {
     setToggleIcon(mode);
     sessionStorage.setItem(keyMode, mode);
 
-    // restore scroll on the now-active pane
     restoreScroll(mode);
   }
 
-  // Actually show one wrapper and hide the other
-  function showPane(paneName) {
-    // save scroll of current pane/mode before leaving it
-    saveScroll(getMode());
+  function updateBreadcrumb(paneName) {
+    const breadcrumbParent =
+      document.getElementById("breadcrumbParentScenes") ||
+      document.getElementById("breadcrumbParentDays");
+    const currentLabel = document.getElementById("zd-current-day-label");
+    const slash = document.querySelector(".hdr-slash");
+    const countSpan = document.querySelector(".hdr-count");
 
+    if (!breadcrumbParent || !currentLabel) return;
+
+    if (paneName === "days") {
+      // Show just "Days /"
+      breadcrumbParent.textContent = "Days";
+      breadcrumbParent.style.display = "";
+      if (slash) slash.style.display = "none";
+      if (currentLabel) currentLabel.style.display = "none";
+      if (countSpan) countSpan.style.display = "none";
+    } else if (paneName === "scenes") {
+      // Show just "Scenes /"
+      breadcrumbParent.textContent = "Scenes";
+      breadcrumbParent.style.display = "";
+      if (slash) slash.style.display = "none";
+      if (currentLabel) currentLabel.style.display = "none";
+      if (countSpan) countSpan.style.display = "none";
+    } else if (paneName === "clips") {
+      // Show full breadcrumb: "Days / DAY 03 / N Clips" or "Scenes / Scene XX / N Clips"
+      if (slash) slash.style.display = "";
+      if (currentLabel) currentLabel.style.display = "";
+      if (countSpan) countSpan.style.display = "";
+    }
+  }
+
+  function showPane(paneName) {
+    saveScroll(getMode());
     activePane = paneName;
+
+    if (paneName === "days" || paneName === "scenes") {
+      const allClips = clipContainer.querySelectorAll(".clip-item");
+      allClips.forEach((c) => (c.style.display = ""));
+    }
+
+    clipWrapper.style.display = "none";
+    dayWrapper.style.display = "none";
+    if (sceneWrapper) sceneWrapper.style.display = "none";
 
     if (paneName === "clips") {
       clipWrapper.style.display = "";
-      dayWrapper.style.display = "none";
-    } else {
-      clipWrapper.style.display = "none";
+    } else if (paneName === "days") {
       dayWrapper.style.display = "";
+    } else if (paneName === "scenes") {
+      if (sceneWrapper) sceneWrapper.style.display = "";
     }
 
-    setHeaderForPane();
+    const isSceneMode = new URLSearchParams(window.location.search).has(
+      "scene",
+    );
+
+    document
+      .getElementById("switchToDays")
+      ?.classList.toggle(
+        "active",
+        paneName === "days" || (paneName === "clips" && !isSceneMode),
+      );
+    document
+      .getElementById("switchToScenes")
+      ?.classList.toggle(
+        "active",
+        paneName === "scenes" || (paneName === "clips" && isSceneMode),
+      );
+
+    updateBreadcrumb(paneName);
+    updateSortVisibility();
     restoreScroll(getMode());
+  }
+
+  // -------------------------------------------------
+  // SORTING LOGIC
+  // -------------------------------------------------
+  const sortModeEl = document.getElementById("clipSortMode");
+  const sortDirBtn = document.getElementById("sortDirBtn");
+  const sortGroup = document.getElementById("clipSortGroup");
+
+  const isOverviewMode = () => {
+    return activePane === "days" || activePane === "scenes";
+  };
+
+  const updateSortVisibility = () => {
+    if (!sortGroup) return;
+    if (isOverviewMode()) {
+      sortGroup.style.display = "none";
+    } else {
+      sortGroup.style.display = "flex";
+    }
+  };
+
+  const defaultDirForMode = (mode) => {
+    if (mode === "select" || mode === "comments") return "desc";
+    return "asc";
+  };
+
+  let sortDir = sortDirBtn?.getAttribute("data-dir") || "asc";
+
+  function sortLists() {
+    if (isOverviewMode()) {
+      const container = activePane === "days" ? dayContainer : sceneContainer;
+      const items = Array.from(
+        container.querySelectorAll(".day-item, .scene-item"),
+      );
+      if (!items.length) return;
+
+      items.sort((a, b) => {
+        const aVal = (
+          a.dataset.scene ||
+          a.dataset.dayLabel ||
+          ""
+        ).toLowerCase();
+        const bVal = (
+          b.dataset.scene ||
+          b.dataset.dayLabel ||
+          ""
+        ).toLowerCase();
+
+        const cmp =
+          !isNaN(aVal) && !isNaN(bVal)
+            ? parseFloat(aVal) - parseFloat(bVal)
+            : aVal.localeCompare(bVal);
+
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+
+      items.forEach((el) => container.appendChild(el));
+      return;
+    }
+
+    if (!clipContainer || !sortModeEl) return;
+
+    const mode = sortModeEl.value || "scene";
+    const items = Array.from(clipContainer.querySelectorAll(".clip-item"));
+    if (!items.length) return;
+
+    const compare = (a, b) => {
+      const aData = a.dataset;
+      const bData = b.dataset;
+      let aVal, bVal;
+
+      switch (mode) {
+        case "name":
+          aVal = (aData.filename || "").toLowerCase();
+          bVal = (bData.filename || "").toLowerCase();
+          break;
+        case "select":
+          aVal = Number(aData.isSelect || 0);
+          bVal = Number(bData.isSelect || 0);
+          break;
+        case "comments":
+          aVal = Number(aData.commentCount || 0);
+          bVal = Number(bData.commentCount || 0);
+          break;
+        case "scene":
+        default:
+          aVal = (aData.label || aData.filename || "").toLowerCase();
+          bVal = (bData.label || bData.filename || "").toLowerCase();
+          break;
+      }
+
+      let result;
+      if (typeof aVal === "string" || typeof bVal === "string") {
+        result = String(aVal).localeCompare(String(bVal));
+      } else {
+        result = aVal - bVal;
+      }
+
+      return sortDir === "asc" ? result : -result;
+    };
+
+    items.sort(compare);
+    items.forEach((el) => clipContainer.appendChild(el));
+  }
+
+  if (sortModeEl) {
+    sortModeEl.addEventListener("change", () => {
+      const mode = sortModeEl.value || "scene";
+      sortDir = defaultDirForMode(mode);
+      sortDirBtn.setAttribute("data-dir", sortDir);
+      sortLists();
+    });
+  }
+
+  if (sortDirBtn) {
+    sortDirBtn.addEventListener("click", () => {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+      sortDirBtn.setAttribute("data-dir", sortDir);
+      sortLists();
+    });
   }
 
   // -------------------------------------------------
   // INIT
   // -------------------------------------------------
 
-  // figure out last mode ("list"/"grid")
   const restoredMode =
     sessionStorage.getItem(keyMode) === "grid" ? "grid" : "list";
-
-  // allow URL to force initial pane (e.g. ?pane=days)
   const urlPaneParam = new URLSearchParams(location.search).get("pane");
   const forcedPane =
-    urlPaneParam && /^(clips|days)$/i.test(urlPaneParam)
+    urlPaneParam && /^(clips|days|scenes)$/i.test(urlPaneParam)
       ? urlPaneParam.toLowerCase()
       : null;
-
-  // figure out last pane ("clips"/"days"), default to "clips"; URL wins if present
   const restoredPane =
     forcedPane || sessionStorage.getItem(keyPane()) || "clips";
 
-  // if URL forced it, persist so the back/forward flow keeps it
   if (forcedPane) {
     sessionStorage.setItem(keyPane(), restoredPane);
   }
 
-  // Apply mode classes to both containers first
   clipContainer.classList.remove("list-view", "grid-view");
   dayContainer.classList.remove("list-view", "grid-view");
+  if (sceneContainer) {
+    sceneContainer.classList.remove("list-view", "grid-view");
+  }
 
   clipContainer.classList.add(restoredMode + "-view");
   dayContainer.classList.add(restoredMode + "-view");
-
-  // Make sure day cards layout matches the mode
-  layoutDaysForMode(restoredMode);
-
-  // Set toggle icon to reflect current mode
-  setToggleIcon(restoredMode);
-
-  // Restore sidebar width for this mode
-  const savedInitialW = sessionStorage.getItem(keyW(restoredMode));
-  layout.style.setProperty(
-    "--clipcol-width",
-    (savedInitialW || defaults[restoredMode]) + "px"
-  );
-
-  // Now set activePane manually (instead of calling showPane(), which would
-  // call saveScroll/restoreScroll again in a weird order)
-  activePane = restoredPane;
-
-  // Reveal the correct wrapper based on restoredPane
-  if (restoredPane === "clips") {
-    clipWrapper.style.display = "";
-    dayWrapper.style.display = "none";
-  } else {
-    clipWrapper.style.display = "none";
-    dayWrapper.style.display = "";
+  if (sceneContainer) {
+    sceneContainer.classList.add(restoredMode + "-view");
   }
 
-  // Update header text ("DAY 01 / Clips" vs "Days")
-  setHeaderForPane();
+  layoutModeForCards(restoredMode);
+  setToggleIcon(restoredMode);
 
-  // Finally, restore scroll for that pane+mode
+  // Width already applied in pre-DOMContentLoaded block, just ensure consistency
+  const savedInitialW = sessionStorage.getItem(keyW(restoredMode));
+  if (savedInitialW) {
+    layout.style.setProperty("--clipcol-width", savedInitialW + "px");
+  }
+
+  activePane = restoredPane;
+
+  // Force highlight correction if we are in clip view but came from a specific context
+  const isSceneMode = new URLSearchParams(window.location.search).has("scene");
+  if (activePane === "clips") {
+    const btnDays = document.getElementById("switchToDays");
+    const btnScenes = document.getElementById("switchToScenes");
+    btnDays?.classList.toggle("active", !isSceneMode);
+    btnScenes?.classList.toggle("active", isSceneMode);
+  }
+
+  showPane(restoredPane);
+
   restoreScroll(restoredMode);
+
+  // Set initial sort mode
+  if (sortModeEl) {
+    const clipItems = Array.from(clipContainer.querySelectorAll(".clip-item"));
+    const hasScene = clipItems.some((el) => {
+      const label = (el.dataset.label || "").trim();
+      return label !== "";
+    });
+
+    const initialMode = hasScene ? "scene" : "name";
+    const hasInitialOption = Array.from(sortModeEl.options).some(
+      (opt) => opt.value === initialMode,
+    );
+    if (hasInitialOption) {
+      sortModeEl.value = initialMode;
+    }
+
+    sortDir = defaultDirForMode(sortModeEl.value || initialMode);
+    sortDirBtn.setAttribute("data-dir", sortDir);
+  }
+
+  updateSortVisibility();
+  sortLists();
 
   // -------------------------------------------------
   // EVENTS
   // -------------------------------------------------
 
-  // Click the "(DAY NAME)" header button.
-  // If we're in clips -> go to days (header becomes "Days")
-  // If we're in days  -> go back to clips (header shows lastSelectedDayLabel)
-  daySwitchBtn.addEventListener("click", function () {
-    if (activePane === "clips") {
+  const breadcrumbScenes = document.getElementById("breadcrumbParentScenes");
+  const breadcrumbDays = document.getElementById("breadcrumbParentDays");
+
+  if (breadcrumbScenes) {
+    breadcrumbScenes.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showPane("scenes");
+    });
+  }
+
+  if (breadcrumbDays) {
+    breadcrumbDays.addEventListener("click", (e) => {
+      e.stopPropagation();
       showPane("days");
-    } else {
-      showPane("clips");
-    }
+    });
+  }
+
+  const btnShowDays = document.getElementById("switchToDays");
+  const btnShowScenes = document.getElementById("switchToScenes");
+
+  if (btnShowDays && btnShowScenes) {
+    btnShowDays.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showPane("days");
+    });
+
+    btnShowScenes.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showPane("scenes");
+    });
+  }
+
+  if (sceneContainer) {
+    sceneContainer.addEventListener("click", (e) => {
+      const btn = e.target.closest(".scene-item");
+      if (!btn) return;
+
+      const sceneNum = btn.dataset.scene;
+      if (!ZD_PROJECT_UUID || !sceneNum) return;
+
+      const url = `/admin/projects/${encodeURIComponent(ZD_PROJECT_UUID)}/player?scene=${encodeURIComponent(sceneNum)}&pane=clips`;
+      window.location.assign(url);
+    });
+  }
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".day-item:not(.scene-item)");
+    if (!btn) return;
+
+    const dayUuid = btn.dataset.dayUuid;
+    if (!ZD_PROJECT_UUID || !dayUuid) return;
+
+    const url = `/admin/projects/${encodeURIComponent(ZD_PROJECT_UUID)}/days/${encodeURIComponent(dayUuid)}/player`;
+    window.location.assign(url);
   });
 
-  // Toggle list/grid view button
   btnToggleView.addEventListener("click", function () {
     const next = getMode() === "grid" ? "list" : "grid";
     applyMode(next);
   });
 
-  // Clicking a clip still navigates away to that clip's /player/{clip_uuid}
   clipContainer.addEventListener("click", function (e) {
     const a = e.target.closest("a.clip-item");
     if (!a) return;
-
-    // before we navigate away, persist pane/mode/scroll
-    const modeNow = getMode(); // "list" or "grid"
+    const modeNow = getMode();
     persistStateBeforeNav(activePane, modeNow);
-
-    // now follow the link normally
-    // (letting the browser navigate via href is fine)
   });
 
-  // drag-to-resize logic for sidebar width
+  // -------------------------------------------------
+  // RESIZE LOGIC
+  // -------------------------------------------------
   let dragging = false,
     startX = 0,
     startW = 0;
 
   function computeMaxAllowedWidth() {
     if (!isTheater()) {
-      // NORMAL: resizer controls the LEFT sidebar (clip/day list)
       const layoutRect = layout.getBoundingClientRect();
       const layoutTotal = layoutRect.width;
       const minPlayerWidth = 400;
@@ -378,9 +596,8 @@ document.addEventListener("DOMContentLoaded", function () {
       if (maxW < 240) maxW = 240;
       return maxW;
     } else {
-      // THEATER: measure the whole grid (mainSection is display: contents)
       const total = layout.getBoundingClientRect().width;
-      const minVideoWidth = 560; // keep the video comfortably wide
+      const minVideoWidth = 560;
       const resizerTrack = 18;
       let maxW = total - minVideoWidth - resizerTrack;
       if (maxW < 280) maxW = 280;
@@ -394,29 +611,27 @@ document.addEventListener("DOMContentLoaded", function () {
       startX = e.clientX;
 
       const cs = getComputedStyle(layout);
-      const varName = currentVarName(); // "--clipcol-width" (normal) or "--meta-width" (theater)
+      const varName = currentVarName();
       const fallback = isTheater() ? 420 : defaults[getMode()];
       startW = parseInt(cs.getPropertyValue(varName)) || fallback;
 
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
-    })
+    }),
   );
 
   window.addEventListener("mousemove", function (e) {
     if (!dragging) return;
 
     const dx = e.clientX - startX;
-    const delta = isTheater() ? -dx : dx; // invert in theater
+    const delta = isTheater() ? -dx : dx;
     let nw = startW + delta;
 
-    // clamp between 240 and dynamic max
     const maxAllowed = computeMaxAllowedWidth();
     if (nw < 240) nw = 240;
     if (nw > maxAllowed) nw = maxAllowed;
 
     const varName = currentVarName();
-    // Always set on the grid root, because CSS reads it on .player-layout
     layout.style.setProperty(varName, nw + "px");
   });
 
@@ -426,47 +641,38 @@ document.addEventListener("DOMContentLoaded", function () {
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
 
-    document.addEventListener("keydown", (e) => {
-      if (
-        e.key.toLowerCase() === "t" &&
-        !e.altKey &&
-        !e.ctrlKey &&
-        !e.metaKey
-      ) {
-        theaterBtn?.click();
-      }
-    });
-
-    // after letting go, snap again to be safe and persist
     const varName = currentVarName();
     const cs = getComputedStyle(layout);
     let finalW = parseInt(cs.getPropertyValue(varName)) || defaults[getMode()];
     const maxAllowed = computeMaxAllowedWidth();
+
     if (finalW < (isTheater() ? 280 : 240)) finalW = isTheater() ? 280 : 240;
     if (finalW > maxAllowed) finalW = maxAllowed;
-    layout.style.setProperty(varName, finalW + "px");
 
-    // persist per-mode key you already use; ok to reuse the same keys
+    layout.style.setProperty(varName, finalW + "px");
     sessionStorage.setItem(keyW(getMode()), String(finalW));
   });
 
-  // double-click divider to reset width for current mode
-  // double-click divider to reset width for current mode
+  document.addEventListener("keydown", (e) => {
+    if (e.key.toLowerCase() === "t" && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      theaterBtn?.click();
+    }
+  });
+
   resizer.addEventListener("dblclick", function () {
-    const varName = currentVarName(); // "--clipcol-width" or "--meta-width"
+    const varName = currentVarName();
     const def = isTheater() ? 420 : defaults[getMode()];
     layout.style.setProperty(varName, def + "px");
-    // Persist only the clip column width (we don't currently store meta width):
     if (!isTheater()) {
       sessionStorage.setItem(keyW(getMode()), String(def));
     }
   });
 
   // -------------------------------------------------
-  // Metadata <details> open/close persistence
+  // Metadata <details> persistence
   // -------------------------------------------------
   const metaSections = document.querySelectorAll(
-    "details.zd-metadata-group[data-meta-section]"
+    "details.zd-metadata-group[data-meta-section]",
   );
 
   metaSections.forEach((det) => {
@@ -474,8 +680,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!section) return;
 
     const key = `playerMetaOpen:${section}`;
-
-    // Restore saved state (if any)
     const saved = sessionStorage.getItem(key);
     if (saved === "1") {
       det.open = true;
@@ -483,7 +687,6 @@ document.addEventListener("DOMContentLoaded", function () {
       det.open = false;
     }
 
-    // On toggle, persist new state
     det.addEventListener("toggle", () => {
       sessionStorage.setItem(key, det.open ? "1" : "0");
     });
@@ -504,19 +707,15 @@ document.addEventListener("DOMContentLoaded", function () {
       : Number((vid.dataset.fps || "").replace(",", ".")) || 25;
   const startTC = (vid.dataset.tcStart || "00:00:00:00").trim();
 
-  // Auto-detect drop-frame: true for ≈29.97 or ≈59.94
-  const drop =
-    Math.abs(fps - 29.97) < 0.02 || Math.abs(fps - 59.94) < 0.02 ? true : false;
+  const drop = Math.abs(fps - 29.97) < 0.02 || Math.abs(fps - 59.94) < 0.02;
 
-  // ---------- Helpers ----------
   const pad2 = (n) => String(n).padStart(2, "0");
 
   function dropCountPerMinute(fps) {
     const f = Math.round(fps);
-    return Math.round(f / 15); // 2 for 29.97, 4 for 59.94
+    return Math.round(f / 15);
   }
 
-  // ---- Non-drop parse/format ----
   function tcToFrames_ND(tc, fps) {
     const m = /^(\d{2}):(\d{2}):(\d{2})[:;](\d{2})$/.exec(tc);
     if (!m) return 0;
@@ -540,7 +739,6 @@ document.addEventListener("DOMContentLoaded", function () {
     return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}:${pad2(ff)}`;
   }
 
-  // ---- Drop-frame parse/format ----
   function tcToFrames_DF(tc, fps) {
     const f = Math.round(fps);
     const df = dropCountPerMinute(fps);
@@ -564,12 +762,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let frames = Math.max(0, Math.round(totalFrames));
 
-    // compute adjustment for dropped frames
     const d =
       Math.floor(frames / (framesPer10Min - df * 9)) * 9 * df +
       Math.max(
         0,
-        Math.floor((frames % (framesPer10Min - df * 9)) / (framesPerMin - df))
+        Math.floor((frames % (framesPer10Min - df * 9)) / (framesPerMin - df)),
       ) *
         df;
 
@@ -587,12 +784,10 @@ document.addEventListener("DOMContentLoaded", function () {
     return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)};${pad2(ff)}`;
   }
 
-  // ---------- Init ----------
   const startFrames = drop
     ? tcToFrames_DF(startTC, fps)
     : tcToFrames_ND(startTC, fps);
 
-  // ---------- Per-frame update ----------
   const useRVFC = "requestVideoFrameCallback" in HTMLVideoElement.prototype;
 
   function renderFrame(timeSeconds) {
@@ -643,174 +838,6 @@ document.addEventListener("DOMContentLoaded", function () {
       renderFrame(vid.currentTime || 0);
     });
 
-    // initial paint
     renderFrame(0);
   }
 })();
-
-// === Clip / Day list sorting: mode + direction ===
-document.addEventListener("DOMContentLoaded", () => {
-  const clipContainer = document.getElementById("clipListContainer");
-  const dayContainer = document.getElementById("dayListContainer");
-  const sortModeEl = document.getElementById("clipSortMode");
-  const sortDirBtn = document.getElementById("sortDirBtn");
-  const sortGroup = document.getElementById("clipSortGroup");
-  const daySwitchBtn = document.getElementById("zd-day-switch-btn");
-
-  if (!sortDirBtn) return; // arrow must exist
-
-  const getClipItems = () =>
-    clipContainer
-      ? Array.from(clipContainer.querySelectorAll(".clip-item"))
-      : [];
-
-  const getDayItems = () =>
-    dayContainer ? Array.from(dayContainer.querySelectorAll(".day-item")) : [];
-
-  // Detect whether we're in "day mode" (day list visible)
-  const isDayMode = () => {
-    const dayOuter = document.querySelector(".dayScrollOuter");
-    if (!dayOuter) return false;
-    // display: none => clips mode, otherwise day mode
-    return dayOuter.style.display !== "none";
-  };
-
-  // Show/hide the sort dropdown group based on mode
-  const updateSortVisibility = () => {
-    if (!sortGroup) return;
-    if (isDayMode()) {
-      sortGroup.style.display = "none";
-    } else {
-      sortGroup.style.display = "flex";
-    }
-  };
-
-  // Decide default direction for each mode (clips only)
-  const defaultDirForMode = (mode) => {
-    if (mode === "select" || mode === "comments") return "desc";
-    return "asc"; // scene/name
-  };
-
-  let sortDir = sortDirBtn.getAttribute("data-dir") || "asc";
-
-  function sortLists() {
-    // If day mode → sort days by label/text only, using current direction
-    if (isDayMode()) {
-      const items = getDayItems();
-      if (!items.length) return;
-
-      items.sort((a, b) => {
-        const aLabel = (a.dataset.dayLabel || "").toLowerCase();
-        const bLabel = (b.dataset.dayLabel || "").toLowerCase();
-        const cmp = aLabel.localeCompare(bLabel);
-        return sortDir === "asc" ? cmp : -cmp;
-      });
-
-      items.forEach((el) => dayContainer.appendChild(el));
-      return;
-    }
-
-    // Clip mode
-    if (!clipContainer || !sortModeEl) return;
-
-    const mode = sortModeEl.value || "scene";
-    const items = getClipItems();
-    if (!items.length) return;
-
-    const compare = (a, b) => {
-      const aData = a.dataset;
-      const bData = b.dataset;
-      let aVal;
-      let bVal;
-
-      switch (mode) {
-        case "name":
-          aVal = (aData.filename || "").toLowerCase();
-          bVal = (bData.filename || "").toLowerCase();
-          break;
-
-        case "select":
-          aVal = Number(aData.isSelect || 0);
-          bVal = Number(bData.isSelect || 0);
-          break;
-
-        case "comments":
-          aVal = Number(aData.commentCount || 0);
-          bVal = Number(bData.commentCount || 0);
-          break;
-
-        case "scene":
-        default:
-          aVal = (aData.label || aData.filename || "").toLowerCase();
-          bVal = (bData.label || bData.filename || "").toLowerCase();
-          break;
-      }
-
-      let result;
-      if (typeof aVal === "string" || typeof bVal === "string") {
-        result = String(aVal).localeCompare(String(bVal));
-      } else {
-        result = aVal - bVal;
-      }
-
-      return sortDir === "asc" ? result : -result;
-    };
-
-    items.sort(compare);
-    items.forEach((el) => clipContainer.appendChild(el));
-  }
-
-  // Change sort mode (clips only)
-  if (sortModeEl) {
-    sortModeEl.addEventListener("change", () => {
-      const mode = sortModeEl.value || "scene";
-      sortDir = defaultDirForMode(mode);
-      sortDirBtn.setAttribute("data-dir", sortDir);
-      sortLists();
-    });
-  }
-
-  // Manual direction toggle (works for both clips and days)
-  sortDirBtn.addEventListener("click", () => {
-    sortDir = sortDir === "asc" ? "desc" : "asc";
-    sortDirBtn.setAttribute("data-dir", sortDir);
-    sortLists();
-  });
-
-  // Hook into day/clip toggle button to update visibility after it runs
-  if (daySwitchBtn) {
-    daySwitchBtn.addEventListener("click", () => {
-      // Let existing handler run first, then adjust
-      setTimeout(() => {
-        updateSortVisibility();
-        // Optional: when switching back to clips, re-apply current sort
-        sortLists();
-      }, 0);
-    });
-  }
-
-  // === Initial default when opening a day (clip mode) ===
-  const clipItems = getClipItems();
-  const hasScene = clipItems.some((el) => {
-    const label = (el.dataset.label || "").trim();
-    return label !== "";
-  });
-
-  if (sortModeEl) {
-    const initialMode = hasScene ? "scene" : "name";
-
-    const hasInitialOption = Array.from(sortModeEl.options).some(
-      (opt) => opt.value === initialMode
-    );
-    if (hasInitialOption) {
-      sortModeEl.value = initialMode;
-    }
-
-    sortDir = defaultDirForMode(sortModeEl.value || initialMode);
-    sortDirBtn.setAttribute("data-dir", sortDir);
-  }
-
-  // Initial visibility + initial sort
-  updateSortVisibility();
-  sortLists();
-});
