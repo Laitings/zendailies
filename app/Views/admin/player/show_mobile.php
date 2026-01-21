@@ -40,7 +40,10 @@ $this->extend($layout ?? 'layout/mobile');
                 <div id="mobileUiOverlay" class="mobile-ui-overlay">
                     <div class="m-clip-info-overlay">
                         <h3><?= htmlspecialchars($clip['scene'] ?? 'Sc') ?> / <?= htmlspecialchars($clip['slate'] ?? '') ?> - <?= htmlspecialchars($clip['take'] ?? 'Tk') ?></h3>
-                        <?php $displayName = $clip['original_filename'] ?: $clip['file_name'] ?: ''; ?>
+                        <?php
+                        // Fallback to file_name and ensure no warnings if keys are missing
+                        $displayName = ($clip['file_name'] ?? '');
+                        ?>
                         <div class="filename"><?= htmlspecialchars(pathinfo($displayName, PATHINFO_FILENAME)) ?></div>
                     </div>
 
@@ -171,6 +174,7 @@ $this->extend($layout ?? 'layout/mobile');
             <?php foreach ($clip_list as $it):
                 $isActive = ($it['clip_uuid'] === ($current_clip ?? ''));
                 $href = "/admin/projects/{$project_uuid}/days/{$day_uuid}/player/{$it['clip_uuid']}";
+                $itFileName = ($it['file_name'] ?? '');
             ?>
                 <a href="<?= $href ?>"
                     class="mobile-clip-link <?= $isActive ? 'is-active' : '' ?>"
@@ -178,7 +182,7 @@ $this->extend($layout ?? 'layout/mobile');
                     data-scene="<?= htmlspecialchars($it['scene'] ?? 'Sc') ?>"
                     data-slate="<?= htmlspecialchars($it['slate'] ?? '') ?>"
                     data-take="<?= htmlspecialchars($it['take'] ?? 'Tk') ?>"
-                    data-filename="<?= htmlspecialchars(pathinfo($it['original_filename'] ?: $it['file_name'], PATHINFO_FILENAME)) ?>"
+                    data-filename="<?= htmlspecialchars(pathinfo($itFileName, PATHINFO_FILENAME)) ?>"
                     data-fps="<?= $it['fps'] ?? '25' ?>"
                     data-tc-start="<?= $it['tc_start'] ?? '00:00:00:00' ?>">
                     <img src="<?= $it['poster_path'] ?? $placeholder_thumb_url ?>" class="m-thumb" alt="">
@@ -203,7 +207,12 @@ $this->extend($layout ?? 'layout/mobile');
                         </div>
 
                         <div class="m-clip-meta">
-                            <?= htmlspecialchars(pathinfo($it['original_filename'] ?: $it['file_name'], PATHINFO_FILENAME)) ?>
+                            <?php
+                            // Use the null coalescing operator to avoid "Undefined array key" warnings
+                            // and default to 'file_name' as 'original_filename' is not in the DB schema.
+                            $clipName = ($it['file_name'] ?? '');
+                            echo htmlspecialchars(pathinfo($clipName, PATHINFO_FILENAME));
+                            ?>
                         </div>
                     </div>
                 </a>

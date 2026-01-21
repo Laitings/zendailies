@@ -109,6 +109,17 @@ function zd_sort_link(string $key, string $label, array $filters): string
         /* Optional: Makes it look sharper on Mac screens */
         -webkit-font-smoothing: antialiased;
     }
+
+    #zd-processing-overlay {
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 99999 !important;
+        background: rgba(11, 12, 16, 0.9) !important;
+        display: none;
+        /* Ensure this is set to none by default */
+        align-items: center;
+        justify-content: center;
+    }
 </style>
 
 <script type="module" defer src="/assets/js/admin.clips.js?v=<?= rawurlencode((string)@filemtime($_SERVER['DOCUMENT_ROOT'] . '/assets/js/admin.clips.js')) ?>"></script>
@@ -671,9 +682,14 @@ if ($__publish_fb) {
                                 <?php if ($isPowerUser): ?>
                                     <!-- Proxy / Job -->
                                     <td class="col-proxy" data-field="proxy_job">
-                                        <span class="zd-meta">
-                                            <?= htmlspecialchars($proxyLabel, ENT_QUOTES, 'UTF-8') ?>
-                                        </span>
+                                        <div class="zd-job-status" data-clip="<?= htmlspecialchars($r['clip_uuid']) ?>">
+                                            <span class="zd-meta">
+                                                <?= htmlspecialchars($proxyLabel, ENT_QUOTES, 'UTF-8') ?>
+                                            </span>
+                                            <?php if ($jobState === 'queued' || $jobState === 'running'): ?>
+                                                <div class="zd-spinner-small" title="<?= htmlspecialchars($jobLabel) ?>"></div>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                 <?php endif; ?>
 
@@ -736,6 +752,13 @@ if ($__publish_fb) {
     </div>
 </div>
 
+<div id="zd-processing-overlay" class="zd-modal-backdrop" style="z-index: 10001; background: rgba(11, 12, 16, 0.85); display: none; align-items: center; justify-content: center;">
+    <div class="zd-modal" style="text-align:center; padding: 40px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.6);">
+        <div class="zd-spinner" style="width: 40px; height: 40px; border-width: 3px; margin: 0 auto 20px;"></div>
+        <h2 id="zd-processing-title" style="margin:0; font-size: 18px; color: var(--text); text-transform: uppercase; letter-spacing: 0.05em;">Queuing Jobs...</h2>
+        <p id="zd-processing-text" style="color:var(--muted); margin-top: 12px; font-size: 13px;">Please wait while we prepare the files for the background worker.<br>This will only take a moment.</p>
+    </div>
+</div>
 
 <!-- Publish day modal -->
 <div class="zd-publish-backdrop" id="zd-publish-backdrop" hidden>

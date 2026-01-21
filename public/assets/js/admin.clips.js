@@ -139,6 +139,57 @@
   const importUids = document.getElementById("zd-import-uuids");
   const selCountEl = document.getElementById("zd-selected-count");
 
+  // ======================================================
+  // Media Generation Core Function
+  // ======================================================
+  async function generatePosterAjax(clipUuid, dUuid, options = {}) {
+    const targetDay = dUuid || dayUuid;
+    console.log(
+      `[DEBUG] Starting poster for: ${clipUuid} on day: ${targetDay}`,
+    );
+
+    const fd = new FormData();
+    fd.append("csrf_token", converterCsrf);
+    fd.append("clip_uuid", clipUuid);
+
+    try {
+      const url = `/admin/projects/${projectUuid}/days/${targetDay}/converter/poster`;
+      console.log(`[DEBUG] Fetching URL: ${url}`);
+
+      const resp = await fetch(url, { method: "POST", body: fd });
+      console.log(`[DEBUG] Response Status: ${resp.status}`);
+
+      const data = await resp.json();
+      console.log("[DEBUG] Server Response Data:", data);
+
+      if (resp.ok && data.ok) {
+        if (!options.silent) {
+          const selector = `#clip-${clipUuid} .zd-thumb`;
+          const img = document.querySelector(selector);
+
+          if (img) {
+            // Use the path from the server. If the server didn't send one,
+            // use the current src but strip the old timestamp first.
+            const currentBaseSrc = img.src.split("?")[0];
+            const newSrc = (data.href || currentBaseSrc) + "?v=" + Date.now();
+
+            img.src = newSrc;
+            console.log(`[DEBUG] Poster overwritten and refreshed: ${newSrc}`);
+          }
+        }
+        return true;
+      } else {
+        console.error(
+          "[DEBUG] Server returned error state:",
+          data.error || "Unknown error",
+        );
+      }
+    } catch (err) {
+      console.error("[DEBUG] Network or Parsing Error:", err);
+    }
+    return false;
+  }
+
   // ---- Day Filter (Dropdown)
   const daySelect = document.getElementById("zd-day-select");
   if (daySelect) {
@@ -623,6 +674,8 @@
       const pUuid = root.dataset.project;
       const dUuid = root.dataset.day;
 
+      if (dUuid === "all") return; // Avoid 404 on global view
+
       // We hit a status endpoint (you'll need to add this to DayConverterController)
       fetch(`/admin/projects/${pUuid}/days/${dUuid}/converter/status`)
         .then((res) => res.json())
@@ -647,7 +700,7 @@
     }
 
     // Poll every 4 seconds
-    setInterval(pollJobStatus, 4000);
+    // setInterval(pollJobStatus, 4000); // Disabled until endpoint is ready
     // Toggle lock (restricted)
     tbodyEl.addEventListener("click", async (ev) => {
       const btn = ev.target.closest("button.restrict-toggle");
@@ -1015,6 +1068,151 @@
       return;
     }
 
+    // === Per-clip: Generate SINGLE waveform ===
+    const singleWaveformLink = e.target.closest("[data-clip-waveform]");
+    if (singleWaveformLink) {
+      e.preventDefault();
+      const row = singleWaveformLink.closest("tr[data-clip-uuid]");
+      const clipUuid =
+        singleWaveformLink.getAttribute("data-clip-waveform") ||
+        (row ? row.dataset.clipUuid : "");
+      const rowDayUuid = (row && row.dataset.dayUuid) || currentDayUuid;
+
+      const fd = new FormData();
+      fd.append("csrf_token", root.dataset.converterCsrf);
+      fd.append("clip_uuid", clipUuid);
+
+      fetch(
+        `/admin/projects/${projectUuid}/days/${rowDayUuid}/converter/waveform`,
+        {
+          method: "POST",
+          body: fd,
+        },
+      );
+
+      closeAllMenus();
+      return;
+    }
+
+    // === Per-clip: Generate SINGLE poster ===
+    const singlePosterLink = e.target.closest("[data-clip-poster]");
+    if (singlePosterLink) {
+      e.preventDefault();
+      const row = singlePosterLink.closest("tr[data-clip-uuid]");
+      const clipUuid =
+        singlePosterLink.getAttribute("data-clip-poster") ||
+        (row ? row.dataset.clipUuid : "");
+      const rowDayUuid = (row && row.dataset.dayUuid) || currentDayUuid;
+
+      generatePosterAjax(clipUuid, rowDayUuid);
+
+      closeAllMenus();
+      return;
+    }
+
+    // === Header bulk: Generate waveforms ===
+    const bulkWaveformBtn = e.target.closest("[data-bulk-waveform]");
+    if (bulkWaveformBtn) {
+      e.preventDefault();
+      const selectedUuids = getSelectedClipUuids();
+      if (!selectedUuids.length) return alert("No clips selected.");
+
+      const overlay = document.getElementById("zd-processing-overlay");
+      const titleEl = document.getElementById("zd-processing-title");
+      const textEl = document.getElementById("zd-processing-text");
+
+      if (overlay) {
+        titleEl.textContent = "Queuing Waveforms...";
+        textEl.innerHTML = `Adding <b>${selectedUuids.length}</b> jobs to queue.<br><b>Please do not navigate away.</b>`;
+
+        // Force the display immediately using the style object
+        overlay.style.setProperty("display", "flex", "important");
+        overlay.removeAttribute("hidden");
+      }
+
+      setTimeout(async () => {
+        const fd = new FormData();
+        fd.append("clip_uuids", selectedUuids.join(","));
+        fd.append("csrf_token", root.dataset.converterCsrf);
+
+        try {
+          const res = await fetch(
+            `/admin/projects/${projectUuid}/days/${dayUuid}/converter/waveforms-bulk`,
+            {
+              method: "POST",
+              body: fd,
+            },
+          );
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            titleEl.textContent = "Jobs Queued!";
+            titleEl.style.color = "#3aa0ff";
+            setTimeout(() => window.location.reload(), 1200);
+          } else {
+            overlay.style.display = "none"; // Hide if it fails
+            alert("Queue failed: " + (data.error || "Unknown error"));
+          }
+        } catch (err) {
+          overlay.setAttribute("hidden", "");
+          alert("Network error.");
+        }
+      }, 50);
+
+      closeAllMenus();
+      return;
+    }
+
+    // === Header bulk: Generate posters (Queued) ===
+    const bulkPosterBtnInternal = e.target.closest("[data-bulk-poster]");
+    if (bulkPosterBtnInternal) {
+      e.preventDefault();
+      const selectedUuids = getSelectedClipUuids();
+      if (!selectedUuids.length) return alert("No clips selected.");
+
+      const overlay = document.getElementById("zd-processing-overlay");
+      const titleEl = document.getElementById("zd-processing-title");
+      const textEl = document.getElementById("zd-processing-text");
+
+      if (overlay) {
+        titleEl.textContent = "Queuing Poster Jobs...";
+        textEl.innerHTML = `Adding <b>${selectedUuids.length}</b> posters to background queue.<br><b>Please do not navigate away.</b>`;
+        overlay.style.setProperty("display", "flex", "important");
+      }
+
+      setTimeout(async () => {
+        const fd = new FormData();
+        fd.append("clip_uuids", selectedUuids.join(","));
+        fd.append("csrf_token", root.dataset.converterCsrf);
+
+        try {
+          // Send ONE request to the bulk endpoint instead of 147 individual calls
+          const res = await fetch(
+            `/admin/projects/${projectUuid}/days/${dayUuid}/converter/posters-bulk`,
+            {
+              method: "POST",
+              body: fd,
+            },
+          );
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            titleEl.textContent = "All Jobs Queued!";
+            titleEl.style.color = "#3aa0ff";
+            textEl.innerHTML = `<b>${data.done}</b> posters added to the background worker.`;
+            setTimeout(() => window.location.reload(), 1200);
+          } else {
+            overlay.style.display = "none";
+            alert("Queue failed: " + (data.error || "Unknown error"));
+          }
+        } catch (err) {
+          overlay.style.display = "none";
+          alert("Network error while queuing bulk posters.");
+        }
+      }, 50);
+
+      closeAllMenus();
+      return;
+    }
+
     // === Click elsewhere: close any open menus ===
     closeAllMenus();
   });
@@ -1065,286 +1263,27 @@
     }
   });
 
-  // =======================
-  // Poster generation (single + bulk, AJAX)
-  // =======================
-  document.addEventListener("DOMContentLoaded", () => {
-    const root = document.querySelector(".zd-clips-page");
-    if (!root) return;
+  // --- Queue Dashboard Polling ---
+  function updateQueueDashboard() {
+    const dash = document.getElementById("zd-job-dashboard");
+    const countEl = document.getElementById("zd-dash-count");
 
-    const projectUuid = root.dataset.project || "";
-    const dayUuid = root.dataset.day || "";
-    const csrf = root.dataset.converterCsrf || "";
+    const pUuid = root.dataset.project;
+    const dUuid = root.dataset.day;
 
-    // Generate poster for a specific clip + day
-    async function generatePosterAjax(clipUuid, dayId, opts = {}) {
-      const { silent = false } = opts;
+    if (dUuid === "all" || !dash) return; // Avoid 404 on global view
 
-      if (!projectUuid || !dayId || !csrf) {
-        if (!silent)
-          console.warn("Missing data for poster generation.", {
-            projectUuid,
-            dayId,
-            csrfPresent: !!csrf,
-          });
-        return false;
-      }
+    fetch(`/admin/projects/${pUuid}/days/${dUuid}/converter/queue-summary`)
+      .then((res) => res.json())
+      .then((data) => {
+        const totalActive = data.queued + data.running;
 
-      const url =
-        `/admin/projects/${encodeURIComponent(projectUuid)}` +
-        `/days/${encodeURIComponent(dayId)}/converter/poster`;
-
-      const body = new FormData();
-      body.append("csrf_token", csrf);
-      body.append("clip_uuid", clipUuid);
-      body.append("force", "1"); // always overwrite
-
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          body,
-        });
-
-        const text = await res.text();
-        let data = null;
-        try {
-          data = text ? JSON.parse(text) : null;
-        } catch (e) {
-          // not JSON, ignore
-        }
-
-        if (!res.ok) {
-          if (!silent) {
-            console.error("Poster HTTP error:", {
-              status: res.status,
-              body: data || text,
-            });
-          }
-          return false;
-        }
-
-        if (!data || !data.ok) {
-          if (!silent) {
-            console.warn(
-              "Poster failed:",
-              data && data.error ? data.error : "Unknown error",
-              data,
-            );
-          }
-          return false;
-        }
-
-        // Success – update thumb in place
-        if (data.href) {
-          const row = document.querySelector(
-            `tr[data-clip-uuid="${clipUuid}"]`,
-          );
-          if (row) {
-            const cell = row.querySelector(".col-thumb");
-            if (cell) {
-              let img = cell.querySelector("img.zd-thumb");
-              const src = data.href + "?v=" + Date.now(); // cache-bust
-
-              if (!img) {
-                img = document.createElement("img");
-                img.className = "zd-thumb";
-                img.alt = "";
-                cell.innerHTML = "";
-                cell.appendChild(img);
-              }
-
-              img.src = src;
-            }
-          }
-        }
-
-        if (data.db_warning) {
-          console.warn("Poster DB warning:", data.db_warning);
-        }
-
-        return true;
-      } catch (err) {
-        console.error("Poster error", err);
-        return false;
-      }
-    }
-
-    // --- WAVEFORM LOGIC ---
-
-    /**
-     * Generate a waveform for a single clip.
-     * Hits the /waveform endpoint for immediate background queuing.
-     */
-    async function generateWaveformAjax(clipUuid, dayId, opts = {}) {
-      const { silent = false } = opts;
-
-      // Use existing variables from the top of the script
-      const csrf = root.dataset.converterCsrf || "";
-      if (!projectUuid || !dayId || !csrf) return false;
-
-      const url = `/admin/projects/${encodeURIComponent(projectUuid)}/days/${encodeURIComponent(dayId)}/converter/waveform`;
-
-      const body = new FormData();
-      body.append("csrf_token", csrf);
-      body.append("clip_uuid", clipUuid);
-
-      try {
-        const res = await fetch(url, { method: "POST", body });
-        const data = await res.json();
-
-        if (res.ok && data.ok) {
-          if (!silent)
-            console.log("Waveform queued:", data.message || clipUuid);
-          return true;
-        }
-        return false;
-      } catch (err) {
-        console.error("Waveform error", err);
-        return false;
-      }
-    }
-
-    // --- Single clip: "Generate waveform" in per-row menu ---
-    document.addEventListener("click", (e) => {
-      const link = e.target.closest("[data-clip-waveform]");
-      if (!link) return;
-
-      e.preventDefault();
-      const row = link.closest("tr[data-clip-uuid]");
-      const clipUuid =
-        link.getAttribute("data-clip-waveform") ||
-        (row ? row.dataset.clipUuid : "");
-      const rowDayUuid = (row && row.dataset.dayUuid) || dayUuid || "";
-
-      if (clipUuid && rowDayUuid) {
-        generateWaveformAjax(clipUuid, rowDayUuid);
-      }
-    });
-
-    // --- Bulk: "Generate waveforms for selected" (Single Queue Request) ---
-    document.addEventListener("click", async (e) => {
-      const bulkBtn = e.target.closest("[data-bulk-waveform]");
-      if (!bulkBtn) return;
-
-      e.preventDefault();
-
-      // Collect all selected UUIDs from the table
-      const rows = Array.from(
-        document.querySelectorAll(".zd-table tbody tr.zd-selected-row"),
-      );
-      const selectedUuids = rows
-        .map((tr) => tr.dataset.clipUuid)
-        .filter(Boolean);
-
-      if (!selectedUuids.length) {
-        alert("No clips selected.");
-        return;
-      }
-
-      const pUuid = root.dataset.project;
-      const dUuid = root.dataset.day;
-      const csrf = root.dataset.converterCsrf; // Matches ProjectClipsController variable
-
-      const fd = new FormData();
-      fd.append("clip_uuids", selectedUuids.join(","));
-      fd.append("csrf_token", csrf);
-
-      // Visual feedback for the DIT
-      bulkBtn.disabled = true;
-      const originalText = bulkBtn.textContent;
-      bulkBtn.textContent = "Queuing...";
-
-      try {
-        const res = await fetch(
-          `/admin/projects/${pUuid}/days/${dUuid}/converter/waveforms-bulk`,
-          {
-            method: "POST",
-            body: fd,
-          },
-        );
-
-        const result = await res.json();
-
-        if (res.ok && result.ok) {
-          alert(
-            `Successfully queued ${result.queued} waveforms. You can now navigate away while the server processes them.`,
-          );
-          // Refresh to show any job status spinners added to the index
-          window.location.reload();
+        if (totalActive > 0) {
+          dash.style.display = "flex";
+          countEl.textContent = `${totalActive} files remaining`;
         } else {
-          alert("Queue failed: " + (result.error || "Unknown error"));
+          dash.style.display = "none";
         }
-      } catch (err) {
-        console.error("Bulk waveform error:", err);
-        alert("Network error while queuing jobs.");
-      } finally {
-        bulkBtn.disabled = false;
-        bulkBtn.textContent = originalText;
-      }
-    });
-
-    // --- Single clip: "Generate poster" in per-row menu ---
-    document.addEventListener("click", (e) => {
-      const link = e.target.closest("[data-clip-poster]");
-      if (!link) return;
-
-      e.preventDefault();
-
-      const row = link.closest("tr[data-clip-uuid]");
-      const clipUuid =
-        link.getAttribute("data-clip-poster") ||
-        (row ? row.dataset.clipUuid : "");
-      const rowDayUuid = (row && row.dataset.dayUuid) || dayUuid || "";
-
-      if (!clipUuid || !rowDayUuid) {
-        console.warn("Missing clip or day UUID for poster generation.", {
-          clipUuid,
-          rowDayUuid,
-        });
-        return;
-      }
-
-      // Use the row's day (works in All days + single-day)
-      generatePosterAjax(clipUuid, rowDayUuid);
-    });
-
-    // --- Bulk: "Generate posters for selected" in header menu (silent) ---
-    document.addEventListener("click", async (e) => {
-      const bulkBtn = e.target.closest("[data-bulk-poster]");
-      if (!bulkBtn) return;
-
-      e.preventDefault();
-
-      const rows = Array.from(
-        document.querySelectorAll(".zd-table tbody tr.zd-selected-row"),
-      );
-
-      const jobs = rows
-        .map((tr) => {
-          const clipUuid = tr.dataset.clipUuid;
-          const rowDayUuid = tr.dataset.dayUuid || dayUuid || "";
-          if (!clipUuid || !rowDayUuid) return null;
-          return { clipUuid, dayUuid: rowDayUuid };
-        })
-        .filter(Boolean);
-
-      if (!jobs.length) {
-        console.warn("Bulk posters: no valid clips selected.");
-        return;
-      }
-
-      let ok = 0;
-      let fail = 0;
-
-      for (const job of jobs) {
-        const success = await generatePosterAjax(job.clipUuid, job.dayUuid, {
-          silent: true,
-        });
-        if (success) ok++;
-        else fail++;
-      }
-
-      console.log(`Bulk posters done: ok=${ok}, failed=${fail}`);
-    });
-  });
+      });
+  }
 })();

@@ -139,6 +139,7 @@ $storageBase = realpath(__DIR__ . '/../../../data');
 
 if ($existingGrab) {
     $grabId = (int)$existingGrab['id'];
+    $createdBy = $_POST['created_by_name'] ?? 'Anonymous';
 
     // 1. Clean up old files from disk to prevent ghost files
     if ($storageBase) {
@@ -152,12 +153,16 @@ if ($existingGrab) {
 
     // 2. Update the existing record
     $sql = "UPDATE grabs 
-            SET thumbnail_path = :thumb_path, doodle_path = :doodle_path, created_at = NOW() 
+            SET thumbnail_path = :thumb_path, 
+                doodle_path = :doodle_path, 
+                created_by_name = :created_by,
+                created_at = NOW() 
             WHERE id = :id";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
         ':thumb_path'  => $thumbUrl,
         ':doodle_path' => $doodleUrl,
+        ':created_by'  => $createdBy,
         ':id'          => $grabId
     ]);
 } else {
@@ -184,17 +189,29 @@ if ($existingGrab) {
 
 // --- 7. Return JSON shaped as the JS expects ---
 // Fetch the note in case of an update so we don't return empty string for an existing comment
-$finalStmt = $pdo->prepare("SELECT note FROM grabs WHERE id = ?");
+$finalStmt = $pdo->prepare("
+    SELECT
+        id,
+        note,
+        created_by_name
+    FROM grabs
+    WHERE id = ?
+    LIMIT 1
+");
 $finalStmt->execute([$grabId]);
-$finalNote = $finalStmt->fetchColumn() ?: '';
+$finalRow = $finalStmt->fetch(PDO::FETCH_ASSOC) ?: ['note' => '', 'created_by_name' => 'Anonymous'];
+
+$finalNote = $finalRow['note'] ?? '';
+$finalCreatedByName = $finalRow['created_by_name'] ?? 'Anonymous';
 
 $grab = [
-    'id'            => $grabId,
-    'frame_number'  => $frameNumber,
-    'timecode'      => $timecode,
-    'thumbnail_url' => $thumbUrl . '?v=' . time(), // Add cache buster for immediate UI update
-    'doodle_url'    => $doodleUrl ? ($doodleUrl . '?v=' . time()) : null,
-    'note'          => $finalNote,
+    'id'             => $grabId,
+    'frame_number'   => $frameNumber,
+    'timecode'       => $timecode,
+    'thumbnail_url'  => $thumbUrl . '?v=' . time(),
+    'doodle_url'     => $doodleUrl ? ($doodleUrl . '?v=' . time()) : null,
+    'note'           => $finalNote,
+    'created_by_name' => $finalCreatedByName,
 ];
 
 echo json_encode([

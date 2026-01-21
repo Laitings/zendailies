@@ -455,6 +455,12 @@ if ($isMobile && $isPlayerPage) {
 
         <div class="zd-topbar-right">
             <?php if ($isLoggedIn): ?>
+                <?php if ($isSuperuser || $isProjectAdmin): ?>
+                    <a href="/admin/jobs" id="zd-global-queue-btn" class="zd-toplink" style="margin-left:0; margin-right:1rem; display:none; align-items:center; gap:8px; text-decoration:none;">
+                        <div class="zd-spinner-small" style="width:12px; height:12px; border-width:2px; border-color:#3aa0ff transparent #3aa0ff transparent;"></div>
+                        <span id="zd-global-queue-text" style="color:#3aa0ff; font-size:12px; font-weight:700;">0 JOBS</span>
+                    </a>
+                <?php endif; ?>
                 <div class="zd-user">
                     <button class="zd-user-btn" id="zdUserBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="zdUserMenu">
 
@@ -526,6 +532,11 @@ if ($isMobile && $isPlayerPage) {
                     <a href="/admin/projects/<?= htmlspecialchars($pid) ?>/members"
                         class="zd-sub-link <?= str_starts_with($reqUri, "/admin/projects/$pid/members") ? 'active' : '' ?>">
                         Members
+                    </a>
+
+                    <a href="/admin/jobs"
+                        class="zd-sub-link <?= str_starts_with($reqUri, "/admin/jobs") ? 'active' : '' ?>">
+                        Jobs
                     </a>
                 <?php endif; ?>
 
@@ -617,6 +628,30 @@ if ($isMobile && $isPlayerPage) {
                 }
             }
         });
+
+        (function() {
+            const queueBtn = document.getElementById('zd-global-queue-btn');
+            const queueText = document.getElementById('zd-global-queue-text');
+            if (!queueBtn) return;
+
+            function checkGlobalQueue() {
+                fetch('/admin/jobs/status-summary')
+                    .then(res => res.json())
+                    .then(data => {
+                        const total = data.queued + data.running;
+                        if (total > 0) {
+                            queueBtn.style.display = 'flex';
+                            queueText.textContent = `${total} JOB${total > 1 ? 'S' : ''}`;
+                        } else {
+                            queueBtn.style.display = 'none';
+                        }
+                    })
+                    .catch(() => {}); // Fail silently
+            }
+
+            setInterval(checkGlobalQueue, 8000);
+            checkGlobalQueue();
+        })();
     </script>
 
     <footer class="zd-footer">

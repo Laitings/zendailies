@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\MaintenanceController;
 use App\Http\Controllers\Admin\DayConverterController;
 use App\Http\Controllers\Admin\DayCsvImportController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\WorkerController;
 
 /** @var \App\Http\Router $router */
 /** @var AuthController $authController */
@@ -167,6 +168,7 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     // --------------------------------------------------------
     // Project-level entry → day overview (grid of days)
     $r->get('/admin/projects/{projectUuid}/player', [ClipPlayerController::class, 'overview']);
+    $r->get('/admin/projects/{projectUuid}/overview', [ClipPlayerController::class, 'overview']);
 
     // Day-level player landing → redirect to first clip (or fallback)
     $r->get('/admin/projects/{projectUuid}/days/{dayUuid}/player', [PlayerRedirectController::class, 'toFirstClip']);
@@ -215,6 +217,12 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
 
         // Import DaVinci Resolve CSV → update clips for the day
         $r2->post('/admin/projects/{projectUuid}/days/{dayUuid}/clips/import_csv', [DayCsvImportController::class, 'importResolveCsv']);
+
+        // Worker & Job Management
+        $r2->get('/admin/jobs',                [WorkerController::class, 'index']);
+        $r2->get('/admin/jobs/status-summary', [WorkerController::class, 'statusSummary']);
+        $r2->post('/admin/jobs/toggle',        [WorkerController::class, 'toggle']);
+        $r2->post('/admin/jobs/requeue/{id}',  [WorkerController::class, 'requeue']);
     });
 
 

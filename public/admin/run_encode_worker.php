@@ -307,6 +307,12 @@ $stInsertAsset  = $pdo->prepare("
 wlog("encode worker started: $workerId");
 
 while (!$stop) {
+    $pauseFile = $storDir . '/.worker_pause';
+    if (file_exists($pauseFile)) {
+        if ($runningNow === 0) wlog("Worker Paused via Console. Waiting...");
+        nap(5.0);
+        continue;
+    }
     // Enforce a global max of 2 running encode jobs
     $stRunningCount->execute();
     $runningNow = (int)$stRunningCount->fetchColumn();

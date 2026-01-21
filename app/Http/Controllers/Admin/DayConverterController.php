@@ -199,12 +199,9 @@ final class DayConverterController
                 return;
             }
 
-            // Check if poster exists unless force
-            $hasPoster = $this->assetExists($pdo, $clipUuid, 'poster');
-            if ($hasPoster && !$force) {
-                echo json_encode(['ok' => true, 'skipped' => true, 'reason' => 'exists']);
-                return;
-            }
+            // We always want to overwrite, so we ignore the 'exists' check.
+            // (Optional) You can still log if it was an overwrite for audit purposes.
+            $isOverwrite = $this->assetExists($pdo, $clipUuid, 'poster');
 
             // Resolve source input (prefer proxy_web later; for now, use external ref or original/proxy if you already store it)
             $source = $this->resolveBestInputForPoster($pdo, $clipUuid);
@@ -568,30 +565,33 @@ final class DayConverterController
             return;
         }
 
-        // --- 2) Loop rows and reuse generatePoster() internally ---
+        // --- 2) Loop rows and add to the background queue ---
         foreach ($rows as $r) {
-            // Prepare per-call POST payload
-            $_POST['clip_uuid']  = $r['clip_uuid'];
-            $_POST['force']      = $forceGlobal ? 1 : 0;
-            $_POST['csrf_token'] = $inputToken; // keep the same validated token
+            $clipUuid = $r['clip_uuid'];
 
-            ob_start();
-            $this->generatePoster($projectUuid, $dayUuid);
-            $respJson = ob_get_clean();
-            $resp = json_decode($respJson ?: '{}', true);
+            // Resolve source media (same logic as single poster)
+            $source = $this->resolveBestInputForPoster($pdo, $clipUuid);
+            if (!$source) continue;
 
-            if (!is_array($resp)) {
-                $fail++;
-                continue;
-            }
+            $storRoot = rtrim((string)getenv('ZEN_STOR_DIR'), '/');
+            $pubBase  = rtrim((string)getenv('ZEN_STOR_PUBLIC_BASE'), '/');
 
-            if (!empty($resp['skipped'])) {
-                $skipped++;
-            } elseif (!empty($resp['ok'])) {
-                $ok++;
-            } else {
-                $fail++;
-            }
+            // Define the destination path
+            $href = $pubBase . '/' . $projectUuid . '/' . $dayUuid . '/' . $clipUuid . '/poster/clip.jpg';
+            $dest = $storRoot . substr($href, strlen($pubBase));
+
+            // Insert into the background queue (Preset: 'poster')
+            $sql = "INSERT INTO encode_jobs (clip_id, source_path, target_path, preset, state, priority, created_at)
+                    VALUES (uuid_to_bin(:c,1), :src, :dst, 'poster', 'queued', 50, NOW())";
+
+            $st = $pdo->prepare($sql);
+            $st->execute([
+                ':c'   => $clipUuid,
+                ':src' => $source,
+                ':dst' => $dest
+            ]);
+
+            $ok++;
         }
 
         echo json_encode([
@@ -1061,6 +1061,31 @@ final class DayConverterController
             $st->execute($params);
         } catch (\Throwable $ignore) {
         }
+    }
+
+    public function getQueueSummary(string $projectUuid, string $dayUuid): void
+    {
+        $this->jsonHeaders();
+        $pdo = DB::pdo();
+
+        // Count jobs created in the last 24h that aren't finished yet
+        $st = $pdo->prepare("
+        SELECT 
+            state, 
+            COUNT(*) as total 
+        FROM encode_jobs 
+        WHERE created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+          AND state IN ('queued', 'running')
+        GROUP BY state
+    ");
+        $st->execute();
+        $counts = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+
+        echo json_encode([
+            'ok'      => true,
+            'queued'  => (int)($counts['queued'] ?? 0),
+            'running' => (int)($counts['running'] ?? 0)
+        ]);
     }
 
     private function jsonHeaders(): void

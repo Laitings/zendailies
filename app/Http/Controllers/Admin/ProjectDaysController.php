@@ -202,7 +202,20 @@ class ProjectDaysController
         $daysStmt->execute([':pid' => $projectUuid]);
         $days = $daysStmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        // --- Build route helpers for the view ---
+        // --- 1. DEFINE ACL LOGIC FOR SCENES ---
+        $aclSql = '';
+        $viewerParam = null;
+        if (!$isSuper && !$isProjectAdmin) {
+            $aclSql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid,1))";
+            $viewerParam = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
+        }
+
+        // --- 2. INSTANTIATE CONTROLLER & FETCH SCENES ---
+        // This imports the logic from ClipPlayerController to fetch the scene grid data.
+        $playerCtrl = new \App\Http\Controllers\Admin\ClipPlayerController();
+        $scenesOut = $playerCtrl->fetchScenesWithThumbs($pdo, $projectUuid, $aclSql, $viewerParam);
+
+        // --- 3. DEFINE MISSING VARIABLES ---
         $routes = [
             'days_base'   => "/admin/projects/{$projectUuid}/days",
             'clips_base'  => "/admin/projects/{$projectUuid}/days",
@@ -210,22 +223,25 @@ class ProjectDaysController
             'new_day'     => "/admin/projects/{$projectUuid}/days/new",
         ];
 
-        // NEW: Detect device and choose layout
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
         $isMobile = preg_match('/(android|iphone|ipad|mobile)/i', $ua);
 
+        // Use 'admin/index_mobile' if the file is in the root admin folder
         $viewFile = $isMobile ? 'admin/days/index_mobile' : 'admin/days/index';
         $layoutFile = $isMobile ? 'layout/mobile' : 'layout/main';
 
+        // --- 4. RENDER WITH ALL REQUIRED DATA ---
         View::render($viewFile, [
-            'layout'         => $layoutFile, // Pass dynamic layout
+            'layout'         => $layoutFile,
             'project'        => $projectRow,
             'days'           => $days,
+            'scenes'         => $scenesOut, // Passes the fetched scene data to the view
             'routes'         => $routes,
             'sort'           => $sort,
             'dir'            => $dir,
             'isSuperuser'    => $isSuper ? 1 : 0,
             'isProjectAdmin' => $isProjectAdmin ? 1 : 0,
+            'placeholder_thumb_url' => '/assets/img/empty_day_placeholder.png'
         ]);
 
         return; // Explicit return

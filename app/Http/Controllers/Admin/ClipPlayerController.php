@@ -562,6 +562,9 @@ final class ClipPlayerController
         if (session_status() === \PHP_SESSION_NONE) session_start();
         $pdo = \App\Support\DB::pdo();
 
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $isMobile = (bool)preg_match('/(android|iphone|ipad|mobile)/i', $ua);
+
         // Session context (same as show)
         $account     = $_SESSION['account'] ?? [];
         $isSuperuser = !empty($account['is_superuser']);
@@ -647,6 +650,8 @@ final class ClipPlayerController
                     . "?scene=" . rawurlencode($targetScene)
                     . "&pane=clips";
 
+
+
                 header("Location: " . $dest, true, 302);
                 exit;
             }
@@ -661,8 +666,15 @@ final class ClipPlayerController
 
         $scenesOut = $this->fetchScenesWithThumbs($pdo, $projectUuid, $aclSql, $viewerParam);
 
-        // Reuse the SAME view; no clip/day selected. JS handles ?pane=days
-        \App\Support\View::render('admin/player/show', [
+        // Detect mobile environment
+        $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $isMobile = preg_match('/(android|iphone|ipad|mobile)/i', $ua);
+
+        $viewName = $isMobile ? 'admin/days/index_mobile' : 'admin/player/show';
+        $layout   = $isMobile ? 'layout/mobile' : 'layout/main';
+
+        \App\Support\View::render($viewName, [
+            'layout'                => $layout,
             'project'               => $project,
             'day'                   => null,
             'clip'                  => null,
@@ -682,7 +694,7 @@ final class ClipPlayerController
     }
 
     // Insert after fetchDaysWithThumbs around line 133
-    private function fetchScenesWithThumbs(PDO $pdo, string $projectUuid, string $aclSql, ?string $viewerParam): array
+    public function fetchScenesWithThumbs(PDO $pdo, string $projectUuid, string $aclSql, ?string $viewerParam): array
     {
         $sql = "
             SELECT 

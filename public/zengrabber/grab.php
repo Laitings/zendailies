@@ -420,6 +420,13 @@ $initialGrabs = array_map(function ($g) {
             background: var(--zg-accent);
             border-radius: 10px;
         }
+
+        #zg-canvas-overlay {
+            touch-action: none;
+            /* Disables browser-level panning/zooming on the canvas */
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
     </style>
     <link rel="icon" type="image/png" href="assets/img/zentropa-favicon.png">
 </head>
@@ -567,7 +574,7 @@ $initialGrabs = array_map(function ($g) {
                                     </button>
                                     <div class="zr-doodle-tool-group">
                                         <button id="btn-doodle-save" class="zr-btn zr-btn-primary" style="padding: 4px 12px; font-size: 0.8rem; height: 32px;">
-                                            Save & Grab
+                                            Save
                                         </button>
                                     </div>
                                 </div>
@@ -1674,13 +1681,14 @@ $initialGrabs = array_map(function ($g) {
                 const saveName = () => {
                     const val = nameInput.value.trim();
                     if (val.length >= 2) {
+                        // CRITICAL: Update the variable that performGrab uses
                         currentUserNickname = val;
                         localStorage.setItem('zr_user_name', val);
-                        nameModal.style.display = 'none';
 
                         if (userDisplay) {
                             userDisplay.textContent = val;
                         }
+                        nameModal.style.display = 'none';
                         showGrabToast();
                     }
                 };
@@ -2086,10 +2094,15 @@ $initialGrabs = array_map(function ($g) {
                     fd.append('frame_number', totF);
                     fd.append('timecode', framesToTc(totF, fps));
                     fd.append('image_data', c.toDataURL('image/jpeg', 0.8));
-                    fd.append('created_by_name', currentUserNickname || 'Anonymous');
-                    if (doodleData) {
-                        fd.append('doodle_data', doodleData);
-                    }
+                    // Ensure we use the latest name from the variable or the input field itself
+
+                    // Check variable, then localStorage, then the actual input field, finally fallback
+                    const grabberName = currentUserNickname ||
+                        localStorage.getItem('zr_user_name') ||
+                        document.getElementById('zr-nickname-input')?.value.trim() ||
+                        'Anonymous';
+
+                    fd.append('created_by_name', grabberName);
 
                     const res = await fetch('api_grab_create.php', {
                         method: 'POST',
@@ -2183,6 +2196,65 @@ $initialGrabs = array_map(function ($g) {
                 }
             });
 
+            // --- Touch Support for Doodling ---
+            const handleTouch = (e, callback) => {
+                e.preventDefault(); // Prevent scrolling while drawing
+                const touch = e.touches[0];
+                const rect = canvasOverlay.getBoundingClientRect();
+                const offsetX = touch.clientX - rect.left;
+                const offsetY = touch.clientY - rect.top;
+                callback(offsetX, offsetY);
+            };
+
+            canvasOverlay.addEventListener('touchstart', (e) => {
+                handleTouch(e, (x, y) => {
+                    isDoodling = true;
+                    currentStrokePoints = [{
+                        x,
+                        y
+                    }];
+                    applyDoodleStyles();
+                });
+            }, {
+                passive: false
+            });
+
+            canvasOverlay.addEventListener('touchmove', (e) => {
+                if (!isDoodling) return;
+                handleTouch(e, (x, y) => {
+                    currentStrokePoints.push({
+                        x,
+                        y
+                    });
+
+                    ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+                    ctxOverlay.save();
+                    ctxOverlay.globalAlpha = 1.0;
+                    if (doodleHistory.length > 0) {
+                        const img = new Image();
+                        img.src = doodleHistory[doodleHistory.length - 1];
+                        ctxOverlay.drawImage(img, 0, 0);
+                    }
+                    ctxOverlay.restore();
+
+                    ctxOverlay.beginPath();
+                    ctxOverlay.moveTo(currentStrokePoints[0].x, currentStrokePoints[0].y);
+                    for (let i = 1; i < currentStrokePoints.length; i++) {
+                        ctxOverlay.lineTo(currentStrokePoints[i].x, currentStrokePoints[i].y);
+                    }
+                    ctxOverlay.stroke();
+                });
+            }, {
+                passive: false
+            });
+
+            canvasOverlay.addEventListener('touchend', () => {
+                if (isDoodling) {
+                    isDoodling = false;
+                    saveDoodleState();
+                    currentStrokePoints = [];
+                }
+            });
             // Drawing Events
             canvasOverlay.addEventListener('mousedown', (e) => {
                 e.stopPropagation();
