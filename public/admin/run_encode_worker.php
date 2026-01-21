@@ -172,8 +172,29 @@ function ensureDir(string $path): void
 
 function buildFfmpegCmd(string $src, string $dstPart, string $preset): string
 {
+    // Waveform Preset
+    if ($preset === 'waveform') {
+        return implode(' ', [
+            'ffmpeg',
+            '-v',
+            'quiet',
+            '-i',
+            escapeshellarg($src),
+            '-ac',
+            '1',
+            '-filter:a',
+            'aresample=8000',
+            '-map',
+            '0:a',
+            '-f',
+            's16le',
+            '-', // Output raw PCM to stdout for the PHP logic to process
+        ]);
+    }
+
+    // Default Proxy Preset
     $vf = "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease";
-    $bits = [
+    return implode(' ', [
         'ffmpeg',
         '-hide_banner',
         '-v',
@@ -186,10 +207,8 @@ function buildFfmpegCmd(string $src, string $dstPart, string $preset): string
         escapeshellarg($src),
         '-vf',
         escapeshellarg($vf),
-        // CPU safety limit
         '-threads',
         '2',
-
         '-c:v',
         'libx264',
         '-preset',
@@ -210,10 +229,42 @@ function buildFfmpegCmd(string $src, string $dstPart, string $preset): string
         '-f',
         'mp4',
         escapeshellarg($dstPart),
-    ];
-    return implode(' ', $bits);
+    ]);
 }
 
+/**
+ * Processes a waveform job: Extracts PCM and calculates peaks
+ */
+function processWaveformJob(string $src, string $dst): bool
+{
+    $tmpPcm = $dst . '.pcm';
+    // Extract raw PCM 16-bit mono at 8000Hz
+    $cmd = "ffmpeg -v quiet -y -i " . escapeshellarg($src) . " -ac 1 -filter:a aresample=8000 -f s16le " . escapeshellarg($tmpPcm);
+    exec($cmd);
+
+    if (!is_file($tmpPcm)) return false;
+
+    $data = file_get_contents($tmpPcm);
+    $samples = unpack('s*', $data); // Unpack as signed 16-bit integers
+    @unlink($tmpPcm);
+
+    if (!$samples) return false;
+
+    $peaks = [];
+    $sampleCount = count($samples);
+    $groupSize = max(1, (int)floor($sampleCount / 1200)); // Target ~1200 bars
+
+    for ($i = 1; $i <= $sampleCount; $i += $groupSize) {
+        $max = 0;
+        for ($j = 0; $j < $groupSize && ($i + $j) <= $sampleCount; $j++) {
+            $val = abs($samples[$i + $j] / 32768); // Normalize to 0.0 - 1.0
+            if ($val > $max) $max = $val;
+        }
+        $peaks[] = round($max, 4);
+    }
+
+    return file_put_contents($dst, json_encode($peaks)) !== false;
+}
 
 $hostname = php_uname('n') ?: 'worker';
 $pid = getmypid();
@@ -250,7 +301,7 @@ $stRunningCount = $pdo->prepare("SELECT COUNT(*) FROM encode_jobs WHERE state = 
 
 $stInsertAsset  = $pdo->prepare("
     INSERT INTO clip_assets (clip_id, asset_type, storage_path, byte_size, created_at)
-    VALUES (:cid, 'proxy_web', :path, :size, NOW())
+    VALUES (:cid, :type, :path, :size, NOW())
 ");
 
 wlog("encode worker started: $workerId");
@@ -307,6 +358,38 @@ while (!$stop) {
         continue;
     }
 
+    // --- Determine Public Storage Path ---
+    $storagePath = $dst;
+    if (str_starts_with($dst, $storDir)) {
+        $tail = substr($dst, strlen($storDir));
+        $storagePath = $publicBase . $tail;
+    }
+
+    // --- Branch: Waveform vs Video Proxy ---
+    if ($preset === 'waveform') {
+        wlog("#$jobId RUN (Waveform) → $src");
+        if (processWaveformJob($src, $dst)) {
+            // Register asset as 'waveform'
+            $stDeleteGeneric = $pdo->prepare("DELETE FROM clip_assets WHERE clip_id = :cid AND asset_type = 'waveform'");
+            $stDeleteGeneric->execute([':cid' => $job['clip_id']]);
+
+            $stInsertAsset->execute([
+                ':cid'  => $job['clip_id'],
+                ':type' => 'waveform',
+                ':path' => $storagePath,
+                ':size' => @filesize($dst) ?: 0
+            ]);
+
+            $stDone->execute([':id' => $jobId]);
+            wlog("#$jobId DONE");
+        } else {
+            $stFail->execute([':id' => $jobId]);
+            wlog("#$jobId FAIL");
+        }
+        continue; // Move to next job
+    }
+
+    // Default Video Logic (proc_open) follows...
     $cmd = buildFfmpegCmd($src, $dstPart, $preset);
     $logPath = dirname($dst) . '/encode_' . basename($dst) . '.log';
     $stSetCmd->execute([':cmd' => $cmd, ':log' => $logPath, ':id' => $jobId]);
@@ -383,23 +466,22 @@ while (!$stop) {
                 }
 
                 try {
-                    // ensure we only have one proxy_web asset for this clip
-                    $stDeleteAsset->execute([
-                        ':cid' => $job['clip_id'],
-                    ]);
+                    // Update the asset insertion execution
+                    $assetType = ($preset === 'waveform') ? 'waveform' : 'proxy_web';
+
+                    // ensure we only have one asset of this type for this clip
+                    $stDeleteGeneric = $pdo->prepare("DELETE FROM clip_assets WHERE clip_id = :cid AND asset_type = :type");
+                    $stDeleteGeneric->execute([':cid' => $job['clip_id'], ':type' => $assetType]);
 
                     $stInsertAsset->execute([
                         ':cid'  => $job['clip_id'],
+                        ':type' => $assetType,
                         ':path' => $storagePath,
                         ':size' => $byteSize,
                     ]);
                 } catch (Throwable $e) {
                     wlog("#$jobId WARN: asset insert failed: " . $e->getMessage());
                 }
-
-                $stDone->execute([':id' => $jobId]);
-                wlog("#$jobId DONE");
-
 
                 $stDone->execute([':id' => $jobId]);
                 wlog("#$jobId DONE");

@@ -294,6 +294,20 @@ final class DayConverterController
                 return;
             }
 
+            // --- WAVEFORM GENERATION ---
+            // Now that the poster is done, generate the audio data
+            $waveformHref = str_replace('poster/clip.jpg', 'audio/waveform.json', $href);
+            $waveformDest = $storRoot . substr($waveformHref, strlen($pubBase));
+
+            // Ensure your FFmpegService has the generateWaveformJson method we wrote!
+            $waveRes = $ff->generateWaveformJson($source, $waveformDest);
+            if ($waveRes['ok']) {
+                // Use 'waveform' to match your DB ENUM
+                $this->upsertAsset($pdo, $clipUuid, 'waveform', $waveformHref, null, null, null, null, 'application/json');
+            }
+
+            // 2) Gather file stats (never fatal)
+
             // 2) Gather file stats (never fatal)
             $size = @filesize($dest) ?: null;
             [$w, $h] = @getimagesize($dest) ?: [null, null];
@@ -382,6 +396,82 @@ final class DayConverterController
                 'trace'   => substr($e->getTraceAsString(), 0, 1500)
             ]);
         }
+    }
+
+    /**
+     * Corrected Bulk Waveform Queue
+     */
+    /**
+     * Queues a single waveform job.
+     */
+    public function generateWaveform(string $projectUuid, string $dayUuid): void
+    {
+        $this->jsonHeaders();
+        $pdo = DB::pdo();
+
+        $clipUuid = trim($_POST['clip_uuid'] ?? '');
+        if (!$clipUuid) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Missing clip_uuid']);
+            return;
+        }
+
+        $source = $this->resolveBestInputForPoster($pdo, $clipUuid);
+        if (!$source) {
+            http_response_code(422);
+            echo json_encode(['ok' => false, 'error' => 'Missing source media']);
+            return;
+        }
+
+        $storRoot = rtrim((string)getenv('ZEN_STOR_DIR'), '/');
+        $pubBase  = rtrim((string)getenv('ZEN_STOR_PUBLIC_BASE'), '/');
+
+        $waveformHref = $pubBase . '/' . $projectUuid . '/' . $dayUuid . '/' . $clipUuid . '/audio/waveform.json';
+        $waveformDest = $storRoot . substr($waveformHref, strlen($pubBase));
+
+        // Insert into background queue
+        $sql = "INSERT INTO encode_jobs (clip_id, source_path, target_path, preset, state, priority, created_at)
+                VALUES (uuid_to_bin(:c,1), :src, :dst, 'waveform', 'queued', 50, NOW())";
+
+        $st = $pdo->prepare($sql);
+        $st->execute([
+            ':c'   => $clipUuid,
+            ':src' => $source,
+            ':dst' => $waveformDest
+        ]);
+
+        echo json_encode(['ok' => true, 'message' => 'Waveform queued']);
+    }
+
+    /**
+     * Corrected Bulk Waveform Queue Logic
+     */
+    public function generateWaveformsBulk(string $projectUuid, string $dayUuid): void
+    {
+        $this->jsonHeaders();
+        $pdo = DB::pdo();
+
+        // Validate CSRF from the converter bucket
+        $inputToken = $_POST['csrf_token'] ?? '';
+        if (!hash_equals($_SESSION['csrf_tokens']['converter'][$dayUuid] ?? '', $inputToken)) {
+            http_response_code(419);
+            echo json_encode(['ok' => false, 'error' => 'CSRF mismatch']);
+            return;
+        }
+
+        $clipUuids = array_filter(explode(',', $_POST['clip_uuids'] ?? ''));
+        $queued = 0;
+
+        foreach ($clipUuids as $uuid) {
+            // Re-use internal logic to queue jobs for all selected clips
+            $_POST['clip_uuid'] = $uuid;
+            ob_start();
+            $this->generateWaveform($projectUuid, $dayUuid);
+            $resp = json_decode(ob_get_clean(), true);
+            if ($resp && $resp['ok']) $queued++;
+        }
+
+        echo json_encode(['ok' => true, 'queued' => $queued]);
     }
 
     public function generatePostersBulk(string $projectUuid, string $dayUuid): void
@@ -926,7 +1016,22 @@ final class DayConverterController
         ]);
     }
 
+    public function getStatus(string $projectUuid, string $dayUuid): void
+    {
+        $this->jsonHeaders();
+        $pdo = DB::pdo();
 
+        // Fetch recent jobs for this day to update the UI
+        $st = $pdo->prepare("
+        SELECT BIN_TO_UUID(clip_id, 1) as clip_uuid, state 
+        FROM encode_jobs 
+        WHERE created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        AND state IN ('done', 'failed', 'running')
+    ");
+        $st->execute();
+
+        echo json_encode(['ok' => true, 'jobs' => $st->fetchAll()]);
+    }
 
     private function audit(PDO $pdo, string $entity, string $entityUuid, string $action, array $meta): void
     {

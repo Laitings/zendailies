@@ -472,6 +472,9 @@ if ($__publish_fb) {
                                             <button type="button" class="zd-actions-item" data-bulk-poster>
                                                 Generate posters for selected
                                             </button>
+                                            <button type="button" class="zd-actions-item" data-bulk-waveform>
+                                                Generate waveforms for selected
+                                            </button>
                                             <button type="button" class="zd-actions-item" data-bulk-delete>
                                                 Delete selected
                                             </button>
@@ -691,6 +694,9 @@ if ($__publish_fb) {
                                                     <a href="#"
                                                         data-clip-poster="<?= htmlspecialchars($r['clip_uuid']) ?>">
                                                         Generate poster
+                                                    </a>
+                                                    <a href="#" data-clip-waveform="<?= htmlspecialchars($r['clip_uuid']) ?>">
+                                                        Generate waveform
                                                     </a>
 
 

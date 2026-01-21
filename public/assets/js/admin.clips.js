@@ -615,6 +615,39 @@
       }
     });
 
+    // --- Background Job Polling ---
+    function pollJobStatus() {
+      const activeSpinners = document.querySelectorAll(".zd-spinner-small");
+      if (activeSpinners.length === 0) return;
+
+      const pUuid = root.dataset.project;
+      const dUuid = root.dataset.day;
+
+      // We hit a status endpoint (you'll need to add this to DayConverterController)
+      fetch(`/admin/projects/${pUuid}/days/${dUuid}/converter/status`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.jobs) return;
+          data.jobs.forEach((job) => {
+            const container = document.querySelector(
+              `.zd-job-status[data-clip="${job.clip_uuid}"]`,
+            );
+            if (!container) return;
+
+            if (job.state === "done") {
+              container.innerHTML =
+                '<span class="zd-meta-ok" style="color:#3aa0ff;">Ready</span>';
+            } else if (job.state === "failed") {
+              container.innerHTML =
+                '<span class="zd-meta-err" style="color:#d62828;">Failed</span>';
+            }
+          });
+        })
+        .catch((err) => console.error("Status poll error:", err));
+    }
+
+    // Poll every 4 seconds
+    setInterval(pollJobStatus, 4000);
     // Toggle lock (restricted)
     tbodyEl.addEventListener("click", async (ev) => {
       const btn = ev.target.closest("button.restrict-toggle");
@@ -1135,6 +1168,120 @@
         return false;
       }
     }
+
+    // --- WAVEFORM LOGIC ---
+
+    /**
+     * Generate a waveform for a single clip.
+     * Hits the /waveform endpoint for immediate background queuing.
+     */
+    async function generateWaveformAjax(clipUuid, dayId, opts = {}) {
+      const { silent = false } = opts;
+
+      // Use existing variables from the top of the script
+      const csrf = root.dataset.converterCsrf || "";
+      if (!projectUuid || !dayId || !csrf) return false;
+
+      const url = `/admin/projects/${encodeURIComponent(projectUuid)}/days/${encodeURIComponent(dayId)}/converter/waveform`;
+
+      const body = new FormData();
+      body.append("csrf_token", csrf);
+      body.append("clip_uuid", clipUuid);
+
+      try {
+        const res = await fetch(url, { method: "POST", body });
+        const data = await res.json();
+
+        if (res.ok && data.ok) {
+          if (!silent)
+            console.log("Waveform queued:", data.message || clipUuid);
+          return true;
+        }
+        return false;
+      } catch (err) {
+        console.error("Waveform error", err);
+        return false;
+      }
+    }
+
+    // --- Single clip: "Generate waveform" in per-row menu ---
+    document.addEventListener("click", (e) => {
+      const link = e.target.closest("[data-clip-waveform]");
+      if (!link) return;
+
+      e.preventDefault();
+      const row = link.closest("tr[data-clip-uuid]");
+      const clipUuid =
+        link.getAttribute("data-clip-waveform") ||
+        (row ? row.dataset.clipUuid : "");
+      const rowDayUuid = (row && row.dataset.dayUuid) || dayUuid || "";
+
+      if (clipUuid && rowDayUuid) {
+        generateWaveformAjax(clipUuid, rowDayUuid);
+      }
+    });
+
+    // --- Bulk: "Generate waveforms for selected" (Single Queue Request) ---
+    document.addEventListener("click", async (e) => {
+      const bulkBtn = e.target.closest("[data-bulk-waveform]");
+      if (!bulkBtn) return;
+
+      e.preventDefault();
+
+      // Collect all selected UUIDs from the table
+      const rows = Array.from(
+        document.querySelectorAll(".zd-table tbody tr.zd-selected-row"),
+      );
+      const selectedUuids = rows
+        .map((tr) => tr.dataset.clipUuid)
+        .filter(Boolean);
+
+      if (!selectedUuids.length) {
+        alert("No clips selected.");
+        return;
+      }
+
+      const pUuid = root.dataset.project;
+      const dUuid = root.dataset.day;
+      const csrf = root.dataset.converterCsrf; // Matches ProjectClipsController variable
+
+      const fd = new FormData();
+      fd.append("clip_uuids", selectedUuids.join(","));
+      fd.append("csrf_token", csrf);
+
+      // Visual feedback for the DIT
+      bulkBtn.disabled = true;
+      const originalText = bulkBtn.textContent;
+      bulkBtn.textContent = "Queuing...";
+
+      try {
+        const res = await fetch(
+          `/admin/projects/${pUuid}/days/${dUuid}/converter/waveforms-bulk`,
+          {
+            method: "POST",
+            body: fd,
+          },
+        );
+
+        const result = await res.json();
+
+        if (res.ok && result.ok) {
+          alert(
+            `Successfully queued ${result.queued} waveforms. You can now navigate away while the server processes them.`,
+          );
+          // Refresh to show any job status spinners added to the index
+          window.location.reload();
+        } else {
+          alert("Queue failed: " + (result.error || "Unknown error"));
+        }
+      } catch (err) {
+        console.error("Bulk waveform error:", err);
+        alert("Network error while queuing jobs.");
+      } finally {
+        bulkBtn.disabled = false;
+        bulkBtn.textContent = originalText;
+      }
+    });
 
     // --- Single clip: "Generate poster" in per-row menu ---
     document.addEventListener("click", (e) => {

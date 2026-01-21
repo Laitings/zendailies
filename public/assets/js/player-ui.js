@@ -300,6 +300,98 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
 
+      // --- Consolidated Waveform Logic ---
+      const wfCanvas = document.getElementById("zdWaveformCanvas");
+      const wfContainer = document.getElementById("zd-waveform-container");
+      const wfUrl = wfContainer?.dataset.waveformUrl;
+
+      // Uses the 'vid' defined at the top of the script
+      if (wfCanvas && wfContainer && wfUrl && vid) {
+        const ctx = wfCanvas.getContext("2d");
+        const progressLine = document.getElementById("zd-waveform-progress");
+
+        async function initWaveform() {
+          try {
+            const response = await fetch(wfUrl);
+            if (!response.ok) return;
+            const peaks = await response.json();
+
+            // Adjust internal resolution for high-DPI displays
+            wfCanvas.width = wfCanvas.offsetWidth * window.devicePixelRatio;
+            wfCanvas.height = wfCanvas.offsetHeight * window.devicePixelRatio;
+
+            const w = wfCanvas.width;
+            const h = wfCanvas.height;
+            const barWidth = w / peaks.length;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "#3aa0ff"; // Zentropa Blue
+
+            // Draw symmetrical bars centered vertically
+            // --- BOOSTED WAVEFORM DRAWING ---
+            const BOOST = 2.2; // Increase this (e.g., 2.5 or 3.0) for even "louder" looking audio
+
+            peaks.forEach((peak, i) => {
+              // Multiply peak by boost and clamp to canvas height
+              const barHeight = Math.min(h, peak * h * BOOST);
+              const x = i * barWidth;
+              const y = (h - barHeight) / 2;
+
+              // Use a slightly softer opacity for the bars to keep it Pro
+              ctx.globalAlpha = 0.8;
+              ctx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight);
+            });
+            ctx.globalAlpha = 1.0;
+          } catch (err) {
+            console.error("Waveform draw error:", err);
+          }
+        }
+
+        // Single source for progress line and video time sync
+        vid.addEventListener("timeupdate", () => {
+          if (vid.duration) {
+            const pct = (vid.currentTime / vid.duration) * 100;
+            if (progressLine) progressLine.style.width = pct + "%";
+          }
+        });
+
+        // --- Waveform Scrubbing (Drag to Seek) ---
+        let isScrubbingWaveform = false;
+
+        function seekToPosition(e) {
+          const rect = wfContainer.getBoundingClientRect();
+          const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+          const pct = x / rect.width;
+          if (Number.isFinite(vid.duration)) {
+            vid.currentTime = pct * vid.duration;
+          }
+        }
+
+        wfContainer.addEventListener("mousedown", (e) => {
+          isScrubbingWaveform = true;
+          seekToPosition(e);
+        });
+
+        window.addEventListener("mousemove", (e) => {
+          if (isScrubbingWaveform) {
+            e.preventDefault();
+            seekToPosition(e);
+          }
+        });
+
+        window.addEventListener("mouseup", () => {
+          isScrubbingWaveform = false;
+        });
+
+        // Debounced redraw to keep the UI snappy during window changes
+        let redrawTimer;
+        window.addEventListener("resize", () => {
+          clearTimeout(redrawTimer);
+          redrawTimer = setTimeout(initWaveform, 150);
+        });
+        initWaveform();
+      }
+
       // Overwrite typing: digits only, move caret to next writable slot, skip separators
       input.addEventListener("keydown", (e) => {
         const key = e.key;

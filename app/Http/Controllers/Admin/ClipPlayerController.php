@@ -349,13 +349,16 @@ final class ClipPlayerController
             return;
         }
 
-        $assets = $pdo->prepare("SELECT asset_type, storage_path FROM clip_assets WHERE clip_id=UUID_TO_BIN(:c,1) AND asset_type IN ('proxy_web','original','poster') ORDER BY created_at DESC");
+        // Added 'waveform' to the asset type list
+        $assets = $pdo->prepare("SELECT asset_type, storage_path FROM clip_assets WHERE clip_id=UUID_TO_BIN(:c,1) AND asset_type IN ('proxy_web','original','poster','waveform') ORDER BY created_at DESC");
         $assets->execute([':c' => $clipUuid]);
         $proxyUrl = null;
         $posterUrl = null;
+        $waveformUrl = null;
         foreach ($assets->fetchAll() as $a) {
             if (!$proxyUrl && ($a['asset_type'] === 'proxy_web' || $a['asset_type'] === 'original')) $proxyUrl = $a['storage_path'];
             if (!$posterUrl && $a['asset_type'] === 'poster') $posterUrl = $a['storage_path'];
+            if (!$waveformUrl && $a['asset_type'] === 'waveform') $waveformUrl = $a['storage_path'];
         }
 
         $metadata = $pdo->prepare("SELECT meta_key, meta_value FROM clip_metadata WHERE clip_id=UUID_TO_BIN(:c,1) ORDER BY meta_key");
@@ -368,6 +371,7 @@ final class ClipPlayerController
             'clip' => $clip,
             'proxy_url' => $proxyUrl,
             'poster_url' => $posterUrl,
+            'waveform_url' => $waveformUrl,
             'metadata' => $metadata->fetchAll(),
             'comments' => $this->loadCommentsThreaded($pdo, $clipUuid),
             'project_uuid' => $projectUuid,

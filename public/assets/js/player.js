@@ -584,24 +584,19 @@ document.addEventListener("DOMContentLoaded", function () {
   // -------------------------------------------------
   let dragging = false,
     startX = 0,
-    startW = 0;
+    startW = 0,
+    cachedMaxAllowed = 0,
+    ticking = false;
 
-  function computeMaxAllowedWidth() {
+  function getFreshMaxAllowed() {
+    const total = layout.getBoundingClientRect().width;
+    const resizerTrack = 18;
     if (!isTheater()) {
-      const layoutRect = layout.getBoundingClientRect();
-      const layoutTotal = layoutRect.width;
       const minPlayerWidth = 400;
-      const resizerTrackAndGaps = 18;
-      let maxW = layoutTotal - minPlayerWidth - resizerTrackAndGaps;
-      if (maxW < 240) maxW = 240;
-      return maxW;
+      return Math.max(240, total - minPlayerWidth - resizerTrack);
     } else {
-      const total = layout.getBoundingClientRect().width;
       const minVideoWidth = 560;
-      const resizerTrack = 18;
-      let maxW = total - minVideoWidth - resizerTrack;
-      if (maxW < 280) maxW = 280;
-      return maxW;
+      return Math.max(280, total - minVideoWidth - resizerTrack);
     }
   }
 
@@ -610,46 +605,48 @@ document.addEventListener("DOMContentLoaded", function () {
       dragging = true;
       startX = e.clientX;
 
+      // Cache values ONCE on mousedown to prevent layout thrashing
       const cs = getComputedStyle(layout);
       const varName = currentVarName();
       const fallback = isTheater() ? 420 : defaults[getMode()];
       startW = parseInt(cs.getPropertyValue(varName)) || fallback;
+      cachedMaxAllowed = getFreshMaxAllowed();
 
+      document.body.classList.add("zd-resizing"); // Use CSS to disable pointer-events/transitions
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     }),
   );
 
+  // Optimized mousemove using requestAnimationFrame to prevent lag
   window.addEventListener("mousemove", function (e) {
-    if (!dragging) return;
+    if (!dragging || ticking) return;
 
-    const dx = e.clientX - startX;
-    const delta = isTheater() ? -dx : dx;
-    let nw = startW + delta;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const dx = e.clientX - startX;
+      const delta = isTheater() ? -dx : dx;
+      let nw = startW + delta;
 
-    const maxAllowed = computeMaxAllowedWidth();
-    if (nw < 240) nw = 240;
-    if (nw > maxAllowed) nw = maxAllowed;
+      // Use the cached values instead of calling getBoundingClientRect() repeatedly
+      if (nw < (isTheater() ? 280 : 240)) nw = isTheater() ? 280 : 240;
+      if (nw > cachedMaxAllowed) nw = cachedMaxAllowed;
 
-    const varName = currentVarName();
-    layout.style.setProperty(varName, nw + "px");
+      layout.style.setProperty(currentVarName(), nw + "px");
+      ticking = false;
+    });
   });
 
   window.addEventListener("mouseup", function () {
     if (!dragging) return;
     dragging = false;
+    document.body.classList.remove("zd-resizing");
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
 
-    const varName = currentVarName();
-    const cs = getComputedStyle(layout);
-    let finalW = parseInt(cs.getPropertyValue(varName)) || defaults[getMode()];
-    const maxAllowed = computeMaxAllowedWidth();
-
-    if (finalW < (isTheater() ? 280 : 240)) finalW = isTheater() ? 280 : 240;
-    if (finalW > maxAllowed) finalW = maxAllowed;
-
-    layout.style.setProperty(varName, finalW + "px");
+    const finalW = parseInt(
+      getComputedStyle(layout).getPropertyValue(currentVarName()),
+    );
     sessionStorage.setItem(keyW(getMode()), String(finalW));
   });
 

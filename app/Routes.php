@@ -157,6 +157,10 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/select',   [ProjectClipsController::class, 'quickSelect']);   // ✅ fixed
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/restrict', [ProjectClipsController::class, 'quick_restrict']);
 
+    // Waveform generation
+    $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/converter/waveform', [\App\Http\Controllers\Admin\DayConverterController::class, 'generateWaveform']);
+    $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/converter/waveforms-bulk', [\App\Http\Controllers\Admin\DayConverterController::class, 'generateWaveformsBulk']);
+
 
     // --------------------------------------------------------
     // PLAYER

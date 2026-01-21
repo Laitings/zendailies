@@ -282,4 +282,82 @@ final class FFmpegService
             'fps_den' => $den,
         ];
     }
+
+    /**
+     * Generates a JSON file containing audio peak data for visualization.
+     */
+    /**
+     * Generates a JSON file containing audio peak data for visualization.
+     * It extracts 8kHz mono 16-bit PCM and calculates the max peak for each window.
+     */
+    public function generateWaveformJson(string $input, string $outputJson): array
+    {
+        $dir = dirname($outputJson);
+        if (!is_dir($dir) && !@mkdir($dir, 0770, true)) {
+            return ['ok' => false, 'err' => 'Failed to create waveform dir'];
+        }
+
+        // Command: Extract mono, 8000Hz, signed 16-bit little-endian raw PCM to stdout
+        $cmd = [
+            $this->ffmpeg,
+            '-v',
+            'quiet',
+            '-i',
+            $input,
+            '-ac',
+            '1',
+            '-ar',
+            '8000',
+            '-f',
+            's16le',
+            '-'
+        ];
+
+        $esc = array_map(fn($a) => escapeshellarg($a), $cmd);
+        $command = implode(' ', $esc);
+
+        // We use popen to read the raw audio stream directly from FFmpeg's output
+        $handle = popen($command, 'rb');
+        if (!$handle) {
+            return ['ok' => false, 'err' => 'Could not start ffmpeg for audio extraction'];
+        }
+
+        $peaks = [];
+        $windowSize = 160; // 8000Hz / 160 = 50 data points per second of audio
+        $currentMax = 0;
+        $sampleCount = 0;
+
+        // Process the raw bytes
+        while (!feof($handle)) {
+            $bytes = fread($handle, 2); // 16-bit samples are 2 bytes each
+            if (strlen($bytes) < 2) break;
+
+            // Unpack as a signed short
+            $sample = unpack('s', $bytes)[1];
+            $val = abs($sample);
+
+            if ($val > $currentMax) $currentMax = $val;
+
+            $sampleCount++;
+            if ($sampleCount >= $windowSize) {
+                // Normalize to a 0.0 - 1.0 range (32767 is max for 16-bit)
+                $peaks[] = round($currentMax / 32767, 4);
+                $currentMax = 0;
+                $sampleCount = 0;
+            }
+        }
+        pclose($handle);
+
+        if (empty($peaks)) {
+            return ['ok' => false, 'err' => 'No audio data found or extracted'];
+        }
+
+        // Save the final array as JSON for the frontend player
+        $json = json_encode($peaks);
+        if (file_put_contents($outputJson, $json)) {
+            return ['ok' => true, 'path' => $outputJson];
+        }
+
+        return ['ok' => false, 'err' => 'Failed to write waveform JSON file'];
+    }
 }

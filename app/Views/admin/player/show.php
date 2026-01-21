@@ -416,6 +416,18 @@ $this->extend('layout/main');
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
+
+    /* Disable complex UI elements during resizing for 60fps performance */
+    body.zd-resizing * {
+        pointer-events: none !important;
+        transition: none !important;
+        user-select: none !important;
+    }
+
+    /* Ensure the video doesn't attempt to re-render in high quality during drag */
+    body.zd-resizing video {
+        will-change: transform;
+    }
 </style>
 <script>
     // Anti-flicker: Apply saved sidebar width BEFORE the browser paints the UI
@@ -1132,6 +1144,17 @@ $displayLabel = $isSceneMode ? "Scene " . htmlspecialchars($activeScene) : $curr
                         </div>
                     </details>
 
+                    <details class="zd-metadata-group" data-meta-section="audio" style="margin-top: 8px;">
+                        <summary class="zd-metadata-summary">Audio Waveform</summary>
+                        <div class="zd-metadata-content">
+                            <div id="zd-waveform-container"
+                                style="width:100%; height:80px; background:rgba(0,0,0,0.3); border-radius:8px; position:relative; overflow:hidden;"
+                                data-waveform-url="<?= htmlspecialchars($waveform_url ?? '') ?>">
+                                <div id="zd-waveform-progress" style="position:absolute; inset:0; border-right:2px solid var(--accent); width:0%; pointer-events:none; z-index:2;"></div>
+                                <canvas id="zdWaveformCanvas" style="width:100%; height:100%; display:block;"></canvas>
+                            </div>
+                        </div>
+                    </details>
 
                     <details class="zd-metadata-group" data-meta-section="extended" style="margin-top: 8px;">
 
