@@ -65,6 +65,10 @@ Replace ``` <override> ```with one of:
 
 - docker-compose.bookworm-debian.yml
 
+#### Health check you need to create a health.php file else status return unhealty
+```
+echo "<?php http_response_code(200); echo 'OK';" > www/health.php
+```
 
 #### Run
 ```
