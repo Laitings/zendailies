@@ -514,10 +514,28 @@ function updateStarUI(linkEl, isSelect) {
   }
 }
 
-// Back button navigation fix (this should NOT be inside updateStarUI)
-document.addEventListener("DOMContentLoaded", () => {
-  const backLink = document.querySelector(".m-back-link");
+// Add this SEPARATE DOMContentLoaded listener at the bottom of player-mobile-ui.js
+// This handles cleanup for ALL navigation (clip links AND back button)
 
+document.addEventListener("DOMContentLoaded", () => {
+  // Helper function to cleanup before any navigation
+  const cleanupBeforeNavigate = () => {
+    // Stop the render loop
+    if (window.stopPlayerLoop) {
+      window.stopPlayerLoop();
+    }
+
+    // Clean up video
+    const video = document.getElementById("zdVideo");
+    if (video) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+  };
+
+  // 1. Handle Back Button
+  const backLink = document.querySelector(".m-back-link");
   if (backLink) {
     backLink.removeAttribute("onclick");
 
@@ -525,23 +543,122 @@ document.addEventListener("DOMContentLoaded", () => {
       e.preventDefault();
       e.stopPropagation();
 
-      const targetUrl = backLink.getAttribute("href");
-      const video = document.getElementById("zdVideo");
-
-      // Stop the render loop FIRST
-      if (window.stopPlayerLoop) {
-        window.stopPlayerLoop();
-      }
-
-      // Then clean up video
-      if (video) {
-        video.pause();
-        video.removeAttribute("src");
-        video.load();
-      }
-
-      // Navigate immediately
-      window.location.href = targetUrl;
+      cleanupBeforeNavigate();
+      window.location.href = backLink.getAttribute("href");
     });
   }
+
+  // 2. Handle ALL Clip Links (this is the key fix for your new issue)
+  document.querySelectorAll(".mobile-clip-link").forEach((link) => {
+    link.addEventListener("click", (e) => {
+      // Only intercept if it's an actual navigation (not long-press)
+      // The long-press handler already prevents default, so this won't interfere
+
+      const targetUrl = link.getAttribute("href");
+
+      // Don't intercept if clicking the already-active clip
+      if (link.classList.contains("is-active")) {
+        e.preventDefault();
+        return;
+      }
+
+      // Clean up before navigating to new clip
+      e.preventDefault();
+      cleanupBeforeNavigate();
+
+      // Navigate immediately after cleanup
+      window.location.href = targetUrl;
+    });
+  });
+
+  // 3. Global cleanup on page unload (safety net)
+  window.addEventListener("beforeunload", cleanupBeforeNavigate);
+  window.addEventListener("pagehide", cleanupBeforeNavigate);
+});
+
+// Add this to player-mobile-ui.js after the navigation cleanup code
+
+// Add this to player-mobile-ui.js after the navigation cleanup code
+
+document.addEventListener("DOMContentLoaded", () => {
+  const SORT_KEY = "zd_clip_list_sort";
+
+  // Get the back link
+  const backLink = document.querySelector(".m-back-link");
+  if (!backLink) return;
+
+  // Create sort button container with up/down arrows
+  const sortBtn = document.createElement("div");
+  sortBtn.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--m-accent);
+  `;
+
+  sortBtn.innerHTML = `
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" class="arrow-up" style="cursor: pointer; opacity: 0.4; transition: opacity 0.2s;">
+      <path d="M6 2L6 10M6 2L3 5M6 2L9 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" class="arrow-down" style="cursor: pointer; opacity: 1; transition: opacity 0.2s;">
+      <path d="M6 10L6 2M6 10L3 7M6 10L9 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  // Insert right before the back link
+  backLink.parentNode.insertBefore(sortBtn, backLink);
+
+  const arrowUp = sortBtn.querySelector(".arrow-up");
+  const arrowDown = sortBtn.querySelector(".arrow-down");
+
+  // Get current sort state
+  let isReversed = sessionStorage.getItem(SORT_KEY) === "reversed";
+
+  // Update arrow states
+  const updateArrows = () => {
+    if (isReversed) {
+      arrowUp.style.opacity = "1";
+      arrowDown.style.opacity = "0.4";
+    } else {
+      arrowUp.style.opacity = "0.4";
+      arrowDown.style.opacity = "1";
+    }
+  };
+
+  // Apply initial sort
+  const clipNav = document.querySelector(".mobile-clip-nav");
+  if (isReversed && clipNav) {
+    const clips = Array.from(clipNav.children);
+    clips.reverse().forEach((clip) => clipNav.appendChild(clip));
+  }
+  updateArrows();
+
+  // Handle sort toggle
+  const toggleSort = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    isReversed = !isReversed;
+    sessionStorage.setItem(SORT_KEY, isReversed ? "reversed" : "normal");
+
+    // Reverse the clip list
+    if (clipNav) {
+      const clips = Array.from(clipNav.children);
+      clips.reverse().forEach((clip) => clipNav.appendChild(clip));
+
+      // Scroll active clip into view
+      const activeClip = clipNav.querySelector(".mobile-clip-link.is-active");
+      if (activeClip) {
+        activeClip.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+
+    updateArrows();
+  };
+
+  arrowUp.addEventListener("click", toggleSort);
+  arrowDown.addEventListener("click", toggleSort);
 });
