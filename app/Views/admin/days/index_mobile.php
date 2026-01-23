@@ -86,8 +86,7 @@ $this->start('content'); ?>
 
 <div class="mobile-days-page">
     <header class="mobile-days-header">
-        <h1>Shooting Days</h1>
-        <div class="project-subtitle"><?= htmlspecialchars($project['title'] ?? '') ?></div>
+        <h1 id="mobilePageTitle">Shooting Days</h1>
     </header>
 
     <div class="mobile-view-toggle" style="display: flex; background: #13151b; border-radius: 8px; padding: 4px; margin: 0 0 20px 0; border: 1px solid #2a3342;">
@@ -149,6 +148,7 @@ $this->start('content'); ?>
         const scenes = document.getElementById('mobileScenesContainer');
         const btnDays = document.getElementById('btnTabDays');
         const btnScenes = document.getElementById('btnTabScenes');
+        const titleEl = document.getElementById('mobilePageTitle');
 
         if (mode === 'days') {
             days.style.display = 'block';
@@ -157,6 +157,7 @@ $this->start('content'); ?>
             btnDays.style.color = '#fff';
             btnScenes.style.background = 'transparent';
             btnScenes.style.color = '#9ca3af';
+            titleEl.textContent = 'Shooting Days';
         } else {
             days.style.display = 'none';
             scenes.style.display = 'block';
@@ -164,8 +165,24 @@ $this->start('content'); ?>
             btnScenes.style.color = '#fff';
             btnDays.style.background = 'transparent';
             btnDays.style.color = '#9ca3af';
+            titleEl.textContent = 'Scenes';
         }
     }
+</script>
+
+<script>
+    // On load, check if the URL told us to go to a specific tab
+    document.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const tab = urlParams.get('tab');
+
+        if (tab === 'scenes') {
+            switchMobileTab('scenes');
+        } else {
+            // Default to days if no param is set or it's 'days'
+            switchMobileTab('days');
+        }
+    });
 </script>
 
 

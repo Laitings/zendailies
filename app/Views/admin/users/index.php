@@ -213,7 +213,7 @@
     table.zd-users-table {
         width: 100%;
         border-collapse: collapse;
-        table-layout: fixed;
+
         font-size: 13px;
     }
 
@@ -469,14 +469,6 @@
         text-overflow: ellipsis;
         white-space: nowrap;
     }
-
-    /* Ensure the Actions column is NEVER clipped */
-    .zd-users-actions {
-        overflow: visible !important;
-        text-align: right;
-        width: 100px;
-        /* Optional: keeps the column size stable */
-    }
 </style>
 <?php $this->end(); ?>
 
@@ -690,7 +682,7 @@
                                 <?php endif; ?>
                             </td>
 
-                            <td class="zd-users-actions">
+                            <td class="zd-users-actions" style="overflow: visible !important;">
                                 <?php
                                 $currentUserUuid = $u['account_uuid'];
 
@@ -713,7 +705,18 @@
                                     ];
                                 }
 
-                                if ($is_superuser) {
+                                // Dev tool to copy invitation link manually for fake emails
+                                if (!empty($u['setup_token'])) {
+                                    $userActions[] = [
+                                        'label'   => 'Copy Setup Link (Dev)',
+                                        'link'    => "#",
+                                        'icon'    => 'clipboard',
+                                        'method'  => 'JS',
+                                        'onclick' => "copySetupLink('" . $u['setup_token'] . "', this)"
+                                    ];
+                                }
+
+                                if ($is_superuser || $is_global_admin) {
                                     $isCurrentlyDisabled = (trim($u['status']) === 'disabled');
 
                                     $userActions[] = [

@@ -287,7 +287,9 @@ td[data-edit="take"] .zd-inline-input {
   width: 14px;
   height: 14px;
   display: block;
-  transition: transform 0.08s ease, opacity 0.12s ease;
+  transition:
+    transform 0.08s ease,
+    opacity 0.12s ease;
 }
 .star.on {
   fill: #ffd54a;
@@ -327,7 +329,9 @@ td[data-edit="take"] .zd-inline-input {
   width: 14px;
   height: 14px;
   display: block;
-  transition: transform 0.08s ease, opacity 0.12s ease;
+  transition:
+    transform 0.08s ease,
+    opacity 0.12s ease;
   fill: #9aa7b2;
   opacity: 0.35;
 }
@@ -465,6 +469,9 @@ table.zd-clips-table {
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
   display: flex;
+  align-items: center; /* Centers vertically */
+  justify-content: center; /* Centers horizontally */
+  z-index: 10000; /* Ensure it stays above the table */
 }
 
 .zd-publish-backdrop[hidden] {
@@ -525,13 +532,17 @@ table.zd-clips-table {
 .zd-sort-icon {
   display: block;
   flex-shrink: 0;
-  transition: fill 0.15s ease, opacity 0.15s ease;
+  transition:
+    fill 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .zd-sort-icon path {
   fill: var(--muted);
   opacity: 0.4;
-  transition: fill 0.15s ease, opacity 0.15s ease;
+  transition:
+    fill 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .zd-sortable-header:hover .zd-sort-icon path {
@@ -575,39 +586,52 @@ table.zd-clips-table {
 .zd-actions-menu {
   position: absolute;
   right: 0;
-  top: 34px;
-  background: #111318;
+  top: 100%;
+  margin-top: 5px;
+  background: #1c1e26 !important;
   border: 1px solid #1f2430;
-  border-radius: 8px;
-  padding: 6px 0;
-  min-width: 160px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  z-index: 99999;
+  min-width: 220px; /* Increased slightly for bulk labels */
+  padding: 4px 0; /* Vertical breathing room */
   display: none;
-  z-index: 999;
+  overflow: hidden; /* Clips the blue hover background to the menu corners */
 }
 
-.zd-actions-wrap.open .zd-actions-menu {
-  display: block;
+.zd-actions-wrap.open .zd-actions-menu,
+.zd-actions-menu.open {
+  display: block !important;
 }
 
+/* Update this block around line 735 */
 .zd-actions-menu a,
 .zd-actions-menu button.zd-actions-item {
-  display: block;
-  width: 100%;
-  padding: 6px 12px;
-  color: var(--text, #e9eef3);
+  display: flex !important; /* Ensure flex behavior */
+  align-items: center !important;
+  justify-content: flex-start !important; /* FIX: Overrides the global 'center' */
+  text-align: left !important; /* FIX: Overrides the global 'center' */
+  gap: 12px;
+  padding: 10px 16px !important; /* Balanced padding */
+  color: #eef1f5 !important;
   text-decoration: none;
-  font-size: 13px;
-  white-space: nowrap;
-  text-align: left;
-  background: none;
-  border: none;
+  font-size: 13px !important;
+  border: none !important;
+  background: transparent !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  border-radius: 0 !important; /* FIX: Removes the rounded corners from individual buttons */
   cursor: pointer;
+  transition: background 0.1s ease;
+  white-space: nowrap;
+  height: auto !important; /* FIX: Overrides the global 28px height */
+  min-height: unset !important;
 }
 
 .zd-actions-menu a:hover,
 .zd-actions-menu button.zd-actions-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: #3aa0ff !important;
+  color: #ffffff !important; /* Dark text on light blue for better contrast */
 }
 
 .zd-actions-head {
@@ -884,4 +908,138 @@ table.zd-clips-table {
 
 .zd-columns-item input[type="checkbox"] {
   accent-color: #3aa0ff;
+}
+
+/* admin.clips.css */
+
+.zd-action-disabled {
+  opacity: 0.5; /* Keep 50% of the color */
+  cursor: not-allowed !important;
+  position: relative;
+}
+
+.zd-action-disabled .zd-btn {
+  pointer-events: none; /* Keep the button from reacting to clicks */
+  box-shadow: none;
+}
+
+/* Optional: Add a lock icon overlay on hover for a pro feel */
+.zd-action-disabled:hover::after {
+  content: "🔒";
+  position: absolute;
+  top: -10px;
+  right: -5px;
+  font-size: 12px;
+}
+
+/* 1. Ensure the table cell doesn't clip the dropdown */
+.zd-table td.col-restricted {
+  overflow: visible !important;
+  position: relative;
+  text-align: center; /* Centers the button anchor in the cell */
+}
+
+/* 2. Center the dropdown and fix the popup stacking */
+/* Anchor the menu to the center of the cell */
+.zd-pro-menu {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.zd-pro-content.restrict-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%); /* The magic for perfect centering */
+  z-index: 1000;
+  background: #1c1e26;
+  border: 1px solid var(--border, #1f2430);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  display: none;
+}
+
+.zd-pro-menu.is-active .zd-pro-content.restrict-panel {
+  display: block;
+}
+
+/* 3. Add a small 'arrow' for better visual centering */
+.zd-pro-content.restrict-panel::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid var(--zd-border-subtle, #1f232d);
+}
+
+.zd-table tr:has(.zd-pro-menu.is-active),
+.zd-table tr.zd-row-menu-active {
+  z-index: 50;
+  position: relative;
+}
+
+/* Update Access Button - Zentropa Pro Styling */
+.restrict-panel .zd-btn-primary {
+  background-color: var(--zd-accent, #3aa0ff) !important;
+  color: #0b0c10 !important; /* Dark text for high contrast on blue */
+  border: none !important;
+  border-radius: 6px !important;
+  font-weight: 700 !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  cursor: pointer !important; /* The "hand" pointer */
+  height: 28px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition:
+    background-color 0.2s ease,
+    transform 0.1s ease !important;
+  width: 100%;
+  margin-top: 10px;
+}
+
+/* Hover State */
+.restrict-panel .zd-btn-primary:hover {
+  background-color: #55b1ff !important; /* Slightly lighter blue */
+  color: #000000 !important;
+}
+
+/* Active/Click State */
+.restrict-panel .zd-btn-primary:active {
+  transform: scale(0.98); /* Subtle "pressed" effect */
+}
+
+.zd-check-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #1f2430;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+  margin-bottom: 6px;
+}
+.zd-check-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: #3aa0ff;
+}
+.zd-check-card input[type="checkbox"] {
+  accent-color: #3aa0ff;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.zd-check-card span {
+  font-size: 13px;
+  color: #e9eef3;
 }

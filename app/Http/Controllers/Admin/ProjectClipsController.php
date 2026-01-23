@@ -57,6 +57,11 @@ final class ProjectClipsController
             }
         }
 
+        // After $isProjectAdmin is determined...
+        $projRepo = new \App\Repositories\ProjectRepository($pdo);
+        $availableGroups = $projRepo->listSensitiveGroups($projectUuid);
+        // Note: We created listSensitiveGroups in the previous turn.
+
         // Filters (GET)
         $q = [
             'scene'   => trim($_GET['scene']   ?? ''),
@@ -222,6 +227,7 @@ final class ProjectClipsController
 
         View::render('admin/clips/index', [
             'project'                 => $project,
+            'availableGroups'         => $projRepo->listSensitiveGroups($projectUuid),
             'project_uuid'            => $projectUuid,
             'day_uuid'                => $dayUuid,
             'day_info'                => $dayInfo,
@@ -862,83 +868,134 @@ final class ProjectClipsController
 
     public function quick_restrict(string $projectUuid, string $dayUuid, string $clipUuid): void
     {
-        // AuthN / CSRF
+        // 1. JSON and Session Setup
+        header('Content-Type: application/json; charset=utf-8');
+        if (session_status() === \PHP_SESSION_NONE) session_start();
+
+        // 2. Security Guards (CSRF and Auth)
+        \App\Support\Csrf::validateOrAbort($_POST['_csrf'] ?? null);
+
         $account     = $_SESSION['account'] ?? null;
         $personUuid  = $_SESSION['person_uuid'] ?? null;
         $isSuperuser = (int)($account['is_superuser'] ?? 0);
+        $pdo         = DB::pdo();
 
-        \App\Support\Csrf::validateOrAbort($_POST['_csrf'] ?? null);
-
-        $pdo = DB::pdo();
-
-        // Permission: superuser OR project admin (DIT) only
+        // 3. Permission Guard: Superuser OR Project Admin (DIT) only
         $isProjectAdmin = 0;
         if ($personUuid) {
             $stmtAdmin = $pdo->prepare("
                 SELECT pm.is_project_admin
                 FROM project_members pm
-                JOIN projects p ON p.id = pm.project_id
-                WHERE p.id = UUID_TO_BIN(:p,1)
-                  AND pm.person_id = UUID_TO_BIN(:person,1)
+                WHERE pm.project_id = UUID_TO_BIN(:p, 1)
+                  AND pm.person_id  = UUID_TO_BIN(:person, 1)
                 LIMIT 1
             ");
             $stmtAdmin->execute([':p' => $projectUuid, ':person' => $personUuid]);
             $isProjectAdmin = (int)($stmtAdmin->fetchColumn() ?: 0);
         }
+
         if (!$isSuperuser && !$isProjectAdmin) {
             http_response_code(403);
             echo json_encode(['ok' => false, 'error' => 'Forbidden']);
             return;
         }
 
-        // ensure clip belongs to project+day
-        $exists = $pdo->prepare("
-            SELECT is_restricted
-            FROM clips
-            WHERE id         = UUID_TO_BIN(:c,1)
-              AND project_id = UUID_TO_BIN(:p,1)
-              AND day_id     = UUID_TO_BIN(:d,1)
-            LIMIT 1
-        ");
-        $exists->execute([':c' => $clipUuid, ':p' => $projectUuid, ':d' => $dayUuid]);
-        $cur = $exists->fetchColumn();
-        if ($cur === false) {
-            http_response_code(404);
-            echo json_encode(['ok' => false, 'error' => 'Clip not found']);
-            return;
-        }
-
-        $posted = $_POST['value'] ?? null;
-        if ($posted === '0' || $posted === '1') {
-            $next = (int)$posted;
-        } else {
-            $next = ((int)$cur) ? 0 : 1;
+        // 4. Input Processing
+        // Expecting an array of group UUIDs from the multi-select UI
+        $groupUuids = $_POST['groups'] ?? [];
+        if (!is_array($groupUuids)) {
+            $groupUuids = $groupUuids ? [$groupUuids] : [];
         }
 
         try {
-            $upd = $pdo->prepare("
-                UPDATE clips
-                SET is_restricted = :v
-                WHERE id         = UUID_TO_BIN(:c,1)
-                  AND project_id = UUID_TO_BIN(:p,1)
-                  AND day_id     = UUID_TO_BIN(:d,1)
-                LIMIT 1
-            ");
-            $upd->execute([
-                ':v' => $next,
-                ':c' => $clipUuid,
-                ':p' => $projectUuid,
-                ':d' => $dayUuid,
-            ]);
+            $clipRepo = new ClipRepository($pdo);
 
-            echo json_encode(['ok' => true, 'is_restricted' => $next]);
+            // 5. Update many-to-many ACL and restricted flag
+            // This method handles the transaction and clearing/setting of groups
+            $clipRepo->setClipGroups($clipUuid, $groupUuids);
+
+            echo json_encode([
+                'ok' => true,
+                'is_restricted' => !empty($groupUuids),
+                'assigned_groups' => $groupUuids
+            ]);
         } catch (\Throwable $e) {
             http_response_code(400);
             echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
         }
     }
 
+    /**
+     * Batch update restrictions for multiple clips.
+     * Route: POST /admin/projects/{p}/days/{d}/clips/bulk-restrict
+     */
+    public function bulkRestrict(string $projectUuid, string $dayUuid): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        if (session_status() === \PHP_SESSION_NONE) session_start();
+        \App\Support\Csrf::validateOrAbort($_POST['_csrf'] ?? null);
 
+        $account     = $_SESSION['account'] ?? null;
+        $personUuid  = $_SESSION['person_uuid'] ?? null;
+        $isSuperuser = (int)($account['is_superuser'] ?? 0);
+        $pdo         = DB::pdo();
+
+        // Permission Guard
+        $isProjectAdmin = 0;
+        if ($personUuid) {
+            $stmtAdmin = $pdo->prepare("SELECT is_project_admin FROM project_members WHERE project_id = UUID_TO_BIN(:p, 1) AND person_id = UUID_TO_BIN(:person, 1) LIMIT 1");
+            $stmtAdmin->execute([':p' => $projectUuid, ':person' => $personUuid]);
+            $isProjectAdmin = (int)($stmtAdmin->fetchColumn() ?: 0);
+        }
+
+        if (!$isSuperuser && !$isProjectAdmin) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'Forbidden']);
+            return;
+        }
+
+        $clipUuids = explode(',', $_POST['clip_uuids'] ?? '');
+        $groupUuids = $_POST['groups'] ?? []; // Array of group UUIDs
+        $mode = $_POST['mode'] ?? 'set'; // 'set' (overwrite), 'add', or 'remove'
+
+        if (empty($clipUuids)) {
+            echo json_encode(['ok' => false, 'error' => 'No clips selected']);
+            return;
+        }
+
+        try {
+            $clipRepo = new \App\Repositories\ClipRepository($pdo);
+            $pdo->beginTransaction();
+
+            foreach ($clipUuids as $clipUuid) {
+                $clipUuid = trim($clipUuid);
+                if (!$clipUuid) continue;
+
+                if ($mode === 'set') {
+                    $clipRepo->setClipGroups($clipUuid, $groupUuids);
+                } else {
+                    $currentGroups = $clipRepo->getClipGroups($clipUuid);
+                    if ($mode === 'add') {
+                        $newGroups = array_unique(array_merge($currentGroups, $groupUuids));
+                        $clipRepo->setClipGroups($clipUuid, $newGroups);
+                    } elseif ($mode === 'remove') {
+                        $newGroups = array_diff($currentGroups, $groupUuids);
+                        $clipRepo->setClipGroups($clipUuid, $newGroups);
+                    }
+                }
+            }
+
+            $pdo->commit();
+            echo json_encode(['ok' => true]);
+        } catch (\Throwable $e) {
+            // Crucial: check if transaction is active before rolling back
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        }
+    }
 
     public function destroy(string $projectUuid, string $dayUuid, string $clipUuid): void
     {

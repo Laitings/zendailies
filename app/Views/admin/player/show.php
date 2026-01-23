@@ -465,6 +465,12 @@ $this->extend('layout/main');
 <?php $clip_count = is_array($clip_list ?? null) ? count($clip_list) : 0; ?>
 
 <?php
+// Near the top of the file, ensure it's initialized
+$restoredMode = $restoredMode ?? 'days';
+$initialMode  = $initialMode  ?? 'days';
+?>
+
+<?php
 $hasSelected = false;
 $hasComments = false;
 
@@ -928,12 +934,15 @@ $displayLabel = $isSceneMode ? "Scene " . htmlspecialchars($activeScene) : $curr
                             ?>
                             <video
                                 id="zdVideo"
+                                crossorigin="use-credentials"
                                 data-fps="<?= htmlspecialchars($fpsStr) ?>"
                                 data-fpsnum="<?= $fpsNum ?: '' ?>"
                                 data-fpsden="<?= $fpsDen ?: '' ?>"
                                 data-tc-start="<?= htmlspecialchars($clip['tc_start'] ?? '00:00:00:00') ?>"
-                                <?= $posterAttr ?>>
-                                <source src="<?= htmlspecialchars($proxy_url) ?>" type="video/mp4">
+                                <?= $posterAttr ?>
+                                controlsList="nodownload"
+                                oncontextmenu="return false;">
+                                <source src="/admin/projects/<?= $project_uuid ?>/clips/<?= $currentClipUuid ?>/stream.mp4" type="video/mp4">
                                 Your browser does not support the video tag.
                             </video>
                             <div id="zdFlash" style="position:absolute; inset:0; background:white; opacity:0; pointer-events:none; z-index:10; transition:none;"></div>
@@ -1324,6 +1333,12 @@ $displayLabel = $isSceneMode ? "Scene " . htmlspecialchars($activeScene) : $curr
 </div> <?php $this->end(); ?>
 
 <?php $this->start('scripts'); ?>
+<script>
+    // Security: Prevent right-click on the video element
+    document.getElementById('zdVideo').addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+    });
+</script>
 <script src="/assets/js/player.js"></script>
 <script type="module" src="/assets/js/player-lut-init.js"></script>
 <script type="module" src="/assets/js/player-ui.js"></script>

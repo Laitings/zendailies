@@ -748,4 +748,138 @@ final class ClipPlayerController
         }
         return $scenes;
     }
+
+    /**
+     * Securely streams a video file to the player without exposing the .mp4 path.
+     * Uses byte-range support for seeking and mirrors the proven Zengrabber logic.
+     */
+
+    public function stream(string $projectUuid, string $clipUuid): void
+    {
+        // Use your app's official session starter instead of raw session_start()
+        \App\Support\Auth::startSession();
+
+        // Use your app's Auth::check() to be consistent with AuthGuard
+        if (!\App\Support\Auth::check()) {
+            header("HTTP/1.1 403 Forbidden");
+            exit;
+        }
+
+        // 1. Authentication Guard (match the rest of the app's session shape)
+        $account = $_SESSION['account'] ?? null;
+        $accountId = is_array($account) ? ($account['id'] ?? null) : null;
+
+        if (!$accountId) {
+            header("HTTP/1.1 403 Forbidden");
+            exit;
+        }
+
+        $pdo = \App\Support\DB::pdo();
+        $personUuid = $_SESSION['person_uuid'] ?? null;
+        $account = $_SESSION['account'] ?? [];
+        $isSuperuser = !empty($account['is_superuser']);
+
+        // 2. Fetch Project Admin status
+        $isProjectAdmin = 0;
+        if (!$isSuperuser && $personUuid) {
+            $admStmt = $pdo->prepare("
+                SELECT is_project_admin 
+                FROM project_members 
+                WHERE project_id = UUID_TO_BIN(:p, 1) 
+                  AND person_id = UUID_TO_BIN(:person, 1) 
+                LIMIT 1
+            ");
+            $admStmt->execute([':p' => $projectUuid, ':person' => $personUuid]);
+            $isProjectAdmin = (int)($admStmt->fetchColumn() ?: 0);
+        }
+
+        // 3. Sensitive Groups ACL Logic
+        $aclSql = '';
+        $params = [':clip_uuid' => $clipUuid, ':project_uuid' => $projectUuid];
+
+        if (!$isSuperuser && !$isProjectAdmin) {
+            $aclSql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid, 1))";
+            $params[':viewer_person_uuid'] = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
+        }
+
+        // 4. Locate the Asset
+        $sql = "
+            SELECT ca.storage_path 
+            FROM clip_assets ca
+            JOIN clips c ON c.id = ca.clip_id
+            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
+            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
+            WHERE c.id = UUID_TO_BIN(:clip_uuid, 1) 
+              AND c.project_id = UUID_TO_BIN(:project_uuid, 1)
+              AND ca.asset_type IN ('proxy_web', 'original')
+              $aclSql
+            ORDER BY FIELD(ca.asset_type, 'proxy_web', 'original') 
+            LIMIT 1";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $asset = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$asset) {
+            header("HTTP/1.1 403 Forbidden");
+            exit;
+        }
+
+        // 5. Map path to Docker container filesystem
+        $fsBase = rtrim(getenv('ZEN_STOR_DIR') ?: '/var/www/html/data/zendailies/uploads', '/');
+        $publicBase = rtrim(getenv('ZEN_STOR_PUBLIC_BASE') ?: '/data/zendailies/uploads', '/');
+        $filePath = str_replace($publicBase, $fsBase, $asset['storage_path']);
+
+
+        if (!file_exists($filePath)) {
+            header("HTTP/1.1 404 Not Found");
+            exit;
+        }
+
+        // 6. Byte-Range Streaming (Zengrabber Style)
+        $size = filesize($filePath);
+        $fp   = fopen($filePath, 'rb');
+        $start  = 0;
+        $length = $size;
+
+        header('Content-Type: video/mp4');
+        header('Accept-Ranges: bytes');
+        header('X-Content-Type-Options: nosniff');
+
+        if (isset($_SERVER['HTTP_RANGE'])) {
+            if (preg_match('/bytes=(\d*)-(\d*)/', $_SERVER['HTTP_RANGE'], $m)) {
+                $rangeStart = $m[1] === '' ? 0 : (int)$m[1];
+                $rangeEnd   = $m[2] === '' ? $size - 1 : (int)$m[2];
+
+                if ($rangeStart > $rangeEnd || $rangeStart >= $size) {
+                    header('HTTP/1.1 416 Range Not Satisfiable');
+                    header('Content-Range: bytes */' . $size);
+                    fclose($fp);
+                    exit;
+                }
+                if ($rangeEnd >= $size) $rangeEnd = $size - 1;
+
+                $start  = $rangeStart;
+                $length = $rangeEnd - $rangeStart + 1;
+
+                header('HTTP/1.1 206 Partial Content');
+                header("Content-Range: bytes $rangeStart-$rangeEnd/$size");
+            }
+        }
+
+        header('Content-Length: ' . $length);
+        fseek($fp, $start);
+        $chunkSize = 8192;
+
+        while (!feof($fp) && $length > 0) {
+            $readSize = ($length > $chunkSize) ? $chunkSize : $length;
+            $buffer   = fread($fp, $readSize);
+            echo $buffer;
+            flush();
+            $length -= $readSize;
+        }
+
+        fclose($fp);
+        exit;
+    }
 }

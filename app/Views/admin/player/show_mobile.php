@@ -23,31 +23,34 @@ $this->extend($layout ?? 'layout/mobile');
     <input type="hidden" name="_csrf" value="<?= htmlspecialchars(\App\Support\Csrf::token()) ?>">
 
     <div class="sticky-player-container">
+
         <?php if ($proxy_url): ?>
             <div class="zd-player-frame" id="playerFrame">
                 <video id="zdVideo"
                     playsinline
                     preload="metadata"
+                    crossorigin="use-credentials"
+                    controlsList="nodownload"
+                    oncontextmenu="return false;"
                     data-fps="<?= $clip['fps'] ?? '25' ?>"
                     data-fpsnum="<?= $clip['fps_num'] ?? '0' ?>"
                     data-fpsden="<?= $clip['fps_den'] ?? '0' ?>"
                     data-tc-start="<?= $clip['tc_start'] ?? '00:00:00:00' ?>">
-                    <source src="<?= htmlspecialchars($proxy_url) ?>" type="video/mp4">
+                    <source src="/admin/projects/<?= $project_uuid ?>/clips/<?= $clip['clip_uuid'] ?>/stream.mp4" type="video/mp4">
                 </video>
 
                 <div id="zdMask" class="zd-mask"></div>
 
                 <div id="mobileUiOverlay" class="mobile-ui-overlay">
-                    <div class="m-clip-info-overlay">
-                        <h3><?= htmlspecialchars($clip['scene'] ?? 'Sc') ?> / <?= htmlspecialchars($clip['slate'] ?? '') ?> - <?= htmlspecialchars($clip['take'] ?? 'Tk') ?></h3>
-                        <?php
-                        // Fallback to file_name and ensure no warnings if keys are missing
-                        $displayName = ($clip['file_name'] ?? '');
-                        ?>
-                        <div class="filename"><?= htmlspecialchars(pathinfo($displayName, PATHINFO_FILENAME)) ?></div>
+                    <div class="m-top-context" style="position: absolute; top: 12px; left: 12px; z-index: 120; pointer-events: none; display: flex; flex-direction: column; gap: 8px;">
+
+                        <div class="m-clip-info-overlay" style="background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); pointer-events: auto; width: fit-content;">
+                            <h3 style="margin:0; font-size: 13px; color: #fff;"><?= htmlspecialchars($clip['scene'] ?? 'Sc') ?> / <?= htmlspecialchars($clip['slate'] ?? '') ?> - <?= htmlspecialchars($clip['take'] ?? 'Tk') ?></h3>
+                            <div class="filename" style="font-size: 10px; color: var(--m-accent); margin-top: 2px;"><?= htmlspecialchars(pathinfo($clip['file_name'] ?? '', PATHINFO_FILENAME)) ?></div>
+                        </div>
                     </div>
 
-                    <div class="m-play-trigger" id="mPlayTrigger">
+                    <div class="m-play-trigger" id="mPlayTrigger" style="z-index: 10;">
                         <div id="mPlayIconContainer" style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; background: transparent;">
                         </div>
                     </div>
@@ -62,7 +65,9 @@ $this->extend($layout ?? 'layout/mobile');
                                 <span id="mTcDisplay" class="m-tc">00:00:00:00</span>
                             </div>
                             <div class="m-right" style="position: relative;"> <button type="button" class="m-icon-btn" id="mVolBtn" title="Unmute">🔇</button>
-
+                                <div class="m-vol-container">
+                                    <input type="range" id="mVolSlider" min="0" max="1" step="0.01" value="1" style="width: 60px;">
+                                </div>
                                 <div style="position: relative; display: flex; align-items: center; justify-content: center;">
                                     <button type="button" class="m-icon-btn" id="mBlankBtn" title="Aspect Ratio">
                                         <svg viewBox="0 0 24 24" width="20" height="20" fill="white">
@@ -169,7 +174,27 @@ $this->extend($layout ?? 'layout/mobile');
             </div>
         <?php endif; ?>
 
-        <div class="mobile-nav-title">Clips in <?= htmlspecialchars($current_day_label ?? 'Day') ?></div>
+        <div class="mobile-nav-header" style="display: flex; justify-content: space-between; align-items: center; padding: 24px 16px 12px;">
+            <div class="mobile-nav-title" style="padding: 0; font-size: 11px; text-transform: uppercase; color: var(--m-muted); font-weight: 700;">
+                Clips in <?= htmlspecialchars($current_day_label ?? 'Day') ?>
+            </div>
+
+            <?php
+            $isSceneMode = (isset($_GET['scene']) && $_GET['scene'] !== '');
+            $backLabel   = $isSceneMode ? 'Back to Scenes' : 'Back to Days';
+            $backUrl     = "/admin/projects/{$project_uuid}/overview" . ($isSceneMode ? "?tab=scenes" : "?tab=days");
+            ?>
+            <a href="<?= $backUrl ?>"
+                class="m-back-link"
+                style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: #3aa0ff; text-decoration: none; display: flex; align-items: center; gap: 8px; position: relative; z-index: 999; pointer-events: auto;">
+
+                <svg width="8" height="10" viewBox="0 0 8 10" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: block;">
+                    <path d="M7 1L2 5L7 9" stroke="#3aa0ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+
+                <span><?= $backLabel ?></span>
+            </a>
+        </div>
         <div class="mobile-clip-nav">
             <?php foreach ($clip_list as $it):
                 $isActive = ($it['clip_uuid'] === ($current_clip ?? ''));
@@ -178,7 +203,7 @@ $this->extend($layout ?? 'layout/mobile');
             ?>
                 <a href="<?= $href ?>"
                     class="mobile-clip-link <?= $isActive ? 'is-active' : '' ?>"
-                    data-proxy="<?= htmlspecialchars($it['proxy_url'] ?? '') ?>"
+                    data-proxy="/admin/projects/<?= $project_uuid ?>/clips/<?= $it['clip_uuid'] ?>/stream.mp4"
                     data-scene="<?= htmlspecialchars($it['scene'] ?? 'Sc') ?>"
                     data-slate="<?= htmlspecialchars($it['slate'] ?? '') ?>"
                     data-take="<?= htmlspecialchars($it['take'] ?? 'Tk') ?>"
@@ -294,17 +319,31 @@ $this->extend($layout ?? 'layout/mobile');
 <?php $this->start('scripts'); ?>
 <script src="/assets/js/player-mobile-ui.js?v=<?= time() ?>"></script>
 
+<div id="zd-debug-console" style="position:fixed; top:0; left:0; width:100%; background:rgba(255,0,0,0.9); color:#fff; font-size:10px; z-index:9999; pointer-events:none; max-height:100px; overflow:auto; display:none; padding:4px; font-family:monospace;"></div>
+<script>
+    window.onerror = function(msg, url, line) {
+        const consoleEl = document.getElementById('zd-debug-console');
+        consoleEl.style.display = 'block';
+        consoleEl.innerText += `\nERR: ${msg} (Line: ${line})`;
+        return false;
+    };
+</script>
+
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        // Find the active clip in the navigation list
+        const allClips = document.querySelectorAll('.mobile-clip-link');
         const activeClip = document.querySelector('.mobile-clip-link.is-active');
-        if (activeClip) {
-            // scrollIntoView with 'instant' prevents the visible sliding animation 
-            // that causes the "scrolling down" look after the page loads.
-            activeClip.scrollIntoView({
-                behavior: 'auto',
-                block: 'center'
-            });
+
+        // Only attempt to scroll if we actually have a list to scroll through.
+        // If there's only 1 clip, it's already at the top. 
+        // Force-scrolling it can lock the UI thread on mobile Safari/Chrome.
+        if (activeClip && allClips.length > 1) {
+            setTimeout(() => {
+                activeClip.scrollIntoView({
+                    behavior: 'auto',
+                    block: 'center'
+                });
+            }, 100);
         }
     });
 </script>

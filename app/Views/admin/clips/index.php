@@ -200,35 +200,64 @@ if ($__publish_fb) {
 
 
     <?php if ($isPowerUser): ?>
-        <div class="zd-actions" style="display:flex; gap:12px; align-items:center">
+        <?php
+        $isDisabled = $is_all_days;
+        $disabledClass = $isDisabled ? 'zd-action-disabled' : '';
+        $disabledTitle = $isDisabled ? 'title="This option is not available when all days are selected. Choose a day to activate."' : '';
+        ?>
+        <div class="zd-actions" style="display:flex; gap:12px; align-items:center; flex-wrap: nowrap;">
 
-            <!-- Add clips -->
-            <a class="zd-btn zd-btn-primary"
-                href="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/upload">
-                + Add clips
-            </a>
+            <div style="display:flex; gap:12px; align-items:center; flex-shrink: 0;" class="<?= $disabledClass ?>" <?= $disabledTitle ?>>
+                <a class="zd-btn zd-btn-primary"
+                    href="<?= $isDisabled ? '#' : "/admin/projects/{$project_uuid}/days/{$day_uuid}/clips/upload" ?>">
+                    + Add clips
+                </a>
 
-            <!-- Publish / Unpublish -->
-            <?php if (!$dayIsPublished): ?>
-                <button type="button"
-                    class="zd-btn zd-btn-primary"
-                    id="zd-publish-open">
-                    Publish
-                </button>
-            <?php else: ?>
-                <button type="button"
-                    class="zd-btn"
-                    id="zd-unpublish-open">
-                    Unpublish
-                </button>
-            <?php endif; ?>
+                <?php if (!$dayIsPublished): ?>
+                    <button type="button" class="zd-btn zd-btn-primary" id="<?= $isDisabled ? '' : 'zd-publish-open' ?>">Publish</button>
+                <?php else: ?>
+                    <button type="button" class="zd-btn" id="<?= $isDisabled ? '' : 'zd-unpublish-open' ?>">Unpublish</button>
+                <?php endif; ?>
 
-            <!-- Delete -->
-            <a class="zd-btn zd-btn-danger"
-                href="/admin/projects/<?= htmlspecialchars($project['project_uuid'] ?? $project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/delete">
-                Delete day
-            </a>
+                <a class="zd-btn zd-btn-danger"
+                    href="<?= $isDisabled ? '#' : "/admin/projects/" . ($project['project_uuid'] ?? $project_uuid) . "/days/{$day_uuid}/delete" ?>">
+                    Delete day
+                </a>
+            </div>
 
+            <div style="margin-left:auto; display:flex; align-items:center;" class="<?= $disabledClass ?>" <?= $disabledTitle ?>>
+                <form id="zd-import-form"
+                    method="post"
+                    action="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/import_csv"
+                    enctype="multipart/form-data"
+                    style="display:flex; gap:8px; align-items:center; background:#111318; border:1px solid #1f2430; border-radius:8px; padding:4px 10px; font-size:12px; color:#9aa7b2;">
+                    <input type="hidden" name="_csrf" value="<?= \App\Support\Csrf::token() ?>">
+                    <input type="hidden" id="zd-import-uuids" name="limit_to_uuids" value="">
+
+                    <label style="display:flex; align-items:center; cursor:pointer; gap:8px;">
+                        <span style="font-size:11px; white-space:nowrap;">CSV Metadata:</span>
+                        <input id="zd-import-file"
+                            type="file"
+                            name="csv_file"
+                            accept=".csv,text/csv"
+                            <?= $isDisabled ? 'disabled' : '' ?>
+                            style="font-size:11px; color:#e9eef3; background:#0f1218; border:1px solid #1f2430; border-radius:4px; padding:2px 4px; width:150px;">
+                    </label>
+
+                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+                        <input type="checkbox" name="overwrite" id="zd-import-overwrite" value="1" <?= $isDisabled ? 'disabled' : '' ?> style="margin:0;" />
+                        <span style="font-size:11px;">Overwrite</span>
+                    </label>
+
+                    <button id="zd-import-btn"
+                        type="submit"
+                        class="zd-btn"
+                        <?= $isDisabled ? 'disabled' : '' ?>
+                        style="background:#3aa0ff; color:#0b0c10; height:24px; padding:0 10px; font-size:11px !important;">
+                        Import
+                    </button>
+                </form>
+            </div>
         </div>
     <?php endif; ?>
 
@@ -239,44 +268,6 @@ if ($__publish_fb) {
     <?php endif; ?>
 
 
-    <?php if ($isPowerUser && !$is_all_days): ?>
-        <div class="zd-bulk-actions" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; font-size:13px; color:#9aa7b2;">
-
-
-
-            <div style="margin-left:auto; display:flex; align-items:center;">
-                <form id="zd-import-form"
-                    method="post"
-                    action="/admin/projects/<?= htmlspecialchars($project_uuid) ?>/days/<?= htmlspecialchars($day_uuid) ?>/clips/import_csv"
-                    enctype="multipart/form-data"
-                    style="display:flex; gap:8px; align-items:center; background:#111318; border:1px solid #1f2430; border-radius:10px; padding:6px 10px; font-size:13px; color:#9aa7b2;">
-                    <input type="hidden" name="_csrf" value="<?= \App\Support\Csrf::token() ?>">
-                    <!-- NEW: populated by JS with comma-separated clip UUIDs when selection > 0 -->
-                    <input type="hidden" id="zd-import-uuids" name="limit_to_uuids" value="">
-
-                    <label style="display:flex; flex-direction:column; cursor:pointer;">
-                        <span style="font-size:11px; color:#9aa7b2;">Resolve CSV</span>
-                        <input id="zd-import-file"
-                            type="file"
-                            name="csv_file"
-                            accept=".csv,text/csv"
-                            style="font-size:12px; color:#e9eef3; background:#0f1218; border:1px solid #1f2430; border-radius:6px; padding:4px 6px; min-width:180px;">
-                    </label>
-                    <label style="display:flex; align-items:center; gap:6px; margin-left:8px;">
-                        <input type="checkbox" name="overwrite" id="zd-import-overwrite" value="1" />
-                        <span>Overwrite existing values</span>
-                    </label>
-                    <button id="zd-import-btn"
-                        type="submit"
-                        class="zd-btn"
-                        title="Import metadata"
-                        style="background:#3aa0ff;color:#0b0c10;">
-                        Import metadata
-                    </button>
-                </form>
-            </div>
-        </div>
-    <?php endif; ?>
 
     <div class="zd-stack">
         <form method="get" class="zd-filters zd-filters-container">
@@ -486,6 +477,9 @@ if ($__publish_fb) {
                                             <button type="button" class="zd-actions-item" data-bulk-waveform>
                                                 Generate waveforms for selected
                                             </button>
+                                            <button type="button" class="zd-actions-item" id="zd-bulk-restrict-open">
+                                                Manage restrictions for selected
+                                            </button>
                                             <button type="button" class="zd-actions-item" data-bulk-delete>
                                                 Delete selected
                                             </button>
@@ -639,20 +633,48 @@ if ($__publish_fb) {
                                     <!-- Restricted -->
                                     <td class="col-restricted zd-restrict-td" data-field="restricted">
                                         <?php $isRestricted = (int)($r['is_restricted'] ?? 0) === 1; ?>
-                                        <button class="restrict-toggle"
-                                            type="button"
-                                            data-clip="<?= htmlspecialchars($r['clip_uuid']) ?>"
-                                            data-restricted="<?= $isRestricted ? 1 : 0 ?>"
-                                            aria-label="Toggle restricted"
-                                            title="Toggle restricted">
-                                            <svg viewBox="0 0 24 24"
-                                                class="lock <?= $isRestricted ? 'on' : 'off' ?>"
-                                                width="16"
-                                                height="16"
-                                                aria-hidden="true">
-                                                <path d="M7 11V8a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h1zm2 0h6V8a3 3 0 0 0-6 0v3z" />
-                                            </svg>
-                                        </button>
+
+                                        <div class="zd-pro-menu">
+                                            <button class="zd-pro-trigger restrict-trigger <?= $isRestricted ? 'is-active' : '' ?>"
+                                                type="button"
+                                                onclick="this.parentElement.classList.toggle('is-active')"
+                                                title="Manage Restrictions">
+                                                <svg viewBox="0 0 24 24" class="lock <?= $isRestricted ? 'on' : 'off' ?>" width="16" height="16">
+                                                    <path d="M7 11V8a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h1zm2 0h6V8a3 3 0 0 0-6 0v3z" />
+                                                </svg>
+                                                <span class="restrict-label"><?= $isRestricted ? 'Restricted' : 'Public' ?></span>
+                                            </button>
+
+                                            <div class="zd-pro-content restrict-panel" style="min-width: 220px; padding: 12px;">
+                                                <div style="font-size: 10px; text-transform: uppercase; color: var(--zd-text-muted); margin-bottom: 10px; letter-spacing: 0.05em;">
+                                                    Grant Access To:
+                                                </div>
+                                                <form class="restrict-form" data-clip="<?= htmlspecialchars($r['clip_uuid']) ?>">
+                                                    <?php
+                                                    // Convert the string from SQL into a clean array for checking
+                                                    $assignedGroups = !empty($r['assigned_group_uuids'])
+                                                        ? explode(',', $r['assigned_group_uuids'])
+                                                        : [];
+                                                    ?>
+
+                                                    <?php foreach ($availableGroups as $group): ?>
+                                                        <label class="zd-check-card" style="padding: 8px; margin-bottom: 5px; background: rgba(255,255,255,0.02); display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                                            <input type="checkbox"
+                                                                name="groups[]"
+                                                                value="<?= $group['group_uuid'] ?>"
+                                                                <?= in_array($group['group_uuid'], $assignedGroups) ? 'checked' : '' ?>>
+                                                            <span style="font-size: 12px; color: var(--zd-text-main);"><?= htmlspecialchars($group['name']) ?></span>
+                                                        </label>
+                                                    <?php endforeach; ?>
+
+                                                    <hr style="border: 0; border-top: 1px solid var(--zd-border-subtle); margin: 10px 0;">
+
+                                                    <button type="submit" class="zd-btn-primary" style="width: 100%; padding: 6px; font-size: 11px;">
+                                                        Update Access
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </div>
                                     </td>
                                 <?php endif; ?>
 
@@ -799,6 +821,45 @@ if ($__publish_fb) {
                 id="zd-publish-confirm">
                 Publish
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk restrictions modal -->
+<div class="zd-publish-backdrop" id="zd-bulk-restrict-modal" hidden>
+    <div class="zd-publish-modal" style="width: 400px;">
+        <div class="zd-publish-head">
+            <h2>Bulk Restrictions</h2>
+        </div>
+        <div class="zd-publish-body">
+            <p style="font-size: 13px; color: var(--muted); margin-bottom: 15px;">
+                Update access for <b id="zd-bulk-restrict-count">0</b> selected clips.
+            </p>
+
+            <form id="zd-bulk-restrict-form">
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; font-size: 11px; text-transform: uppercase; margin-bottom: 8px;">Action Mode</label>
+                    <select name="mode" class="zd-select" style="width: 100%;">
+                        <option value="add">Add to groups</option>
+                        <option value="remove">Remove from groups</option>
+                        <option value="set">Overwrite (Set exactly these)</option>
+                    </select>
+                </div>
+
+                <label style="display: block; font-size: 11px; text-transform: uppercase; margin-bottom: 8px;">Target Groups</label>
+                <div style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 6px; padding: 10px;">
+                    <?php foreach ($availableGroups as $group): ?>
+                        <label class="zd-columns-item" style="margin-bottom: 8px; cursor: pointer;">
+                            <input type="checkbox" name="groups[]" value="<?= $group['group_uuid'] ?>">
+                            <span style="font-size: 13px;"><?= htmlspecialchars($group['name']) ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </form>
+        </div>
+        <div class="zd-publish-footer">
+            <button type="button" class="zd-btn" id="zd-bulk-restrict-cancel">Cancel</button>
+            <button type="button" class="zd-btn zd-btn-primary" id="zd-bulk-restrict-confirm">Update Selected</button>
         </div>
     </div>
 </div>

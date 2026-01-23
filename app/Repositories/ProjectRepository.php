@@ -234,16 +234,22 @@ class ProjectRepository
 
     public function removeMember(string $projectUuid, string $personUuid): void
     {
-        $st = $this->pdo->prepare("
+        // 1. Remove from Project Crew
+        $st1 = $this->pdo->prepare("
             DELETE FROM project_members
-            WHERE project_id = UUID_TO_BIN(:p_uuid_d,1)
-              AND person_id  = UUID_TO_BIN(:person_uuid_d,1)
+            WHERE project_id = UUID_TO_BIN(:p_uuid, 1)
+              AND person_id  = UUID_TO_BIN(:person_uuid, 1)
             LIMIT 1
         ");
-        $st->execute([
-            ':p_uuid_d'      => $projectUuid,
-            ':person_uuid_d' => $personUuid,
-        ]);
+        $st1->execute([':p_uuid' => $projectUuid, ':person_uuid' => $personUuid]);
+
+        // 2. Cleanup: Remove from all Sensitive Groups in this project
+        $st2 = $this->pdo->prepare("
+            DELETE FROM sensitive_group_members 
+            WHERE person_id = UUID_TO_BIN(:person_uuid, 1)
+              AND group_id IN (SELECT id FROM sensitive_groups WHERE project_id = UUID_TO_BIN(:p_uuid, 1))
+        ");
+        $st2->execute([':p_uuid' => $projectUuid, ':person_uuid' => $personUuid]);
     }
 
     public function projectBrief(string $projectUuid): ?array
@@ -284,5 +290,127 @@ class ProjectRepository
     ");
         $stmt->execute([':pid' => $personUuid, ':prj' => $projectUuid]);
         return (bool)$stmt->fetchColumn();
+    }
+
+    /**
+     * List all security groups for a specific project
+     */
+    public function listSensitiveGroups(string $projectUuid): array
+    {
+        $sql = "SELECT 
+                    BIN_TO_UUID(sg.id, 1) as group_uuid,
+                    sg.name,
+                    sg.description,
+                    sg.created_at,
+                    (SELECT COUNT(*) FROM sensitive_group_members WHERE group_id = sg.id) as member_count
+                FROM sensitive_groups sg
+                WHERE sg.project_id = UUID_TO_BIN(:puuid, 1)
+                ORDER BY sg.name ASC";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['puuid' => $projectUuid]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Create a new security group
+     */
+    public function createSensitiveGroup(string $projectUuid, string $name): bool
+    {
+        $sql = "INSERT INTO sensitive_groups (id, project_id, name) 
+                VALUES (UUID_TO_BIN(UUID(), 1), UUID_TO_BIN(:puuid, 1), :name)";
+
+        return $this->pdo->prepare($sql)->execute([
+            'puuid' => $projectUuid,
+            'name'  => $name
+        ]);
+    }
+
+    /**
+     * Fetch a single security group's details
+     */
+    public function getSensitiveGroup(string $groupUuid): ?array
+    {
+        $st = $this->pdo->prepare("
+            SELECT BIN_TO_UUID(id,1) AS id, name, description 
+            FROM sensitive_groups 
+            WHERE id = UUID_TO_BIN(:uuid, 1) LIMIT 1
+        ");
+        $st->execute([':uuid' => $groupUuid]);
+        return $st->fetch(\PDO::FETCH_ASSOC) ?: null;
+    }
+
+    /**
+     * List all persons currently in a specific group
+     */
+    public function listGroupMembers(string $groupUuid): array
+    {
+        $sql = "SELECT BIN_TO_UUID(p.id, 1) as person_uuid, p.display_name, p.first_name, p.last_name, 
+                       pm.role,
+                       (SELECT pc.value FROM person_contacts pc WHERE pc.person_id = p.id AND pc.type='email' AND pc.is_primary=1 LIMIT 1) as email
+                FROM persons p
+                JOIN sensitive_group_members sgm ON p.id = sgm.person_id
+                -- Link to project_members to get the role within this project
+                JOIN sensitive_groups sg ON sgm.group_id = sg.id
+                JOIN project_members pm ON (p.id = pm.person_id AND sg.project_id = pm.project_id)
+                WHERE sgm.group_id = UUID_TO_BIN(:group_uuid, 1)
+                ORDER BY p.last_name ASC";
+        $st = $this->pdo->prepare($sql);
+        $st->execute(['group_uuid' => $groupUuid]);
+        return $st->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    public function addGroupMember(string $groupUuid, string $personUuid): void
+    {
+        $st = $this->pdo->prepare("
+            INSERT IGNORE INTO sensitive_group_members (group_id, person_id)
+            VALUES (UUID_TO_BIN(:gid, 1), UUID_TO_BIN(:pid, 1))
+        ");
+        $st->execute(['gid' => $groupUuid, 'pid' => $personUuid]);
+    }
+
+    public function removeGroupMember(string $groupUuid, string $personUuid): void
+    {
+        $st = $this->pdo->prepare("
+            DELETE FROM sensitive_group_members 
+            WHERE group_id = UUID_TO_BIN(:gid, 1) AND person_id = UUID_TO_BIN(:pid, 1)
+        ");
+        $st->execute(['gid' => $groupUuid, 'pid' => $personUuid]);
+    }
+
+    public function deleteSensitiveGroup(string $groupUuid): void
+    {
+        $st = $this->pdo->prepare("DELETE FROM sensitive_groups WHERE id = UUID_TO_BIN(:uuid, 1) LIMIT 1");
+        $st->execute([':uuid' => $groupUuid]);
+    }
+
+    public function addGroupMembersBatch(string $groupUuid, array $personUuids): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $st = $this->pdo->prepare("INSERT IGNORE INTO sensitive_group_members (group_id, person_id) VALUES (UUID_TO_BIN(:gid, 1), UUID_TO_BIN(:pid, 1))");
+            foreach ($personUuids as $uuid) {
+                $st->execute(['gid' => $groupUuid, 'pid' => $uuid]);
+            }
+            $this->pdo->commit();
+        } catch (\Exception $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    public function removeGroupMembersBatch(string $groupUuid, array $personUuids): void
+    {
+        $this->pdo->beginTransaction();
+        try {
+            $st = $this->pdo->prepare("DELETE FROM sensitive_group_members WHERE group_id = UUID_TO_BIN(:gid, 1) AND person_id = UUID_TO_BIN(:pid, 1)");
+            foreach ($personUuids as $uuid) {
+                $st->execute(['gid' => $groupUuid, 'pid' => $uuid]);
+            }
+            $this->pdo->commit();
+        } catch (\Exception $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
     }
 }

@@ -701,59 +701,71 @@
 
     // Poll every 4 seconds
     // setInterval(pollJobStatus, 4000); // Disabled until endpoint is ready
-    // Toggle lock (restricted)
-    tbodyEl.addEventListener("click", async (ev) => {
-      const btn = ev.target.closest("button.restrict-toggle");
-      if (!btn) return;
-      ev.stopPropagation();
+    // --- Group-Based Restriction Handling (Multi-select) ---
+    // --- Group-Based Restriction Handling (Multi-select) ---
+    document.addEventListener("submit", async (e) => {
+      // 1. Identify the restriction form
+      if (!e.target.classList.contains("restrict-form")) return;
+      e.preventDefault();
 
-      const clipUuid = btn.getAttribute("data-clip");
-      if (!clipUuid) return;
+      const form = e.target;
+      const clipUuid = form.dataset.clip;
+      const menuRoot = form.closest(".zd-pro-menu");
+      const trigger = menuRoot.querySelector(".restrict-trigger");
+      const label = trigger.querySelector(".restrict-label");
+      const lockIcon = trigger.querySelector(".lock");
 
-      // Use the row's real day UUID (important in "All days" mode)
-      const tr = btn.closest("tr[data-clip-uuid]");
-      const rowDayUuid = tr?.getAttribute("data-day-uuid") || dayUuid || "";
+      // 2. Prepare Multi-Select Data (includes group array)
+      const formData = new FormData(form);
+      // Sync the global quick_csrf token from the root dataset
+      const csrfVal = root.dataset.quickCsrf || "";
+      formData.append("_csrf", csrfVal);
 
-      const cur = parseInt(btn.getAttribute("data-restricted") || "0", 10);
-      const next = cur ? 0 : 1;
-
-      const body = new URLSearchParams({
-        _csrf: quickCsrf,
-        value: String(next),
-      });
+      // 3. UI Loading State
+      trigger.style.opacity = "0.5";
+      trigger.style.pointerEvents = "none";
 
       try {
-        const resp = await fetch(
-          `/admin/projects/${encodeURIComponent(
-            projectUuid,
-          )}/days/${encodeURIComponent(rowDayUuid)}/clips/${encodeURIComponent(
-            clipUuid,
-          )}/restrict`,
+        // Use the row context for the URL to handle "All Days" view correctly
+        const tr = form.closest("tr[data-clip-uuid]");
+        const rowDayUuid =
+          tr?.getAttribute("data-day-uuid") || root.dataset.day || "";
+
+        const response = await fetch(
+          `/admin/projects/${root.dataset.project}/days/${rowDayUuid}/clips/${clipUuid}/restrict`,
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body,
+            body: formData,
           },
         );
 
-        const json = await resp.json();
-        if (!resp.ok || !json.ok) {
-          alert(json.error || "Toggle failed");
-          return;
-        }
+        const result = await response.json();
 
-        // Update state + icon
-        btn.setAttribute("data-restricted", next ? "1" : "0");
-        const lockEl = btn.querySelector(".lock");
-        if (lockEl) {
-          lockEl.classList.toggle("on", !!next);
-          lockEl.classList.toggle("off", !next);
+        if (response.ok && result.ok) {
+          // 4. Update UI based on if groups were actually selected
+          const isRestricted = result.is_restricted;
+
+          trigger.classList.toggle("is-active", isRestricted);
+          if (label) label.textContent = isRestricted ? "Restricted" : "Public";
+
+          if (lockIcon) {
+            lockIcon.classList.toggle("on", isRestricted);
+            lockIcon.classList.toggle("off", !isRestricted);
+          }
+
+          // 5. SUCCESS: Close the menu and reset row z-index
+          menuRoot.classList.remove("is-active");
+          if (tr) tr.style.zIndex = "";
+        } else {
+          alert(
+            "Error updating restriction: " + (result.error || "Unknown error"),
+          );
         }
-      } catch (e) {
-        console.error(e);
-        alert("Network error");
+      } catch (err) {
+        console.error("Restriction update failed:", err);
+      } finally {
+        trigger.style.opacity = "1";
+        trigger.style.pointerEvents = "auto";
       }
     });
   }
@@ -810,7 +822,17 @@
           tbodyEl.innerHTML = newTbody.innerHTML;
         }
 
-        // 2. Replace Pager
+        // 2. REFRESH CSRF TOKENS (Essential for Bulk/Single Actions)
+        const newRoot = doc.querySelector(".zd-clips-page");
+        if (newRoot && root) {
+          // Sync the fresh tokens from the server into our live root dataset
+          root.dataset.converterCsrf = newRoot.dataset.converterCsrf;
+          root.dataset.quickCsrf = newRoot.dataset.quickCsrf;
+
+          // Log for debugging if needed: console.log("Tokens refreshed:", root.dataset.converterCsrf);
+        }
+
+        // 3. Replace Pager
         const oldPager = document.querySelector(".zd-pager");
         const newPager = doc.querySelector(".zd-pager");
         if (oldPager) {
@@ -818,14 +840,14 @@
           else oldPager.innerHTML = ""; // Clear if no pages left
         }
 
-        // 3. Replace Header Stats (Count / Total Runtime)
+        // 4. Replace Header Stats (Count / Total Runtime)
         const oldHead = document.querySelector(".zd-clips-head");
         const newHead = doc.querySelector(".zd-clips-head");
         if (oldHead && newHead) {
           oldHead.innerHTML = newHead.innerHTML;
         }
 
-        // 4. Re-initialize JS logic on new elements
+        // 5. Re-initialize JS logic on new elements
         initDurationsOnPage(); // Recalculate pretty timecodes
         renderTotalRuntimeFromDayAttribute(); // Update total text
         renderUnfilteredRuntime();
@@ -837,10 +859,10 @@
         });
         updateBulkUI(); // Recalculate selected stats
 
-        // 5. Update Browser URL (so refresh keeps filters)
+        // 6. Update Browser URL (so refresh keeps filters)
         window.history.replaceState({}, "", targetUrl);
 
-        // 6. Re-sync layout so pager and headers stay centered with the table
+        // 7. Re-sync layout so pager and headers stay centered with the table
         syncClipsLayout();
       } catch (err) {
         console.error("Live filter error:", err);
@@ -955,8 +977,26 @@
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".zd-actions-btn");
     const wrap = btn?.closest(".zd-actions-wrap");
+    const isInsideRestrictionMenu = e.target.closest(".zd-pro-menu");
 
-    // Page + shared refs
+    // 1. Logic for Single Restriction Menu (Click Outside)
+    if (!isInsideRestrictionMenu) {
+      document.querySelectorAll(".zd-pro-menu.is-active").forEach((menu) => {
+        menu.classList.remove("is-active");
+        const tr = menu.closest("tr");
+        if (tr) tr.style.zIndex = "";
+      });
+    }
+
+    // 2. Logic for ⋯ Actions Menu (Click Outside)
+    if (!btn) {
+      document.querySelectorAll(".zd-actions-wrap.open").forEach((w) => {
+        w.classList.remove("open");
+        w.classList.remove("drop-up");
+      });
+    }
+
+    // 3. Page + shared refs (moved inside listener scope)
     const pageRoot = document.querySelector(".zd-clips-page");
     const projectUuid = pageRoot?.dataset.project || "";
     const currentDayUuid = pageRoot?.dataset.day || "";
@@ -968,6 +1008,7 @@
     const bulkDeleteForm = document.getElementById("zd-bulk-delete-form");
     const bulkDeleteUuids = document.getElementById("zd-bulk-delete-uuids");
 
+    // Helper functions inside the listener
     function getSelectedClipUuids() {
       return Array.from(
         document.querySelectorAll(".zd-table tbody tr.zd-selected-row"),
@@ -983,32 +1024,20 @@
       });
     }
 
-    // === Open/close any ⋯ menu ===
+    // === Handle Opening the ⋯ menu ===
     if (btn && wrap) {
       const wasOpen = wrap.classList.contains("open");
-
-      // Close everything first so we never have two open
       closeAllMenus();
 
       if (!wasOpen) {
         wrap.classList.remove("drop-up");
-
-        // Auto-direction (skip header)
         if (!wrap.classList.contains("zd-actions-wrap-head")) {
           const rect = wrap.getBoundingClientRect();
-          const menuHeight = 160; // estimated dropdown height
           const spaceBelow = window.innerHeight - rect.bottom;
-          const spaceAbove = rect.top;
-
-          // Not enough room below → fold up
-          if (spaceBelow < menuHeight && spaceAbove > menuHeight) {
-            wrap.classList.add("drop-up");
-          }
+          if (spaceBelow < 160) wrap.classList.add("drop-up");
         }
-
         wrap.classList.add("open");
       }
-
       e.stopPropagation();
       return;
     }
@@ -1030,6 +1059,75 @@
       importFileInput.click(); // open file picker
       closeAllMenus();
       return;
+    }
+
+    // === Header bulk: Manage Restrictions (Modal) ===
+    const bulkRestrictOpen = document.getElementById("zd-bulk-restrict-open");
+    const bulkRestrictModal = document.getElementById("zd-bulk-restrict-modal");
+    const bulkRestrictCancel = document.getElementById(
+      "zd-bulk-restrict-cancel",
+    );
+    const bulkRestrictConfirm = document.getElementById(
+      "zd-bulk-restrict-confirm",
+    );
+
+    if (bulkRestrictOpen) {
+      bulkRestrictOpen.addEventListener("click", (e) => {
+        e.preventDefault();
+        const uuids = getSelectedClipUuids();
+        if (!uuids.length) return alert("No clips selected.");
+
+        document.getElementById("zd-bulk-restrict-count").textContent =
+          uuids.length;
+        bulkRestrictModal.hidden = false;
+        closeAllMenus();
+      });
+    }
+
+    if (bulkRestrictCancel) {
+      bulkRestrictCancel.addEventListener(
+        "click",
+        () => (bulkRestrictModal.hidden = true),
+      );
+    }
+
+    if (bulkRestrictConfirm) {
+      bulkRestrictConfirm.addEventListener("click", async () => {
+        if (bulkRestrictConfirm.disabled) return; // Prevent double-clicks
+        bulkRestrictConfirm.disabled = true;
+        const uuids = getSelectedClipUuids();
+        const form = document.getElementById("zd-bulk-restrict-form");
+        const formData = new FormData(form);
+
+        formData.append("clip_uuids", uuids.join(","));
+        formData.append("_csrf", root.dataset.quickCsrf);
+
+        bulkRestrictConfirm.disabled = true;
+        bulkRestrictConfirm.textContent = "Updating...";
+
+        try {
+          const resp = await fetch(
+            `/admin/projects/${projectUuid}/days/${currentDayUuid}/clips/bulk-restrict`,
+            {
+              method: "POST",
+              body: formData,
+            },
+          );
+          const result = await resp.json();
+
+          if (resp.ok && result.ok) {
+            window.location.reload(); // Simplest way to refresh all lock icons
+          } else {
+            alert("Error: " + (result.error || "Unknown error"));
+            bulkRestrictConfirm.disabled = false;
+            bulkRestrictConfirm.textContent = "Update Selected";
+          }
+        } catch (err) {
+          console.error(err);
+          alert("Network error.");
+          bulkRestrictConfirm.disabled = false;
+        }
+      });
     }
 
     // === Header bulk: Delete selected ===

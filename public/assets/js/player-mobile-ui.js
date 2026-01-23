@@ -2,6 +2,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const vid = document.getElementById("zdVideo");
   if (!vid) return;
 
+  // ADD THIS: Global flag to stop the render loop
+  let shouldStopLoop = false;
+  let activeFrameId = null;
+
   const TC_OFFSET_FRAMES = 1.2;
   const EPS = 1e-6;
   const MUTE_KEY = "zd_player_is_muted";
@@ -85,10 +89,27 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const updateLoop = () => {
+    if (shouldStopLoop) return; // Stop condition
+
     renderFrame(vid.currentTime);
-    if ("requestVideoFrameCallback" in vid)
-      vid.requestVideoFrameCallback(updateLoop);
-    else requestAnimationFrame(updateLoop);
+
+    if ("requestVideoFrameCallback" in vid) {
+      activeFrameId = vid.requestVideoFrameCallback(updateLoop);
+    } else {
+      activeFrameId = requestAnimationFrame(updateLoop);
+    }
+  };
+
+  // ADD THIS: Function to stop the loop
+  window.stopPlayerLoop = () => {
+    shouldStopLoop = true;
+    if (activeFrameId !== null) {
+      if ("cancelVideoFrameCallback" in vid) {
+        vid.cancelVideoFrameCallback(activeFrameId);
+      } else {
+        cancelAnimationFrame(activeFrameId);
+      }
+    }
   };
 
   // === 2. INITIALIZATION ===
@@ -357,7 +378,7 @@ document.addEventListener("DOMContentLoaded", () => {
       {
         method: "POST",
         body: formData,
-      }
+      },
     )
       .then((res) => {
         if (!res.ok) {
@@ -482,7 +503,7 @@ function updateStarUI(linkEl, isSelect) {
     if (!existingStar) {
       const star = document.createElement("span");
       star.style.cssText = "color: #fbbf24; font-size: 14px;";
-      star.title = "Select"; // This matches the new showContextMenu logic
+      star.title = "Select";
       star.textContent = "★";
       iconsWrap.prepend(star);
     }
@@ -492,3 +513,35 @@ function updateStarUI(linkEl, isSelect) {
     }
   }
 }
+
+// Back button navigation fix (this should NOT be inside updateStarUI)
+document.addEventListener("DOMContentLoaded", () => {
+  const backLink = document.querySelector(".m-back-link");
+
+  if (backLink) {
+    backLink.removeAttribute("onclick");
+
+    backLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const targetUrl = backLink.getAttribute("href");
+      const video = document.getElementById("zdVideo");
+
+      // Stop the render loop FIRST
+      if (window.stopPlayerLoop) {
+        window.stopPlayerLoop();
+      }
+
+      // Then clean up video
+      if (video) {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      }
+
+      // Navigate immediately
+      window.location.href = targetUrl;
+    });
+  }
+});

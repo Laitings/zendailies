@@ -63,6 +63,10 @@ $ptitle = $ctx['title'] ?? '';
 $isProjectAdmin = !empty($flags['is_project_admin']);
 $personUuid     = $_SESSION['person_uuid'] ?? null;
 
+// Add this line to resolve the undefined variable error
+$userRole       = $_SESSION['account']['user_role'] ?? 'regular';
+$isGlobalAdmin  = ($userRole === 'admin' || !empty($_SESSION['account']['is_superuser']));
+
 // Fallback: recompute project-admin once if not cached but we know project/person
 if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
     try {
@@ -73,6 +77,8 @@ if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
         // ignore
     }
 }
+
+$isMobile = $isMobile ?? false;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -293,26 +299,32 @@ if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
             /* Allows z-index to work on children */
         }
 
-        /* --- ZD Pro Actions Dropdown --- */
+        /* === ZENTROPA PRO GLOBAL DROPDOWNS === */
         .zd-pro-menu {
             position: relative;
             display: inline-block;
-            margin-right: 12px;
         }
 
         .zd-pro-trigger {
-            background: var(--zd-bg-input);
-            border: 1px solid var(--zd-border-subtle);
-            color: var(--zd-text-muted);
-            padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            display: flex;
+            all: unset;
+            display: inline-flex;
             align-items: center;
-            gap: 5px;
+            gap: 8px;
+            background: #18202b !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: #9ca3af !important;
+            padding: 5px 12px !important;
+            border-radius: 6px !important;
+            cursor: pointer !important;
+            font-size: 13px !important;
+            font-weight: 500 !important;
+            transition: all 0.2s ease;
+        }
+
+        .zd-pro-trigger:hover {
+            color: #ffffff !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+            background: #1f2937 !important;
         }
 
         .zd-pro-content {
@@ -320,52 +332,59 @@ if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
             position: absolute;
             right: 0;
             top: 100%;
-            margin-top: 5px;
-            background: #1c1e26;
-            border: 1px solid var(--zd-border-subtle);
-            border-radius: 6px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-            z-index: 99999;
-            min-width: 160px;
-            padding: 4px 0;
+            margin-top: 6px;
+            background: #171922;
+            border: 1px solid #1f232d;
+            border-radius: 8px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+            z-index: 9999 !important;
+            min-width: 180px;
+            padding: 6px 0;
+            overflow: hidden;
         }
 
-        .zd-pro-menu.drop-up .zd-pro-content {
-            top: auto;
-            bottom: 100%;
-            margin-bottom: 5px;
+        .zd-pro-content.is-active {
+            display: block !important;
         }
 
         .zd-pro-item {
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 8px 16px;
-            color: var(--zd-text-main);
+            padding: 10px 16px;
+            color: #eef1f5;
             text-decoration: none;
             font-size: 13px;
-            border: none;
             background: transparent;
+            border: none;
             width: 100%;
-            box-sizing: border-box;
             text-align: left;
             cursor: pointer;
+            box-sizing: border-box;
+            transition: background 0.15s;
         }
 
         .zd-pro-item:hover {
-            background: var(--zd-accent);
-            color: #fff;
+            background: rgba(58, 160, 255, 0.15);
+            color: #3aa0ff;
         }
 
         .zd-pro-icon {
             width: 14px;
             height: 14px;
             filter: brightness(0) invert(1);
-            opacity: 0.8;
+            opacity: 0.6;
         }
 
-        .zd-pro-content.is-active {
-            display: block;
+        .zd-pro-item:hover .zd-pro-icon {
+            opacity: 1;
+        }
+
+        /* Drop-up logic handled by global JS */
+        .zd-pro-menu.drop-up .zd-pro-content {
+            top: auto;
+            bottom: 100%;
+            margin-bottom: 6px;
         }
 
         /* --- ICON VISIBILITY FIX --- */
@@ -387,6 +406,22 @@ if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
             animation: zdFadeIn 0.15s ease-out;
         }
 
+        /* Ensure the Actions column has enough space and proper font */
+        .zd-actions-column {
+            width: 140px;
+            /* Comfortable fixed width for the button */
+            text-align: right;
+            padding-right: 20px !important;
+            /* Prevents button from touching the panel edge */
+            overflow: visible !important;
+        }
+
+        /* Force the Zendailies Pro font stack on the trigger */
+        .zd-pro-trigger {
+            font-family: "Inter", -apple-system, sans-serif !important;
+            letter-spacing: 0.02em;
+        }
+
         @keyframes zdFadeIn {
             from {
                 opacity: 0;
@@ -397,6 +432,52 @@ if (!$isSuperuser && !$isProjectAdmin && $puuid && $personUuid) {
                 opacity: 1;
                 transform: translateY(0);
             }
+        }
+
+        /* main.php — Unified Header Styles */
+        .zd-header {
+            margin-bottom: 25px !important;
+            /* Unified spacing across all indexes */
+        }
+
+        .zd-header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--zd-text-main);
+            line-height: 1;
+            margin: 0 0 20px 0 !important;
+            /* Space between title and buttons */
+            padding-bottom: 15px;
+            position: relative;
+        }
+
+        /* The decorative line */
+        .zd-header h1::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: #2c3240;
+            border-radius: 4px;
+        }
+
+        /* --- Global Table Header Sync --- */
+        .zd-table thead th,
+        .zd-users-table thead th {
+            text-align: left;
+            padding: 10px 16px;
+            background: #171922;
+            font-family: "Inter", -apple-system, sans-serif !important;
+            /* Force unified font */
+            font-size: 0.8rem !important;
+            /* Standardized size */
+            text-transform: uppercase;
+            font-weight: 700;
+            color: var(--zd-text-muted);
+            border-bottom: 1px solid var(--zd-border-subtle);
+            letter-spacing: 0.03em;
         }
     </style>
 
@@ -429,7 +510,8 @@ if ($isMobile && $isPlayerPage) {
             </a>
             <?php
             // --- Topbar links ---
-            if ($isSuperuser): ?>
+            // Allow Superusers AND Global Admins (admin role) to see the Projects link
+            if ($isSuperuser || $isGlobalAdmin): ?>
                 <a href="/admin/projects" class="zd-toplink <?= (str_starts_with($reqUri, '/admin/projects') && empty($ctx)) ? 'active' : '' ?>">Projects</a>
             <?php endif; ?>
 
@@ -438,7 +520,8 @@ if ($isMobile && $isPlayerPage) {
             $userRole = $_SESSION['account']['user_role'] ?? 'regular';
             $isGlobalAdmin = ($userRole === 'admin' || !empty($_SESSION['account']['is_superuser']));
 
-            if ($isGlobalAdmin):
+            // Allow access if they are a System Admin OR an Admin of the current project
+            if ($isGlobalAdmin || $isProjectAdmin):
             ?>
                 <a href="/admin/users" class="zd-toplink <?= str_starts_with($reqUri, '/admin/users') ? 'active' : '' ?>">Users</a>
             <?php endif; ?>

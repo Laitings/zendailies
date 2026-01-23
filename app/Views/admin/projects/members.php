@@ -204,12 +204,11 @@ $roles = ['producer', 'director', 'post_supervisor', 'editor', 'assistant_editor
 <div class="zd-page-container">
 
     <div class="zd-header" style="position: relative; margin-bottom: 25px;">
-        <h1 style="margin: 0; padding-bottom: 15px; position: relative;">
-            Members <span style="color: var(--zd-text-muted); font-weight: 400;">· <?= htmlspecialchars($project['title']) ?></span>
+        <h1 style="margin: 0; padding-bottom: 15px; display: flex; align-items: center; gap: 20px;">
+            <a href="/admin/projects/<?= $project['id'] ?>/members" style="text-decoration:none; color: var(--zd-text-main);">Members</a>
+            <span style="color: var(--zd-border-subtle);">|</span>
+            <a href="/admin/projects/<?= $project['id'] ?>/sensitive-groups" style="text-decoration:none; color: var(--zd-text-muted); font-weight: 400; transition: color 0.2s;" onmouseover="this.style.color='#3aa0ff'" onmouseout="this.style.color='var(--zd-text-muted)'">Security Groups</a>
 
-            <div style="position: absolute; right: 0; top: -4px;">
-                <a href="/admin/projects" class="zd-btn-ghost">Back to Projects</a>
-            </div>
         </h1>
     </div>
 
@@ -232,29 +231,54 @@ $roles = ['producer', 'director', 'post_supervisor', 'editor', 'assistant_editor
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($members as $m): ?>
+                        <?php foreach ($members as $m):
+                            $formId = "form-member-" . $m['person_uuid']; // Create a unique ID for this row's form
+                        ?>
                             <tr>
                                 <td>
                                     <div style="font-weight: 600; color: var(--zd-text-main);"><?= htmlspecialchars($m['display_name'] ?? ($m['first_name'] . ' ' . $m['last_name'])) ?></div>
                                     <div style="font-size: 11px; color: var(--zd-text-muted); font-family: monospace;"><?= htmlspecialchars($m['email'] ?? '') ?></div>
                                 </td>
                                 <td>
-                                    <form method="post" action="/admin/projects/<?= $project['id'] ?>/members/<?= $m['person_uuid'] ?>" style="margin:0;">
+                                    <form id="<?= $formId ?>" method="post" action="/admin/projects/<?= $project['id'] ?>/members/<?= $m['person_uuid'] ?>" style="margin:0;">
                                         <input type="hidden" name="csrf" value="<?= $csrf ?>">
                                         <select name="role" class="zd-select role-select-inline" onchange="this.form.submit()">
                                             <?php foreach ($roles as $r): ?>
                                                 <option value="<?= $r ?>" <?= ($m['role'] === $r) ? 'selected' : ''; ?>>
-                                                    <?= ucwords(str_replace('_', ' ', $r)) ?>
+                                                    <?php
+                                                    $label = str_replace('_', ' ', $r);
+                                                    if (in_array($r, ['dit', 'dop'])) {
+                                                        echo strtoupper($label);
+                                                    } else {
+                                                        echo ucwords($label);
+                                                    }
+                                                    ?>
                                                 </option>
                                             <?php endforeach; ?>
                                         </select>
-                                </td>
-                                <td style="text-align: center;">
-                                    <input type="checkbox" name="is_project_admin" value="1" onchange="this.form.submit()" <?= !empty($m['is_project_admin']) ? 'checked' : ''; ?>>
-                                </td>
-                                <td style="text-align: center;">
-                                    <input type="checkbox" name="can_download" value="1" onchange="this.form.submit()" <?= !empty($m['can_download']) ? 'checked' : ''; ?>>
                                     </form>
+                                </td>
+                                <td style="text-align: center;">
+                                    <?php
+                                    // Check if the member being rendered is the currently logged-in user
+                                    $isMe = ($m['person_uuid'] === ($_SESSION['person_uuid'] ?? ''));
+                                    ?>
+
+                                    <input type="checkbox"
+                                        name="is_project_admin"
+                                        form="<?= $formId ?>"
+                                        value="1"
+                                        onchange="document.getElementById('<?= $formId ?>').submit()"
+                                        <?= !empty($m['is_project_admin']) ? 'checked' : ''; ?>
+                                        <?= $isMe ? 'disabled' : ''; ?>
+                                        title="<?= $isMe ? 'You cannot remove your own admin status' : ''; ?>">
+
+                                    <?php if ($isMe): ?>
+                                        <input type="hidden" name="is_project_admin" form="<?= $formId ?>" value="1">
+                                    <?php endif; ?>
+                                </td>
+                                <td style="text-align: center;">
+                                    <input type="checkbox" name="can_download" form="<?= $formId ?>" value="1" onchange="document.getElementById('<?= $formId ?>').submit()" <?= !empty($m['can_download']) ? 'checked' : ''; ?>>
                                 </td>
                                 <td style="text-align: right;">
                                     <form method="post" action="/admin/projects/<?= $project['id'] ?>/members/<?= $m['person_uuid'] ?>/remove" style="margin:0;">
@@ -281,26 +305,34 @@ $roles = ['producer', 'director', 'post_supervisor', 'editor', 'assistant_editor
                         <label style="display:block; font-size: 10px; text-transform:uppercase; color: var(--zd-text-muted); margin-bottom: 6px;">Select User</label>
                         <select name="email" class="zd-select" required>
                             <option value="">-- Choose User --</option>
-                            <?php foreach ($all_users as $u): ?>
-                                <option value="<?= $u['email'] ?>"><?= htmlspecialchars($u['last_name'] . ', ' . $u['first_name']) ?></option>
+                            <?php
+                            // 1. Create a list of emails already in the project
+                            $existingEmails = array_column($members, 'email');
+
+                            foreach ($all_users as $u):
+                                // 2. Skip this user if they are already a member
+                                if (in_array($u['email'], $existingEmails)) continue;
+                            ?>
+                                <option value="<?= $u['email'] ?>">
+                                    <?= htmlspecialchars($u['last_name'] . ', ' . $u['first_name']) ?>
+                                </option>
                             <?php endforeach; ?>
                         </select>
+
 
                         <label style="display:block; font-size: 10px; text-transform:uppercase; color: var(--zd-text-muted); margin-bottom: 6px;">Assign Role</label>
                         <select name="role" class="zd-select">
                             <?php foreach ($roles as $r): ?>
                                 <?php
-                                // Format the label: replace underscores with spaces
-                                $label = str_replace('_', ' ', $r);
+                                // 1. Format the label for the UI
+                                $label = in_array($r, ['dit', 'dop']) ? strtoupper($r) : ucwords(str_replace('_', ' ', $r));
 
-                                // Check for specific acronyms, otherwise use standard Title Case
-                                if (in_array($r, ['dit', 'dop'])) {
-                                    $label = strtoupper($label);
-                                } else {
-                                    $label = ucwords($label);
-                                }
+                                // 2. Default to 'reviewer' if no previous selection exists
+                                $selected = ($r === 'reviewer') ? 'selected' : '';
                                 ?>
-                                <option value="<?= $r ?>"><?= $label ?></option>
+                                <option value="<?= $r ?>" <?= $selected ?>>
+                                    <?= $label ?>
+                                </option>
                             <?php endforeach; ?>
                         </select>
 

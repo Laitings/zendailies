@@ -48,27 +48,16 @@ $is_superuser = !empty($u['is_superuser']);
 
     /* --- Header --- */
     .zd-header {
-        margin-bottom: 20px;
-
-        /* Increased space to accommodate the button height + gap */
-        padding-bottom: 20px;
-
-        /* Ensure minimum height so button fits even if font is small */
-        min-height: 32px;
-
+        margin-bottom: 25px !important;
+        /* Unified spacing */
+        padding-bottom: 0;
+        /* Remove the extra padding */
+        min-height: auto;
+        /* Allow the header to collapse to the text size */
         position: relative;
     }
 
-    .zd-header::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        height: 2px;
-        background: #2c3240;
-        border-radius: 4px;
-    }
+
 
     .zd-header h1 {
         font-size: 20px;
@@ -287,7 +276,7 @@ $is_superuser = !empty($u['is_superuser']);
     <div class="zd-header">
         <h1>Edit User</h1>
         <a href="/admin/users" class="zd-btn zd-btn-ghost"
-            style="position: absolute; right: 0; top: -2px;"> Back to List
+            style="position: absolute; right: 0; top: -10px;"> Back to List
         </a>
     </div>
 

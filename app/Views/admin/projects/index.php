@@ -25,20 +25,37 @@
         font-family: "Inter", -apple-system, sans-serif;
     }
 
+
     .zd-header h1 {
         font-size: 20px;
         font-weight: 700;
+        color: var(--zd-text-main);
+        line-height: 1;
         margin: 0 0 20px 0;
+        /* Pushes the action row down */
         padding-bottom: 15px;
+        /* Spacing for the line */
         position: relative;
-        border-bottom: 2px solid #2c3240;
     }
 
-    .zd-header-actions {
+    /* The decorative line matching the Users index */
+    .zd-header h1::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 2px;
+        background: #2c3240;
+        border-radius: 4px;
+    }
+
+    /* Action Row (Buttons & Filters) */
+    .zd-projects-header-row {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        gap: 15px;
-        margin-bottom: 30px;
+        width: 100%;
     }
 
     /* --- THE CLIPPING & STACKING CURE --- */
@@ -91,34 +108,6 @@
         overflow: visible !important;
     }
 
-    .zd-users-actions {
-        text-align: right;
-        position: relative;
-        /* Ensure the actions cell itself doesn't limit the child */
-        overflow: visible !important;
-    }
-
-    /* --- Actions Dropdown Fix --- */
-    .zd-actions-content {
-        display: none;
-        position: absolute;
-        right: 0;
-        top: calc(100% + 5px);
-        background: #1c1e26;
-        border: 1px solid var(--zd-border-subtle);
-        border-radius: 6px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
-
-        /* 3. Dropdown must be the highest element on the page */
-        z-index: 1000 !important;
-        min-width: 200px;
-        padding: 6px 0;
-        white-space: nowrap;
-    }
-
-    .zd-actions-content.is-active {
-        display: block;
-    }
 
     /* --- Content Styling --- */
     .zd-cell-title div {
@@ -178,13 +167,16 @@
 
     <div class="zd-header">
         <h1>Projects</h1>
-        <div class="zd-header-actions" style="display: flex; align-items: center; gap: 15px;">
+
+        <div class="zd-projects-header-row" style="display: flex; justify-content: space-between; align-items: center; gap: 15px;">
             <a href="/admin/projects/new" class="zd-btn">+ New Project</a>
 
-            <div class="zd-search-wrap" style="flex-grow: 1; max-width: 300px;">
+            <div class="zd-search-wrap" style="flex-grow: 1; max-width: 400px;">
                 <input type="text" id="zdProjectSearch" placeholder="Search projects or codes..."
-                    style="width: 100%; background: var(--zd-bg-input); border: 1px solid var(--zd-border-subtle); color: var(--zd-text-main); padding: 7px 12px; border-radius: 4px; font-size: 12px; outline: none;">
+                    style="width: 100%; background: #08090b; border: 1px solid #1f232d; color: #eef1f5; padding: 8px 12px; border-radius: 6px; font-size: 13px;">
             </div>
+
+            <div style="width: 220px;" class="hide-on-narrow"></div>
         </div>
     </div>
 
@@ -215,27 +207,6 @@
                             ? (new \DateTime($createdRaw))->format('d-m-Y')
                             : '—';
 
-                        // Define Actions for the partial
-                        $actions = [
-                            [
-                                'label'  => 'Enter Project',
-                                'link'   => "/projects/" . urlencode($uuid) . "/enter",
-                                'icon'   => 'enter', // Updated to your new enter.svg
-                                'method' => 'GET'
-                            ],
-                            [
-                                'label'  => 'Edit Project',
-                                'link'   => "/admin/projects/" . urlencode($uuid) . "/edit",
-                                'icon'   => 'pencil',
-                                'method' => 'GET'
-                            ],
-                            [
-                                'label'  => 'Manage Members',
-                                'link'   => "/admin/projects/" . urlencode($uuid) . "/members",
-                                'icon'   => 'users', // Updated to your new users.svg
-                                'method' => 'GET'
-                            ]
-                        ];
                         ?>
                         <tr>
                             <td style="overflow: visible !important;">
@@ -265,8 +236,33 @@
                             <td class="zd-cell-mono">
                                 <?= htmlspecialchars($createdLabel) ?>
                             </td>
-                            <td class="zd-users-actions" style="text-align: right;">
-                                <?php include __DIR__ . '/../../partials/actions_dropdown.php'; ?>
+                            <td style="text-align: right; overflow: visible !important;">
+                                <?php
+                                // Define the specific actions for this project row
+                                $actions = [
+                                    [
+                                        'label'  => 'Enter Project',
+                                        'link'   => "/projects/" . urlencode($uuid) . "/enter",
+                                        'icon'   => 'enter',
+                                        'method' => 'GET'
+                                    ],
+                                    [
+                                        'label'  => 'Edit Project',
+                                        'link'   => "/admin/projects/" . urlencode($uuid) . "/edit",
+                                        'icon'   => 'pencil',
+                                        'method' => 'GET'
+                                    ],
+                                    [
+                                        'label'  => 'Manage Members',
+                                        'link'   => "/admin/projects/" . urlencode($uuid) . "/members",
+                                        'icon'   => 'users',
+                                        'method' => 'GET'
+                                    ]
+                                ];
+
+                                // Include the unified partial
+                                include __DIR__ . '/../../partials/actions_dropdown.php';
+                                ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>

@@ -170,23 +170,23 @@ final class ClipRepository
         $offset = max(0, (int)($options['offset'] ?? 0));
 
         $sql = "
-                SELECT
-                    BIN_TO_UUID(c.id,1)              AS clip_uuid,
-                    BIN_TO_UUID(c.day_id,1)          AS day_uuid,
-                    c.scene,
-                    c.slate,
-                    c.take,
-                    c.take_int,
-                    c.camera,
-                    c.rating,
-                    c.is_select,
-                    c.is_restricted,
-                    c.created_at,
-                    c.reel,
-                    c.file_name,
-                    c.tc_start,
-                    c.duration_ms,
-                    c.fps,
+            SELECT
+                BIN_TO_UUID(c.id,1)              AS clip_uuid,
+                BIN_TO_UUID(c.day_id,1)          AS day_uuid,
+                c.scene,
+                c.slate,
+                c.take,
+                c.take_int,
+                c.camera,
+                c.rating,
+                c.is_select,
+                c.is_restricted,
+                c.created_at,
+                c.reel,
+                c.file_name,
+                c.tc_start,
+                c.duration_ms,
+                c.fps,
 
                 -- Poster / proxy path (latest by created_at)
                 MAX(CASE WHEN a.asset_type = 'poster'    THEN a.storage_path END) AS poster_path,
@@ -197,7 +197,7 @@ final class ClipRepository
                     SELECT COUNT(*)
                     FROM clip_assets a2
                     WHERE a2.clip_id = c.id
-                      AND a2.asset_type = 'proxy_web'
+                    AND a2.asset_type = 'proxy_web'
                 ) AS proxy_count,
 
                 -- Latest encode job state for this clip, if any
@@ -207,7 +207,15 @@ final class ClipRepository
                     WHERE ej.clip_id = c.id
                     ORDER BY ej.id DESC
                     LIMIT 1
-                ) AS job_state
+                ) AS job_state,
+
+                -- Assigned group UUIDs for the restriction checkboxes
+                (
+                    SELECT GROUP_CONCAT(BIN_TO_UUID(group_id, 1))
+                    FROM clip_sensitive_acl
+                    WHERE clip_id = c.id
+                ) AS assigned_group_uuids
+
             FROM clips c
             JOIN days d ON d.id = c.day_id
             LEFT JOIN clip_assets a ON a.clip_id = c.id
@@ -218,7 +226,6 @@ final class ClipRepository
             ORDER BY " . implode(', ', $orderParts) . "
             LIMIT :limit OFFSET :offset
         ";
-
         $stmt = $this->pdo->prepare($sql);
 
         foreach ($params as $k => $v) {
@@ -352,7 +359,15 @@ final class ClipRepository
                 MAX(CASE WHEN a.asset_type = 'poster'    THEN a.storage_path END) AS poster_path,
                 MAX(CASE WHEN a.asset_type = 'proxy_web' THEN a.storage_path END) AS proxy_path,
                 (SELECT COUNT(*) FROM clip_assets a2 WHERE a2.clip_id = c.id AND a2.asset_type = 'proxy_web') AS proxy_count,
-                (SELECT ej.state FROM encode_jobs ej WHERE ej.clip_id = c.id ORDER BY ej.id DESC LIMIT 1) AS job_state
+                (SELECT ej.state FROM encode_jobs ej WHERE ej.clip_id = c.id ORDER BY ej.id DESC LIMIT 1) AS job_state,
+                
+                -- ADD THIS SUBQUERY HERE:
+                (
+                    SELECT GROUP_CONCAT(BIN_TO_UUID(group_id, 1))
+                    FROM clip_sensitive_acl
+                    WHERE clip_id = c.id
+                ) AS assigned_group_uuids
+
             FROM clips c
             JOIN days d ON d.id = c.day_id
             LEFT JOIN clip_assets a ON a.clip_id = c.id
@@ -860,5 +875,55 @@ final class ClipRepository
         $stmt->execute($params);
 
         return $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
+    }
+
+    public function getClipGroups(string $clipUuid): array
+    {
+        $sql = "SELECT BIN_TO_UUID(group_id, 1) as group_uuid 
+            FROM clip_sensitive_acl 
+            WHERE clip_id = UUID_TO_BIN(:clip, 1)";
+        $st = $this->pdo->prepare($sql);
+        $st->execute([':clip' => $clipUuid]);
+        return $st->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
+    public function setClipGroups(string $clipUuid, array $groupUuids): void
+    {
+        // Check if we are already in a transaction from a bulk operation
+        $managed = false;
+        if (!$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+            $managed = true;
+        }
+
+        try {
+            // 1. Clear existing
+            $st = $this->pdo->prepare("DELETE FROM clip_sensitive_acl WHERE clip_id = UUID_TO_BIN(:clip, 1)");
+            $st->execute([':clip' => $clipUuid]);
+
+            // 2. Insert new ones
+            if (!empty($groupUuids)) {
+                $ins = $this->pdo->prepare("INSERT INTO clip_sensitive_acl (clip_id, group_id) VALUES (UUID_TO_BIN(:clip, 1), UUID_TO_BIN(:gid, 1))");
+                foreach ($groupUuids as $gid) {
+                    $ins->execute([':clip' => $clipUuid, ':gid' => $gid]);
+                }
+                // 3. Ensure the clip is marked as restricted
+                $this->pdo->prepare("UPDATE clips SET is_restricted = 1 WHERE id = UUID_TO_BIN(:clip, 1)")->execute([':clip' => $clipUuid]);
+            } else {
+                // 4. If no groups, it's no longer restricted
+                $this->pdo->prepare("UPDATE clips SET is_restricted = 0 WHERE id = UUID_TO_BIN(:clip, 1)")->execute([':clip' => $clipUuid]);
+            }
+
+            // Only commit if we started the transaction here
+            if ($managed) {
+                $this->pdo->commit();
+            }
+        } catch (\Exception $e) {
+            // Only roll back if we started the transaction here
+            if ($managed && $this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
     }
 }

@@ -157,6 +157,7 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/quick',    [ProjectClipsController::class, 'quickField']);
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/select',   [ProjectClipsController::class, 'quickSelect']);   // ✅ fixed
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/restrict', [ProjectClipsController::class, 'quick_restrict']);
+    $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/clips/bulk-restrict', [ProjectClipsController::class, 'bulkRestrict']);
 
     // Waveform generation
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/converter/waveform', [\App\Http\Controllers\Admin\DayConverterController::class, 'generateWaveform']);
@@ -180,6 +181,8 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     // Poster from time
     $r->post('/admin/projects/{projectUuid}/days/{dayUuid}/clips/{clipUuid}/poster-from-time', [ClipPlayerController::class, 'posterFromTime']);
 
+    $r->get('/admin/projects/{projectUuid}/clips/{clipUuid}/stream.mp4', [ClipPlayerController::class, 'stream']);
+
 
     // --------------------------------------------------------
     // PROJECT MEMBERS
@@ -189,7 +192,16 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
     $r->post('/admin/projects/{projectUuid}/members/{personUuid}',        [ProjectMembersController::class, 'updateMember']);
     $r->post('/admin/projects/{projectUuid}/members/{personUuid}/remove', [ProjectMembersController::class, 'removeMember']);
 
+    // NEW ACL ROUTES
+    $r->get('/admin/projects/{projectUuid}/sensitive-groups',             [ProjectMembersController::class, 'sensitiveGroups']);
+    $r->post('/admin/projects/{projectUuid}/sensitive-groups',            [ProjectMembersController::class, 'createSensitiveGroup']);
+    $r->post('/admin/projects/{projectUuid}/sensitive-groups/{groupUuid}/delete', [ProjectMembersController::class, 'deleteSensitiveGroup']);
 
+    // Group Management Routes
+    $r->get('/admin/projects/{projectUuid}/sensitive-groups/{groupUuid}/members', [ProjectMembersController::class, 'groupMembers']);
+    $r->post('/admin/projects/{projectUuid}/sensitive-groups/{groupUuid}/members', [ProjectMembersController::class, 'addGroupMember']);
+    $r->post('/admin/projects/{projectUuid}/sensitive-groups/{groupUuid}/members/{personUuid}/remove', [ProjectMembersController::class, 'removeGroupMember']);
+    $r->post('/admin/projects/{projectUuid}/sensitive-groups/{groupUuid}/batch', [ProjectMembersController::class, 'batchGroupAction']);
     // --------------------------------------------------------
     // ADMIN-ONLY (GLOBAL ADMIN PAGES + TOOLS + CONVERTER)
     // --------------------------------------------------------
@@ -227,11 +239,12 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
 
 
     // --------------------------------------------------------
-    // SUPERUSER ADMIN — PROJECTS (global)
+    // SUPERUSER AND GLOBAL ADMIN — PROJECTS (global)
     // --------------------------------------------------------
-    $r->group([new SuperuserGuard], function (\App\Http\Router $r3) use ($projectsController) {
 
-        // Superuser-only: Projects CRUD (or just create/update—your choice)
+    $r->group([new \App\Http\Middleware\GlobalAdminGuard], function (\App\Http\Router $r3) use ($projectsController) {
+
+        // These routes are now accessible by both Superusers and Global Admins
         $r3->get('/admin/projects',           [$projectsController, 'index']);
         $r3->get('/admin/projects/new',       [$projectsController, 'createForm']);
         $r3->post('/admin/projects',          [$projectsController, 'store']);

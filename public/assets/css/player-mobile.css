@@ -317,8 +317,9 @@ body {
 }
 
 .m-tc {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
   font-size: 14px;
   color: var(--m-accent);
   white-space: nowrap;
@@ -409,7 +410,9 @@ body {
   gap: 0px;
   min-width: 80px;
   opacity: 0;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+  transition:
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease;
   pointer-events: none;
 }
 
@@ -524,13 +527,27 @@ body {
   margin-top: 2px;
 }
 
-/* REPLACE them with this targeted version: */
+/* Targeted transition for the entire UI layer */
+.m-controls-bar,
+.m-clip-info-overlay,
+#mPlayIconContainer,
+.m-close-btn {
+  /* Smooth easing: starts slow, ends slow */
+  transition:
+    opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0.5s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  opacity: 1;
+  visibility: visible;
+}
+
+/* The 'Idle' state - trigger for the fade */
 .zd-player-frame.controls-idle .m-controls-bar,
 .zd-player-frame.controls-idle .m-clip-info-overlay,
-.zd-player-frame.controls-idle #mPlayIconContainer {
+.zd-player-frame.controls-idle #mPlayIconContainer,
+.zd-player-frame.controls-idle .m-close-btn {
   opacity: 0;
   visibility: hidden;
-  pointer-events: none; /* Stops accidental button taps while hidden */
+  pointer-events: none;
 }
 
 /* Disable native touch callouts (like "Copy Link") */
@@ -691,4 +708,15 @@ body {
     max-width: 100dvw;
     object-fit: contain;
   }
+}
+
+.m-top-bar {
+  /* Safe area padding for modern notched phones */
+  padding-top: env(safe-area-inset-top, 12px) !important;
+}
+
+.mobile-nav-header {
+  position: relative;
+  z-index: 100; /* Higher than the player controls */
+  background: var(--m-bg); /* Prevents clicks from bleeding through */
 }

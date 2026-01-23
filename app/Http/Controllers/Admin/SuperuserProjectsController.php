@@ -12,9 +12,28 @@ final class SuperuserProjectsController
 {
     public function __construct(private ProjectRepository $projects) {}
 
+    private function assertGlobalAccess(): void
+    {
+        if (session_status() === PHP_SESSION_NONE) session_start();
+
+        $sess = $_SESSION;
+        $acct = $sess['account'] ?? null;
+
+        // Check both common locations for the Superuser flag
+        $isSuper = !empty($sess['is_superuser']) || ($acct && !empty($acct['is_superuser']));
+        // Check for the Global Admin role
+        $isAdmin = ($acct && ($acct['user_role'] ?? '') === 'admin');
+
+        if (!$isSuper && !$isAdmin) {
+            http_response_code(403);
+            echo "Forbidden: Global Admin or Superuser access required.";
+            exit;
+        }
+    }
+
     public function index(): void
     {
-        \require_superuser();
+        $this->assertGlobalAccess(); // Replaced require_superuser()
         $rows = $this->projects->listAll();
         View::render('admin/projects/index', [
             'projects' => $rows,
@@ -24,7 +43,7 @@ final class SuperuserProjectsController
 
     public function createForm(): void
     {
-        \require_superuser();
+        $this->assertGlobalAccess(); // Replaced require_superuser()
         View::render('admin/projects/create', [
             'title' => 'Create Project',
             'csrf'  => Csrf::token(),
@@ -33,6 +52,7 @@ final class SuperuserProjectsController
 
     public function edit(string $id): void
     {
+        $this->assertGlobalAccess(); // Ensure security on edit links
         $project = $this->projects->findByUuid($id);
         if (!$project) {
             http_response_code(404);
@@ -55,22 +75,43 @@ final class SuperuserProjectsController
 
     public function update(string $id): void
     {
+        // 1. Security check: Ensure only Global Admins or Superusers can update projects
+        $this->assertGlobalAccess();
+
+        // 2. CSRF Validation
         Csrf::validateOrAbort($_POST['csrf'] ?? null);
 
+        // 3. Gather and normalize inputs
         $title  = trim((string)($_POST['title'] ?? ''));
-        $code   = trim((string)($_POST['code']  ?? ''));
+        $code   = strtoupper(trim((string)($_POST['code']  ?? '')));
         $status = (string)($_POST['status'] ?? 'active');
 
         $errors = [];
         if ($title === '')  $errors[] = 'Title is required.';
         if ($code === '')   $errors[] = 'Code is required.';
-        if (!in_array($status, ['active', 'archived'], true)) $errors[] = 'Invalid status.';
 
+        // Validate code format
+        if ($code !== '' && !preg_match('/^[A-Z0-9_-]{2,32}$/', $code)) {
+            $errors[] = 'Code must use A–Z, 0–9, _ or -, and be 2–32 characters.';
+        }
+
+        if (!in_array($status, ['active', 'archived'], true)) {
+            $errors[] = 'Invalid status.';
+        }
+
+        // 4. Ensure the project exists
         $project = $this->projects->findByUuid($id);
         if (!$project) {
             http_response_code(404);
             echo "Project not found.";
             return;
+        }
+
+        // 5. Check for code uniqueness if the code was changed
+        if (!$errors && $code !== $project['code']) {
+            if ($this->projects->existsByCode($code)) {
+                $errors[] = 'This project code is already in use by another show.';
+            }
         }
 
         if ($errors) {
@@ -85,8 +126,9 @@ final class SuperuserProjectsController
         }
 
         try {
+            // 6. Persist changes to the database
             $this->projects->updateByUuid($id, $title, $code, $status);
-            header('Location: /admin/projects');
+            header('Location: /admin/projects?updated=1');
             exit;
         } catch (\Throwable $e) {
             View::render('admin/projects/edit', [
@@ -101,7 +143,7 @@ final class SuperuserProjectsController
 
     public function store(): void
     {
-        \require_superuser();
+        $this->assertGlobalAccess(); // Replaced require_superuser()
         Csrf::validateOrAbort($_POST['csrf'] ?? null);
 
         $title  = trim($_POST['title'] ?? '');
@@ -111,7 +153,8 @@ final class SuperuserProjectsController
         $errors = [];
         if ($title === '') $errors['title'] = 'Title is required';
         if ($code  === '') $errors['code']  = 'Code is required';
-        if (!preg_match('/^[A-Z0-9_-]{2,32}$/', $code)) {
+
+        if (!$errors && !preg_match('/^[A-Z0-9_-]{2,32}$/', $code)) {
             $errors['code'] = 'Use A–Z, 0–9, _ or -, 2–32 chars';
         }
 

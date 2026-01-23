@@ -218,7 +218,6 @@
   transition:
     transform 0.18s ease,
     opacity 0.18s ease;
-  overflow: hidden;
 }
 
 .zd-controls-inner {
@@ -229,7 +228,6 @@
   /* slightly narrower than the outer box on X-axis */
   width: calc(100% - 6px); /* 6px margin on left + right */
   margin: 0 auto;
-  overflow: hidden; /* inner box clips everything inside */
 }
 /* Scrub bar row */
 .zd-controls-top {
@@ -357,7 +355,7 @@
 .zd-vol-popup {
   position: absolute;
   left: 50%;
-  bottom: calc(100% - 2px);
+  bottom: calc(100% + 6px);
   transform: translateX(-50%);
   width: 28px;
   height: 90px;
@@ -372,7 +370,7 @@
   z-index: 1001;
   opacity: 0;
   visibility: hidden;
-  pointer-events: none;
+  pointer-events: auto;
   transition:
     opacity 0.15s ease,
     visibility 0s linear 0.15s;
@@ -1207,27 +1205,40 @@ details[open] > .zd-metadata-summary::before {
 }
 
 /* =========================================================
-   FULLSCREEN MODE
+   FULLSCREEN MODE - NO-ZOOM 16:9 FIX
    ========================================================= */
 
-/* Lock 16:9 aspect ratio in fullscreen without stretching */
 #playerFrame:fullscreen {
-  position: relative;
-  background: #000;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #000 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  overflow: hidden !important;
 }
 
-/* Center video and LUT canvas without distortion */
-#playerFrame:fullscreen #zdVideo,
-#playerFrame:fullscreen .lut-canvas {
-  position: absolute;
+#playerFrame:fullscreen #zdVideo {
+  /* Fix: Lock height and let width follow 16:9 ratio */
+  position: relative !important;
+  height: 100vh !important;
+  width: calc(100vh * (16 / 9)) !important;
+  max-width: 100vw !important; /* Safety for vertical monitors */
+  object-fit: contain !important;
+  z-index: 1;
+}
+
+#playerFrame:fullscreen #lutCanvas {
+  position: absolute !important;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  height: 100%;
-  width: auto;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  /* Match the video's exact calculated size */
+  height: 100vh !important;
+  width: calc(100vh * (16 / 9)) !important;
+  max-width: 100vw !important;
+  z-index: 2;
+  pointer-events: none;
 }
 
 /* =========================================================

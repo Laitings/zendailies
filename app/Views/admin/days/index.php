@@ -38,30 +38,20 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
         margin: 0 auto;
         color: var(--zd-text-main);
         padding: 25px 20px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
-    /* --- Header --- */
     .zd-header {
-        margin-bottom: 20px;
-        /* No flex here, we stack the H1 and the button row */
+        margin-bottom: 25px !important;
     }
 
     .zd-header h1 {
         font-size: 20px;
         font-weight: 700;
-        letter-spacing: -0.01em;
-        color: var(--zd-text-main);
-        line-height: 1;
-
-        /* Spacing */
-        margin: 0 0 15px 0;
+        margin: 0 0 20px 0 !important;
         padding-bottom: 15px;
-        /* Space between text and line */
         position: relative;
     }
 
-    /* The Line */
     .zd-header h1::after {
         content: '';
         position: absolute;
@@ -73,10 +63,9 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
         border-radius: 4px;
     }
 
-    /* Subtitle Row inside H1 */
     .zd-header-subtitle {
         display: block;
-        margin-top: 8px;
+        margin-top: 10px;
         font-size: 13px;
         font-weight: 400;
         color: var(--zd-text-muted);
@@ -118,45 +107,38 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
 
     /* --- Table Layout --- */
     .zd-table-wrap {
-        border-radius: 6px;
-        /* CHANGE: was 'hidden' - this was the main "wall" cutting the menu off */
-        overflow: visible !important;
+        border-radius: 8px;
         background: var(--zd-bg-panel);
         border: 1px solid var(--zd-border-subtle);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        overflow: visible !important;
+        margin-top: 10px;
     }
 
     table.zd-table {
         width: 100%;
         border-collapse: collapse;
-        /* CHANGE: table-layout: fixed is very rigid; switching to auto lets the menu breathe */
-        table-layout: auto;
         font-size: 13px;
         overflow: visible !important;
     }
 
     .zd-table thead th {
         text-align: left;
-        padding: 10px 16px;
+        padding: 12px 16px;
         background: #171922;
-        font-size: 0.8rem;
+        font-family: "Inter", -apple-system, sans-serif !important;
+        font-size: 0.8rem !important;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
         font-weight: 700;
         color: var(--zd-text-muted);
         border-bottom: 1px solid var(--zd-border-subtle);
-        white-space: nowrap;
     }
 
     .zd-table tbody td {
-        padding: 12px 16px;
+        padding: 14px 16px;
         border-top: 1px solid var(--zd-border-subtle);
-        color: var(--zd-text-main);
-        /* CHANGE: was 'hidden' - this clipped the menu horizontally */
-        overflow: visible !important;
-        white-space: nowrap;
         vertical-align: middle;
-        font-size: 14px;
+        overflow: visible !important;
     }
 
     .zd-table tbody tr {
@@ -164,7 +146,7 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
     }
 
     .zd-table tbody tr:hover {
-        background: rgba(58, 160, 255, 0.06);
+        background: rgba(58, 160, 255, 0.04);
     }
 
     /* --- Chips --- */
@@ -401,27 +383,25 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
     <div class="zd-header">
         <h1>
             Shooting Days
-
-            <?php if ($isPowerUser): ?>
-                <div class="zd-header-subtitle">
-                    <span><?= htmlspecialchars($project['title'] ?? '') ?></span>
-                    <span style="opacity: 0.3; margin: 0 6px;">|</span>
-                    <span class="zd-chip"><?= htmlspecialchars($project['code'] ?? '') ?></span>
-                    <span class="zd-chip <?= $statusClass ?>"><?= htmlspecialchars($status) ?></span>
-                </div>
-            <?php else: ?>
-                <div class="zd-header-subtitle">
-                    for <?= htmlspecialchars($project['title'] ?? '') ?>
-                </div>
-            <?php endif; ?>
+            <div class="zd-header-subtitle">
+                <span><?= htmlspecialchars($project['title'] ?? '') ?></span>
+                <span style="opacity: 0.3; margin: 0 6px;">|</span>
+                <span class="zd-cell-mono" style="font-size:11px;"><?= htmlspecialchars($project['code'] ?? '') ?></span>
+                <span class="zd-chip zd-chip-ok" style="margin-left:8px;"><?= htmlspecialchars($project['status'] ?? 'active') ?></span>
+            </div>
         </h1>
+
+        <div class="zd-action-row" style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+            <?php if ($isPowerUser): ?>
+                <a class="zd-btn" href="<?= htmlspecialchars($routes['new_day'] ?? '') ?>">+ New Day</a>
+            <?php else: ?>
+                <div></div>
+            <?php endif; ?>
+
+            <div style="width: 220px;" class="hide-on-narrow"></div>
+        </div>
     </div>
 
-    <?php if ($isPowerUser): ?>
-        <div class="zd-action-row">
-            <a class="zd-btn" href="<?= htmlspecialchars($routes['new_day'] ?? '') ?>">+ New Day</a>
-        </div>
-    <?php endif; ?>
 
     <div class="zd-table-wrap">
         <?php if (empty($days)): ?>
@@ -510,13 +490,13 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
                                     </span>
                                 </td>
 
-                                <td class="zd-users-actions">
+                                <td style="text-align: right; overflow: visible !important;">
                                     <?php
-                                    /* --- ENSURE EVERY ACTION HAS A 'link' KEY --- */
+                                    // Re-mapping your existing variables to the new $actions standard
                                     $actions = [
                                         [
                                             'label' => 'Edit Day',
-                                            'link'  => $editUrl,
+                                            'link'  => "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/edit",
                                             'icon'  => 'pencil',
                                             'method' => 'GET'
                                         ]
@@ -525,18 +505,18 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
                                     if ($isPublished) {
                                         $actions[] = [
                                             'label' => 'Unpublish',
-                                            'link'  => '#', // Fixes the PHP error on line 32
-                                            'icon'  => 'eye-slash', // Use your new eye-slash.svg
-                                            'class' => 'zd-day-unpublish-btn',
+                                            'link'  => '#',
+                                            'icon'  => 'eye-slash',
+                                            'class' => 'zd-day-unpublish-btn', // KEEPING YOUR JS CLASS
                                             'attr'  => 'data-unpublish-url="' . htmlspecialchars($unpublishUrl) . '"',
                                             'method' => 'BUTTON'
                                         ];
                                     } else {
                                         $actions[] = [
                                             'label' => 'Publish',
-                                            'link'  => '#', // Fixes the PHP error on line 32
-                                            'icon'  => 'eye', // Use your new eye.svg
-                                            'class' => 'zd-day-publish-btn',
+                                            'link'  => '#',
+                                            'icon'  => 'eye',
+                                            'class' => 'zd-day-publish-btn', // KEEPING YOUR JS CLASS
                                             'attr'  => 'data-publish-url="' . htmlspecialchars($publishUrl) . '"',
                                             'method' => 'BUTTON'
                                         ];
@@ -711,11 +691,14 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
         // Row click navigation
         document.querySelectorAll('.zd-clickable-row').forEach(row => {
             row.addEventListener('click', function(e) {
-                if (!e.target.closest('.zd-actions-menu') &&
-                    !e.target.closest('.zd-day-publish-btn') &&
-                    !e.target.closest('.zd-day-unpublish-btn')) {
-                    window.location.href = this.dataset.href;
+                // Stop navigation if clicking the Actions menu or its contents
+                if (e.target.closest('.zd-pro-menu') ||
+                    e.target.closest('.zd-day-publish-btn') ||
+                    e.target.closest('.zd-day-unpublish-btn')) {
+                    return;
                 }
+
+                window.location.href = this.dataset.href;
             });
         });
     });

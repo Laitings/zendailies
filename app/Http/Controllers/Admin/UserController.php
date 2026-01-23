@@ -79,8 +79,9 @@ class UserController
         return View::render('admin/users/index', [
             'users'            => $users,
             'projects'         => $projects,
-            'selected_project' => $projectFilter,  // may be null
+            'selected_project' => $projectFilter,
             'is_superuser'     => $isSuperuser,
+            'is_global_admin'  => (($account['user_role'] ?? '') === 'admin'), // Add this
             'sort'             => $sort,
             'dir'              => $dir,
         ]);
@@ -812,10 +813,12 @@ class UserController
     {
         if (session_status() === PHP_SESSION_NONE) session_start();
 
-        // Final security check in the controller
-        if (empty($_SESSION['account']['is_superuser'])) {
+        $isSuper = !empty($_SESSION['account']['is_superuser']);
+        $isAdmin = (($_SESSION['account']['user_role'] ?? '') === 'admin');
+
+        if (!$isSuper && !$isAdmin) {
             http_response_code(403);
-            echo "Forbidden: Superuser access required.";
+            echo "Forbidden: Global Admin or Superuser access required.";
             exit;
         }
 

@@ -23,10 +23,13 @@ final class AdminGuard
         }
 
         $isSuper = !empty($acct['is_superuser']);
-        $isAdmin = isset($acct['user_role']) && $acct['user_role'] === 'admin';
+        $isGlobalAdmin = isset($acct['user_role']) && $acct['user_role'] === 'admin';
 
-        // If they are neither, they shouldn't even see the door
-        if (!$isSuper && !$isAdmin) {
+        // NEW: Check if they are an admin for the current project context
+        $isProjectAdmin = !empty($_SESSION['current_project_flags']['is_project_admin']);
+
+        // Allow entry if they meet ANY of these three criteria
+        if (!$isSuper && !$isGlobalAdmin && !$isProjectAdmin) {
             header('Location: /dashboard?error=unauthorized');
             exit;
         }

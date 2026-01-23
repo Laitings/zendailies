@@ -619,52 +619,59 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- Volume / Mute ---
   // --- Volume / Mute ---
   // Remember last non-zero volume so unmute feels natural
-  let lastVol = vid.volume && vid.volume > 0 ? vid.volume : 0.5;
+  // --- Volume / Mute (Stored in localStorage) ---
+  const savedVol = localStorage.getItem("zd_player_vol");
+  const initialVol = savedVol !== null ? parseFloat(savedVol) : 0.8;
 
+  // Apply initial volume to video and slider
+  vid.volume = initialVol;
+  if (vol) vol.value = String(initialVol);
+
+  let lastVol = initialVol > 0 ? initialVol : 0.5;
+
+  // Helper to update UI icons based on state
+  function updateVolIcon() {
+    if (!btnMute) return;
+    const currentVol = vid.muted ? 0 : vid.volume;
+    if (currentVol === 0) btnMute.textContent = "🔇";
+    else if (currentVol < 0.5) btnMute.textContent = "🔉";
+    else btnMute.textContent = "🔊";
+  }
+
+  // Handle slider movement
   if (vol) {
-    vol.value = String(vid.volume);
-
     vol.addEventListener("input", () => {
-      const raw = parseFloat(vol.value);
-      const v = Math.max(0, Math.min(1, Number.isFinite(raw) ? raw : 1));
-
+      const v = Math.max(0, Math.min(1, parseFloat(vol.value) || 0));
       vid.volume = v;
+
       if (v > 0) {
         lastVol = v;
         vid.muted = false;
+        localStorage.setItem("zd_player_vol", v);
       } else {
         vid.muted = true;
       }
-
-      if (btnMute) {
-        btnMute.textContent = vid.muted || vid.volume === 0 ? "🔇" : "🔊";
-      }
+      updateVolIcon();
     });
   }
 
+  // Handle Mute button click
   btnMute?.addEventListener("click", () => {
-    // Toggle muted state
-    const nowMuted = !vid.muted;
-    vid.muted = nowMuted;
+    vid.muted = !vid.muted;
 
-    if (!nowMuted) {
-      // Unmuting: restore last non-zero volume (or fallback 0.5)
+    if (!vid.muted) {
       const restored = lastVol > 0 ? lastVol : 0.5;
       vid.volume = restored;
       if (vol) vol.value = String(restored);
-    } else {
-      // Muting: don't force slider to 0, but icon reflects muted state
+      localStorage.setItem("zd_player_vol", restored);
     }
-
-    if (btnMute) {
-      btnMute.textContent = vid.muted || vid.volume === 0 ? "🔇" : "🔊";
-    }
+    updateVolIcon();
   });
 
-  // initialize mute icon correctly on load
-  if (btnMute) {
-    btnMute.textContent = vid.muted || vid.volume === 0 ? "🔇" : "🔊";
-  }
+  // keep the icon accurate on load + when video/source changes
+  vid.addEventListener("loadedmetadata", updateVolIcon);
+  vid.addEventListener("volumechange", updateVolIcon);
+  updateVolIcon();
 
   // --- Fullscreen ---
   btnFS?.addEventListener("click", () => {

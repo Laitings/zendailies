@@ -215,4 +215,117 @@ class ProjectMembersController
             echo htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
         }
     }
+
+    public function sensitiveGroups(string $projectUuid): void
+    {
+        $this->assertProjectAdminOrSuperuser($projectUuid);
+        $this->ensureProjectContext($projectUuid);
+
+        $proj = $this->projects->projectBrief($projectUuid);
+        // Fetch groups for this project (We'll add this to the repo)
+        $groups = $this->projects->listSensitiveGroups($projectUuid);
+        // Fetch all members so we can assign them to groups later
+        $members = $this->projects->listMembers($projectUuid);
+
+        View::render('admin/projects/sensitive_groups', [
+            'project' => $proj,
+            'groups'  => $groups,
+            'members' => $members,
+            'csrf'    => Csrf::token()
+        ]);
+    }
+
+    public function createSensitiveGroup(string $projectUuid): void
+    {
+        $this->assertProjectAdminOrSuperuser($projectUuid);
+        Csrf::validateOrAbort($_POST['csrf'] ?? null);
+
+        $name = trim($_POST['name'] ?? '');
+        if ($name !== '') {
+            $this->projects->createSensitiveGroup($projectUuid, $name);
+        }
+
+        header('Location: /admin/projects/' . $projectUuid . '/sensitive-groups');
+        exit;
+    }
+
+    public function deleteSensitiveGroup(string $projectUuid, string $groupUuid): void
+    {
+        $this->assertProjectAdminOrSuperuser($projectUuid);
+        Csrf::validateOrAbort($_POST['csrf'] ?? null);
+
+        $this->projects->deleteSensitiveGroup($groupUuid);
+
+        header('Location: /admin/projects/' . $projectUuid . '/sensitive-groups');
+        exit;
+    }
+
+    public function groupMembers(string $projectUuid, string $groupUuid): void
+    {
+        $this->assertProjectAdminOrSuperuser($projectUuid);
+        $this->ensureProjectContext($projectUuid);
+
+        $group = $this->projects->getSensitiveGroup($groupUuid);
+        if (!$group) {
+            http_response_code(404);
+            echo "Group not found";
+            return;
+        }
+
+        $currentMembers = $this->projects->listGroupMembers($groupUuid);
+        $projectMembers = $this->projects->listMembers($projectUuid);
+
+        View::render('admin/projects/group_members', [
+            'project' => $this->projects->projectBrief($projectUuid),
+            'group'   => $group,
+            'current' => $currentMembers,
+            'all'     => $projectMembers,
+            'csrf'    => Csrf::token()
+        ]);
+    }
+
+    public function addGroupMember(string $projectUuid, string $groupUuid): void
+    {
+        $this->assertProjectAdminOrSuperuser($projectUuid);
+        Csrf::validateOrAbort($_POST['csrf'] ?? null);
+
+        $personUuid = $_POST['person_uuid'] ?? '';
+        if ($personUuid) {
+            $this->projects->addGroupMember($groupUuid, $personUuid);
+        }
+
+        header("Location: /admin/projects/$projectUuid/sensitive-groups/$groupUuid/members");
+        exit;
+    }
+
+    public function removeGroupMember(string $projectUuid, string $groupUuid, string $personUuid): void
+    {
+        $this->assertProjectAdminOrSuperuser($projectUuid);
+        Csrf::validateOrAbort($_POST['csrf'] ?? null);
+
+        $this->projects->removeGroupMember($groupUuid, $personUuid);
+        header("Location: /admin/projects/$projectUuid/sensitive-groups/$groupUuid/members");
+        exit;
+    }
+
+    public function batchGroupAction(string $projectUuid, string $groupUuid): void
+    {
+        $this->assertProjectAdminOrSuperuser($projectUuid);
+        Csrf::validateOrAbort($_POST['csrf'] ?? null);
+
+        $action = $_POST['batch_action'] ?? ''; // 'add' or 'remove'
+        $uuids = explode(',', $_POST['person_uuids'] ?? '');
+        $uuids = array_filter(array_map('trim', $uuids));
+
+        if (!empty($uuids)) {
+            if ($action === 'add') {
+                $this->projects->addGroupMembersBatch($groupUuid, $uuids);
+            } else {
+                $this->projects->removeGroupMembersBatch($groupUuid, $uuids);
+            }
+        }
+
+        header("Location: /admin/projects/$projectUuid/sensitive-groups/$groupUuid/members");
+        exit;
+    }
 }
