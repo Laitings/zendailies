@@ -1,0 +1,822 @@
+/* =========================================================
+   ZENTROPA DAILIES - MOBILE PLAYER CORE (APP VIBE)
+   ========================================================= */
+
+:root {
+  --m-bg: #0b0c10;
+  --m-panel: #13151b;
+  --m-border: #1f232d;
+  --m-accent: #60a5fa;
+  --m-text: #e5e7eb;
+  --m-muted: #6b7280;
+}
+
+/* Dynamic viewport helpers (Edge/Chrome mobile bars) */
+:root {
+  --vvh: 1vh; /* set by JS */
+  --vvb: 0px; /* “bottom overlap” set by JS */
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--m-bg);
+  color: var(--m-text);
+  font-family: "Inter", sans-serif;
+  /* Remove any 'overflow: hidden' if it exists */
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+html,
+body {
+  height: auto !important;
+  overflow: visible !important;
+  -webkit-overflow-scrolling: touch;
+}
+/* --- 1. DYNAMIC HEIGHT FIX --- */
+.mobile-player-page {
+  display: block;
+}
+
+.sticky-player-container {
+  position: sticky;
+  top: 0;
+  z-index: 300; /* Stays above everything */
+  background: #000;
+}
+
+.zd-player-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  overflow: hidden;
+}
+
+#zdVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  border-radius: 12px; /* Force the video itself to have rounded corners */
+  overflow: hidden;
+  mask-image: radial-gradient(
+    white,
+    black
+  ); /* This "tricks" many browsers into better anti-aliasing */
+}
+
+.mobile-content-area {
+  background: var(--m-bg);
+  /* Ensure this doesn't have a fixed height or overflow property */
+  display: block;
+}
+
+.clip-header-info {
+  position: relative; /* Scrolls away naturally */
+  z-index: 10;
+  padding: 15px 16px;
+  background: var(--m-bg);
+  border-bottom: 1px solid var(--m-border);
+}
+
+.clip-header-info h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+.clip-header-info .filename {
+  font-size: 11px;
+  color: var(--m-muted);
+  margin-top: 4px;
+  font-family: monospace;
+}
+
+/* --- 3. STICKY TABS (50-50 Split) --- */
+.drawer-tab-row {
+  position: sticky;
+  top: 56.25vw; /* This is the height of a 16:9 video */
+  z-index: 250;
+  display: flex;
+  width: 100%;
+  height: 46px;
+  background: var(--m-panel);
+  border-bottom: 1px solid var(--m-border);
+}
+
+#drawerMeta,
+#drawerComments {
+  display: none;
+  position: relative; /* Remove sticky from the drawers to simplify the scroll */
+  background: var(--m-panel);
+  border-bottom: 1px solid var(--m-border);
+}
+
+.drawer-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--m-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.drawer-tab-btn.is-active {
+  background: var(--m-bg);
+  color: var(--m-accent);
+}
+.drawer-tab-btn:first-child {
+  border-right: 1px solid var(--m-border);
+}
+
+/* --- 4. STICKY DRAWERS (Pinned below tabs) --- */
+
+/* --- 5. METADATA FORMATTING --- */
+.mobile-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 16px;
+}
+
+.mobile-meta-cell {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--m-border);
+}
+
+.mobile-meta-cell .k {
+  color: var(--m-muted);
+  text-transform: uppercase;
+  font-size: 9px;
+  margin-bottom: 2px;
+}
+
+.mobile-meta-cell .v {
+  color: var(--m-accent); /* Zentropa Blue */
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* --- 6. COMMENTS DRAWER (Form sticky, list scrolls) --- */
+#drawerComments {
+  display: none;
+}
+
+.m-comment-form-sticky {
+  background: var(--m-panel);
+  padding: 16px;
+  border-bottom: 1px solid var(--m-border);
+}
+
+/* Comments list - part of normal scroll flow */
+.m-comments-list {
+  padding: 0 16px 16px;
+  background: var(--m-bg);
+}
+
+.m-comment-item {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--m-border);
+  margin-bottom: 12px;
+}
+
+.m-comment-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.m-comment-author {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--m-accent);
+}
+
+.m-comment-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Subtle blue chip for comment timecodes - matches desktop */
+.m-comment-tc {
+  font-size: 11px;
+  font-family: monospace;
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  display: inline-block;
+}
+
+.m-comment-tc {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.m-comment-tc:active {
+  transform: scale(0.95);
+  opacity: 0.8;
+}
+
+/* Add top padding to first comment item */
+.m-comments-list > .m-comment-item:first-child {
+  padding-top: 12px;
+}
+
+.m-comment-reply-btn {
+  background: none;
+  border: none;
+  color: var(--m-muted);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.m-comment-body {
+  font-size: 14px;
+  color: var(--m-text);
+  line-height: 1.4;
+}
+
+/* --- 7. CLIP LIST --- */
+.mobile-nav-title {
+  padding: 24px 16px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--m-muted);
+  font-weight: 700;
+}
+
+/* --- 1. CLEAN BOTTOM PADDING --- */
+.mobile-clip-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Just a standard buffer so the last clip isn't hugging the screen edge */
+  padding: 0 16px 80px;
+}
+
+/* Overlay & Controls */
+.m-controls-bar {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+  padding: 10px 16px 5px;
+  position: relative;
+  z-index: 50 !important;
+  pointer-events: auto !important;
+}
+
+/* =========================================================
+   FIX: Ensure overlay + controls are pinned inside the 16:9 frame
+   ========================================================= */
+
+.zd-player-frame .mobile-ui-overlay {
+  position: absolute !important;
+  inset: 0 !important; /* top/right/bottom/left: 0 */
+  z-index: 50;
+}
+
+/* Big tap area for play/pause, centered */
+.zd-player-frame .m-play-trigger {
+  position: absolute !important;
+  inset: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
+}
+
+/* Controls bar pinned to the bottom of the frame */
+.zd-player-frame .m-controls-bar {
+  position: absolute !important;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 110 !important;
+}
+
+/* Overlay & Controls */
+.m-controls-bar {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  position: relative;
+  z-index: 110 !important;
+  pointer-events: auto !important;
+}
+
+/* Scrub row: make the range fill the full width */
+.m-controls-top {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.m-scrub {
+  width: 100%;
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+/* Bottom row: TC + buttons on the same line */
+.m-controls-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+}
+
+.m-left {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.m-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.m-tc {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-family: "SF Mono", "Monaco", "Menlo", "Consolas", monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  box-shadow:
+    0 2px 8px rgba(59, 130, 246, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: inline-block;
+}
+
+.m-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  width: 38px; /* Standard hit-box size */
+  height: 38px; /* Ensures all buttons have identical height */
+  padding: 0; /* Padding is now handled by the fixed dimensions */
+  cursor: pointer;
+  outline: none;
+}
+
+.m-icon-btn svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* Clip Link Styles */
+.mobile-clip-link {
+  display: flex;
+  align-items: center;
+  background: var(--m-panel);
+  border: 1px solid var(--m-border);
+  border-radius: 12px;
+  padding: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.mobile-clip-link.is-active {
+  border-color: var(--m-accent);
+  background: rgba(96, 165, 250, 0.08);
+}
+.m-thumb {
+  width: 90px;
+  height: 51px;
+  border-radius: 6px;
+  object-fit: cover;
+  margin-right: 14px;
+}
+.m-clip-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  /* Add these for truncation */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.m-clip-meta {
+  font-size: 11px;
+  color: var(--m-muted);
+  /* Ensure it can hold the flex layout for icons */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mobile-ui-overlay {
+  /* This container was blocking your taps. We make it "click-through"... */
+  pointer-events: none !important;
+}
+
+.m-controls-bar,
+.m-play-trigger,
+.m-popover,
+.m-icon-btn,
+.m-scrub {
+  /* ...but we make the actual buttons "tappable" again */
+  pointer-events: auto !important;
+}
+
+.m-popover {
+  position: fixed; /* Changed for viewport-relative positioning */
+  transform: scaleY(0); /* No translateX */
+  z-index: 9999;
+  transform-origin: bottom; /* Expand from the bottom up */
+  background: rgba(20, 22, 28, 0.98);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--m-border);
+  border-radius: 10px;
+  padding: 0px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 0px;
+  min-width: 80px;
+  opacity: 0;
+  transition:
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease;
+  pointer-events: none;
+}
+
+/* New: Support for downward opening */
+.m-popover.opens-down {
+  transform-origin: top;
+}
+
+.m-popover.is-open {
+  transform: scaleY(1); /* No translateX */
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.m-popover button {
+  background: transparent;
+  border: none;
+  color: #fff;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.m-popover button:active {
+  background: var(--m-accent);
+  color: #000;
+}
+/* --- 3. NEW TOP-LEFT INFO OVERLAY --- */
+/* --- 1. CLIP INFO OVERLAY (The Semi-Transparent Box) --- */
+.m-clip-info-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 100; /* Ensure it's above the play trigger */
+  pointer-events: none;
+
+  /* The "Dark Box" styling */
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.m-clip-info-overlay h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.m-clip-info-overlay .filename {
+  font-size: 10px;
+  color: var(--m-accent);
+  font-family: ui-monospace, monospace;
+  margin-top: 2px;
+  opacity: 0.9;
+}
+
+/* Sync info overlay with other controls */
+.zd-player-frame.controls-idle .m-clip-info-overlay {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* --- UI INTERACTIVITY FIX --- */
+.mobile-ui-overlay {
+  pointer-events: none !important; /* Makes container "click-through" */
+  z-index: 50;
+}
+
+.m-play-trigger,
+.m-controls-bar,
+.m-icon-btn,
+.m-scrub {
+  pointer-events: auto !important; /* Re-enables touch specifically for controls */
+}
+
+.m-controls-bar {
+  z-index: 110 !important;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+}
+
+/* --- THE SEMI-TRANSPARENT INFO BOX (Top Left) --- */
+.m-clip-info-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.3s ease;
+}
+
+.m-clip-info-overlay h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+.m-clip-info-overlay .filename {
+  font-size: 10px;
+  color: var(--m-accent);
+  margin-top: 2px;
+}
+
+/* Targeted transition for the entire UI layer */
+.m-controls-bar,
+.m-clip-info-overlay,
+#mPlayIconContainer,
+.m-close-btn {
+  /* Smooth easing: starts slow, ends slow */
+  transition:
+    opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0.5s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  opacity: 1;
+  visibility: visible;
+}
+
+/* The 'Idle' state - trigger for the fade */
+.zd-player-frame.controls-idle .m-controls-bar,
+.zd-player-frame.controls-idle .m-clip-info-overlay,
+.zd-player-frame.controls-idle #mPlayIconContainer,
+.zd-player-frame.controls-idle .m-close-btn {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Disable native touch callouts (like "Copy Link") */
+.mobile-clip-link {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Ensure buttons don't show selection boxes when clicked */
+.ctx-btn {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  outline: none !important;
+}
+
+/* --- Aspect Ratio Blanking (Mobile) --- */
+
+/* --- Optimized Aspect Ratio Blanking (Mobile & Fullscreen) --- */
+
+/* We center the mask and force it to 16:9. 
+   This ensures it perfectly overlays the video even if the container 
+   stretches to fill a 19.5:9 iPhone screen in landscape.
+*/
+/* Find this block in player-mobile.css */
+.zd-mask {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* Scale to 102% to over-bleed the rounded corners */
+  transform: translate(-50%, -50%) scale(1.02);
+
+  width: 100%;
+  height: 100%;
+  max-width: calc(100vh * 16 / 9);
+  max-height: calc(100vw * 9 / 16);
+
+  aspect-ratio: 16 / 9;
+  background: black;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+
+  /* Match the mobile player's corner radius */
+  border-radius: 12px;
+}
+
+/* 2.39:1 (Scope) */
+.zd-player-frame[data-blanking="2.39"] .zd-mask {
+  opacity: 1;
+  clip-path: polygon(
+    -1% -1%,
+    101% -1%,
+    101% 12.9%,
+    -1% 12.9%,
+    -1% -1%,
+    -1% 87.1%,
+    101% 87.1%,
+    101% 101%,
+    -1% 101%,
+    -1% 87.1%
+  );
+}
+
+/* 1.85:1 (Flat) */
+.zd-player-frame[data-blanking="1.85"] .zd-mask {
+  opacity: 1;
+  clip-path: polygon(
+    -1% -1%,
+    101% -1%,
+    101% 2.1%,
+    -1% 2.1%,
+    -1% -1%,
+    -1% 97.9%,
+    101% 97.9%,
+    101% 101%,
+    -1% 101%,
+    -1% 97.9%
+  );
+}
+
+/* 1.66:1 (European Vista) - Precision: 3.3% per side */
+.zd-player-frame[data-blanking="1.66"] .zd-mask {
+  opacity: 1;
+  clip-path: polygon(
+    0% 0%,
+    3.3% 0%,
+    3.3% 100%,
+    0% 100%,
+    0% 0%,
+    96.7% 0%,
+    100% 0%,
+    100% 100%,
+    96.7% 100%,
+    96.7% 0%
+  );
+}
+
+/* 1.33:1 (4:3) - Precision: 12.5% per side */
+.zd-player-frame[data-blanking="1.33"] .zd-mask {
+  opacity: 1;
+  clip-path: polygon(
+    0% 0%,
+    12.5% 0%,
+    12.5% 100%,
+    0% 100%,
+    0% 0%,
+    87.5% 0%,
+    100% 0%,
+    100% 100%,
+    87.5% 100%,
+    87.5% 0%
+  );
+}
+
+/* 2:1 (Univisium) */
+.zd-player-frame[data-blanking="2.00"] .zd-mask {
+  opacity: 1;
+  clip-path: polygon(
+    -1% -1%,
+    101% -1%,
+    101% 5.6%,
+    -1% 5.6%,
+    -1% -1%,
+    -1% 94.4%,
+    101% 94.4%,
+    101% 101%,
+    -1% 101%,
+    -1% 94.4%
+  );
+}
+
+/* player-mobile.css - The "Landscape Pro" Vibe */
+
+/* Find the @media (orientation: landscape) block at the bottom of player-mobile.css */
+
+/* player-mobile.css - Optimized Landscape Fullscreen */
+
+@media (orientation: landscape) and (max-width: 950px) {
+  .mobile-header {
+    display: none !important;
+  }
+
+  .sticky-player-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100dvw; /* Fill full dynamic width */
+    height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    z-index: 9999;
+  }
+
+  .mobile-content-area {
+    display: none !important;
+  }
+
+  .zd-player-frame {
+    height: 100dvh !important;
+    width: auto !important;
+    aspect-ratio: 16 / 9;
+    /* Remove any margins that might conflict and force center */
+    margin: 0 auto !important;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Ensure the video itself doesn't inherit any weird offsets */
+  #zdVideo {
+    height: 100% !important;
+    width: auto !important;
+    max-width: 100dvw;
+    object-fit: contain;
+  }
+}
+
+.m-top-bar {
+  /* Safe area padding for modern notched phones */
+  padding-top: env(safe-area-inset-top, 12px) !important;
+}
+
+.mobile-nav-header {
+  position: relative;
+  z-index: 100; /* Higher than the player controls */
+  background: var(--m-bg); /* Prevents clicks from bleeding through */
+}
+
+/* =========================================================
+   MOBILE PLAYER - SENSITIVE CHIP
+   Add this to your player-mobile.css file
+   ========================================================= */
+
+.m-sensitive-chip {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: #ef4444; /* Red warning color */
+  color: #fff;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  z-index: 5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* Wrapper for thumbnail to enable positioning */
+.mobile-clip-link > div:first-child {
+  position: relative;
+  flex-shrink: 0;
+}

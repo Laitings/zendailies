@@ -1,50 +1,81 @@
 services:
   web:
-    container_name: webserv01
+    container_name: zendailies
     build:
       context: .
     ports:
-      - "80:8080"
+      # - "88:8080" # Bind to all interfaces for cross-network access
+      - "10.10.100.131:88:8080" # IT internal network restriction (commented out for dev)
+      - "192.168.26.131:88:8080" # KG Network coment out for dev
     restart: unless-stopped
 
     # PROD DEFAULT:
     # Root filesystem is read-only for maximum security.
     # Switch to `read_only: false` only if you want to relax this in dev.
-    read_only: true
+    read_only: false
 
     user: "33:33"
+    group_add:
+      - "2100"
 
-    pids_limit: 200
+    pids_limit: 1000
     ulimits:
       nofile:
-        soft: 4096
-        hard: 8192
+        soft: 65535
+        hard: 65535
+
+    env_file:
+      - .env
 
     volumes:
       # Code directory:
-      # ⚠️ Default is read-only for security.
+      # efault is read-only for security.
       # Set `read_only: false` during development if you need to edit code inside the container.
       - type: bind
         source: ./www
         target: /var/www/html
-        read_only: true
+        read_only: false
 
       # Uploads (explicit bind, read-write)
-     # - type: bind
-     #   source: ./uploads
-     #   target: /var/www/html/uploads
-     #   # read_only: false  # (default)
-        
+      # - type: bind
+      #   source: ./uploads
+      #   target: /var/www/html/uploads
+      #   # read_only: false  # (default)
       # data (explicit bind, read-write)
-      - type: bind
-        source: ./data
-        target: /var/www/html/data
-        # read_only: false  # (default)
+      #- type: bind
+      #  source: /mnt/data/zendailies
+      #  target: /var/www/html/data
+      #  read_only: false  # (default)
 
-     # bake in conf
+      - type: bind
+        source: /mnt/zendailies_nfs
+        target: /var/www/html/data
+        read_only: false
+
+      # bake in conf
       - type: bind
         source: ./conf/apache-conf
         target: /opt/apache-extra
+        read_only: false
+
+      # NEW: mount our vhost into sites-enabled (Apache already includes this)
+      - type: bind
+        source: ./conf/apache-conf/000-zendailies.conf
+        target: /etc/apache2/sites-enabled/000-default.conf
+        read_only: false
+
+      # persist PHP upload limits across recreates
+      - type: bind
+        source: ./conf/php/8.4/apache2/conf.d/90-uploads.ini
+        target: /etc/php/8.4/apache2/conf.d/90-uploads.ini
+        read_only: true
+      - type: bind
+        source: ./conf/php/8.4/cli/conf.d/90-uploads.ini
+        target: /etc/php/8.4/cli/conf.d/90-uploads.ini
+        read_only: true
+      - type: bind
+        source: ./conf/php/8.4/fpm/conf.d/90-uploads.ini
+        target: /etc/php/8.4/fpm/conf.d/90-uploads.ini
         read_only: true
 
     tmpfs:
@@ -60,14 +91,14 @@ services:
       - ALL
 
     environment:
-      APACHE_SERVER_NAME: "localhost"
+      APACHE_SERVER_NAME: "zendailies.filmbyen.dk"
       TZ: "Europe/Copenhagen"
-      PHP_MEMORY_LIMIT: 256M
-      PHP_UPLOAD_MAX_FILESIZE: 2000M
+      PHP_MEMORY_LIMIT: 2048M
+      PHP_UPLOAD_MAX_FILESIZE: 10G
       PHP_MAX_FILE_UPLOADS: "1000"
       PHP_MAX_INPUT_VARS: "50000"
-      PHP_MAX_MULTIPART_BODY_PARTS: "5000"   # only used by PHP ≥ 8.4
-      PHP_POST_MAX_SIZE: 2000M
+      PHP_MAX_MULTIPART_BODY_PARTS: "5000" # only used by PHP ≥ 8.4
+      PHP_POST_MAX_SIZE: 10G
       PHP_MAX_EXECUTION_TIME: 120
       OPCACHE_ENABLE: "0"
       PHP_TZ: "Europe/Copenhagen"
@@ -77,18 +108,33 @@ services:
       # CSP: "default-src 'self'; img-src 'self' data:; object-src 'none'"
       # APP_WRITABLE_DIRS: not needed — uploads/cache are mounted with correct permissions
 
-     # mail setup
-      MAIL_HOST: "smtp.example.com"
+      # Simon morkarouinds
+      ZEN_STOR_DIR: "${ZEN_STOR_DIR}"
+      ZEN_STOR_PUBLIC_BASE: "${ZEN_STOR_PUBLIC_BASE}"
+
+      # mail setup
+      MAIL_HOST: "smtp.office365.com"
       MAIL_PORT: "587"
       MAIL_SECURE: "tls"
-      MAIL_USER: "user@example.com"
+      MAIL_USER: "noreply@filmbyen.dk"
+      MAIL_FROM: "noreply@filmbyen.dk"
+      MAIL_FROM_NAME: "Zentropa Dailies"
       MAIL_PASS_FILE: "/run/secrets/mail_pass"
+
+      # DB setup (Secured via secrets)
+      DB_PASS_FILE: "/run/secrets/db_pass"
 
     secrets:
       - mail_pass
+      - source: db_pass
+        target: db_pass
+        uid: "33"
+        gid: "33"
+        mode: 0440
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health.php || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -fsS http://localhost:8080/health.php || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -97,3 +143,5 @@ services:
 secrets:
   mail_pass:
     file: ./secrets/mail_pass.txt
+  db_pass:
+    file: ./secrets/db_pass.txt

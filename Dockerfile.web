@@ -1,0 +1,16 @@
+FROM php:8.4-apache
+
+# 1. Clean out the old PHP module remnants
+RUN rm -f /etc/apache2/mods-enabled/php*
+
+# 2. Enable HTTP/2, Proxy, HEADERS, and REWRITE
+RUN a2enmod http2 proxy_fcgi headers rewrite
+
+# 3. Switch to the threaded 'event' engine for HTTP/2
+RUN a2dismod mpm_prefork && a2enmod mpm_event
+
+# 4. Final cleanup of old PHP configs
+RUN rm -f /etc/apache2/conf-enabled/php*
+
+# 5. Configure Apache to listen on port 8080 instead of port 80
+RUN sed -i 's/Listen 80/Listen 8080/' /etc/apache2/ports.conf

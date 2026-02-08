@@ -2,13 +2,17 @@
 # Editor junk
 # ------------------------------
 .vscode/           # VS Code workspace settings
+.idea/             # JetBrains / PHPStorm settings
 *.swp              # swapfiler fra nano/vim
+.DS_Store          # macOS system files
+Thumbs.db          # Windows thumbnail cache
 
 # ------------------------------
 # Environment & secrets
 # ------------------------------
 .env               # lokale miljøvariabler (fx container_name)
 secrets/           # mail_pass.txt og andre hemmeligheder
+www/config.php     # [CRITICAL] Live database credentials and local paths
 
 # ------------------------------
 # Docker & runtime junk
@@ -17,10 +21,47 @@ secrets/           # mail_pass.txt og andre hemmeligheder
 *.tmp              # midlertidige temp-filer
 tmp/               # midlertidig mappe
 .cache/            # cache (fx composer eller apt)
+db_data/           # If you map local MySQL data to a host folder
 
 # ------------------------------
 # Runtime data (persist via volumes, aldrig i Git)
 # ------------------------------
-uploads/           # brugeruploads
-data/              # persistent data
-cache/             # applikations-cache
+# These paths ensure your heavy film/TV media doesn't bloat the repo
+www/uploads/       # brugeruploads
+www/data/          # persistent data (clips, posters, waveforms)
+www/cache/         # applikations-cache
+
+# ------------------------------
+# Dependency Managers
+# ------------------------------
+# Keep the 'json' files in Git, but ignore the downloaded library code
+www/vendor/        # Composer dependencies
+www/node_modules/  # If you use npm/yarn
+
+# ------------------------------
+# Old Test Sites
+# ------------------------------
+www/public/zengrabber/
+
+# --- CRITICAL DATA BLOCK ---
+# --- Environment & Secrets ---
+.env
+www/config.php
+secrets/
+*.txt
+
+# --- TARGETED DATA BLOCK (Ignore the contents, keep the code) ---
+# This ignores the specific folders where the worker saves posters/videos
+data/
+www/data/
+www/uploads/
+transfer/
+www/public/zengrabber/
+
+# --- Dependency Managers ---
+www/vendor/
+
+# --- System Junk ---
+.DS_Store
+*.log
+*.tmp

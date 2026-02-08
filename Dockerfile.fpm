@@ -1,0 +1,10 @@
+FROM php:8.4-fpm
+
+# Install the same extensions for Zendailies
+RUN docker-php-ext-install pdo pdo_mysql
+
+# This creates a new config file that overrides the default socket and forces port 9000
+# Using printf instead of echo to properly handle newlines
+RUN printf "[www]\nlisten = 0.0.0.0:9000\n" > /usr/local/etc/php-fpm.d/zz-zendailies.conf
+
+WORKDIR /var/www/html
