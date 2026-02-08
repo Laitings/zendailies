@@ -68,6 +68,8 @@ $this->extend('layout/main');
         vertical-align: middle;
     }
 
+    .test {}
+
     /* Row Hover */
     .zd-jobs-table tbody tr:hover {
         background: rgba(58, 160, 255, 0.06);
