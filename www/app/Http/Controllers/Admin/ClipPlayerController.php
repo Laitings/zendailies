@@ -1375,7 +1375,9 @@ final class ClipPlayerController
             ) AS scene_clips
             GROUP BY scene
             ORDER BY 
-                CASE WHEN scene REGEXP '^[0-9]+$' THEN CAST(scene AS UNSIGNED) ELSE 999999 END ASC, 
+                CASE WHEN scene REGEXP '^[0-9]+' THEN 0 ELSE 1 END ASC,
+                CAST(scene AS UNSIGNED) ASC,
+                CASE WHEN scene REGEXP '^[0-9]+$' THEN 0 ELSE 1 END ASC,
                 scene ASC
         ";
 

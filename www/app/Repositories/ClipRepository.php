@@ -17,6 +17,22 @@ final class ClipRepository
     public function __construct(private PDO $pdo) {}
 
     /**
+     * Scene filter that supports both:
+     * - prefix matching (e.g. "24" -> 24, 24A, 240)
+     * - token matching inside composite scenes (e.g. "24" -> 23+24, 24/25)
+     */
+    private function applySceneFilter(array &$where, array &$params, string $scene): void
+    {
+        if ($scene === '') {
+            return;
+        }
+
+        $where[] = '(c.scene LIKE :scene_prefix OR c.scene REGEXP :scene_token)';
+        $params[':scene_prefix'] = $scene . '%';
+        $params[':scene_token'] = '(^|[^0-9A-Za-z])' . preg_quote($scene, '/') . '([^0-9A-Za-z]|$)';
+    }
+
+    /**
      * List clips for a given project/day, with filters and ordering,
      * including poster/proxy paths, proxy_count and latest encode job state.
      *
@@ -68,11 +84,8 @@ final class ClipRepository
         $select = (string)($filters['select'] ?? '');
         $text   = trim((string)($filters['text'] ?? ''));
 
-        // Scene: prefix match (typing "4" finds 42, 43, 44)
-        if ($scene !== '') {
-            $where[] = 'c.scene LIKE :scene_prefix';
-            $params[':scene_prefix'] = $scene . '%';
-        }
+        // Scene: prefix + token match
+        $this->applySceneFilter($where, $params, $scene);
         // Slate: prefix match
         if ($slate !== '') {
             $where[] = 'c.slate LIKE :slate_prefix';
@@ -266,10 +279,7 @@ final class ClipRepository
         $select = (string)($filters['select'] ?? '');
         $text   = trim((string)($filters['text'] ?? ''));
 
-        if ($scene !== '') {
-            $where[] = 'c.scene LIKE :scene_prefix';
-            $params[':scene_prefix'] = $scene . '%';
-        }
+        $this->applySceneFilter($where, $params, $scene);
         if ($slate !== '') {
             $where[] = 'c.slate LIKE :slate_prefix';
             $params[':slate_prefix'] = $slate . '%';
@@ -448,10 +458,7 @@ final class ClipRepository
         $select = (string)($filters['select'] ?? '');
         $text   = trim((string)($filters['text'] ?? ''));
 
-        if ($scene !== '') {
-            $where[] = 'c.scene LIKE :scene_prefix';
-            $params[':scene_prefix'] = $scene . '%';
-        }
+        $this->applySceneFilter($where, $params, $scene);
         if ($slate !== '') {
             $where[] = 'c.slate LIKE :slate_prefix';
             $params[':slate_prefix'] = $slate . '%';
@@ -526,10 +533,7 @@ final class ClipRepository
         $select = (string)($filters['select'] ?? '');
         $text   = trim((string)($filters['text'] ?? ''));
 
-        if ($scene !== '') {
-            $where[] = 'c.scene LIKE :scene_prefix';
-            $params[':scene_prefix'] = $scene . '%';
-        }
+        $this->applySceneFilter($where, $params, $scene);
         if ($slate !== '') {
             $where[] = 'c.slate LIKE :slate_prefix';
             $params[':slate_prefix'] = $slate . '%';
@@ -610,10 +614,7 @@ final class ClipRepository
         $select = (string)($filters['select'] ?? '');
         $text   = trim((string)($filters['text'] ?? ''));
 
-        if ($scene !== '') {
-            $where[] = 'c.scene LIKE :scene_prefix';
-            $params[':scene_prefix'] = $scene . '%';
-        }
+        $this->applySceneFilter($where, $params, $scene);
         if ($slate !== '') {
             $where[] = 'c.slate LIKE :slate_prefix';
             $params[':slate_prefix'] = $slate . '%';
@@ -691,10 +692,7 @@ final class ClipRepository
         $select = (string)($filters['select'] ?? '');
         $text   = trim((string)($filters['text'] ?? ''));
 
-        if ($scene !== '') {
-            $where[] = 'c.scene LIKE :scene_prefix';
-            $params[':scene_prefix'] = $scene . '%';
-        }
+        $this->applySceneFilter($where, $params, $scene);
         if ($slate !== '') {
             $where[] = 'c.slate LIKE :slate_prefix';
             $params[':slate_prefix'] = $slate . '%';

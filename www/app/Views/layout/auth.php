@@ -38,10 +38,12 @@ $title = $title ?? 'Sign in • Zentropa Dailies';
         }
 
         .auth-wrap {
-            min-height: 100%;
+            min-height: 100vh;
+            min-height: 100dvh;
             display: grid;
             place-items: center;
-            padding: 28px
+            padding: 28px;
+            box-sizing: border-box;
         }
 
         .auth-card {
