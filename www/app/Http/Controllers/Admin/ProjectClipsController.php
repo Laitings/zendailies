@@ -164,23 +164,48 @@ final class ProjectClipsController
             'text'   => $q['text'],
         ];
 
-        // === Sensitive-ACL visibility + published-only for regular users + restricted flag ===
+        // === Sensitive-ACL visibility + published-only for regular users ===
         $visibilitySql    = '';
         $visibilityParams = [];
 
         if (!$isSuperuser && !$isProjectAdmin) {
             // Regular users must satisfy ALL of this:
             // 1) The day is published
-            // 2) Clip is NOT restricted OR the user is in a sensitive group allowed for that clip
-            $visibilitySql =
-                " AND d.published_at IS NOT NULL"
-                . " AND ("
-                . "       c.is_restricted = 0"  // unrestricted → always allowed
-                . "       OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid,1)" // allowed via sensitive group
-                . "     )";
+            // 2) The DAY is not restricted (or user is in the Day's group)
+            // 3) The CLIP is not restricted (or user is in the Clip's group)
 
-            $visibilityParams[':viewer_person_uuid'] =
-                $personUuid ?? '00000000-0000-0000-0000-000000000000';
+            $visibilitySql = "
+                AND d.published_at IS NOT NULL
+                
+                -- DAY GATE (Uses :viewer_uuid_day)
+                AND (
+                    NOT EXISTS (SELECT 1 FROM day_sensitive_acl dsa_day WHERE dsa_day.day_id = c.day_id)
+                    OR EXISTS (
+                        SELECT 1 
+                        FROM day_sensitive_acl dsa_day
+                        JOIN sensitive_group_members sgm_day ON sgm_day.group_id = dsa_day.group_id
+                        WHERE dsa_day.day_id = c.day_id 
+                          AND sgm_day.person_id = UUID_TO_BIN(:viewer_uuid_day, 1)
+                    )
+                )
+
+                -- CLIP GATE (Uses :viewer_uuid_clip)
+                AND (
+                    c.is_restricted = 0
+                    OR EXISTS (
+                        SELECT 1
+                        FROM clip_sensitive_acl csa_sub
+                        JOIN sensitive_group_members sgm_sub ON sgm_sub.group_id = csa_sub.group_id
+                        WHERE csa_sub.clip_id = c.id
+                          AND sgm_sub.person_id = UUID_TO_BIN(:viewer_uuid_clip, 1)
+                    )
+                )
+            ";
+
+            // Bind the same person UUID to BOTH placeholders
+            $viewerUuid = $personUuid ?? '00000000-0000-0000-0000-000000000000';
+            $visibilityParams[':viewer_uuid_day']  = $viewerUuid;
+            $visibilityParams[':viewer_uuid_clip'] = $viewerUuid;
         }
 
         // === Use ClipRepository ===
@@ -1170,12 +1195,20 @@ final class ProjectClipsController
 
         if (!$isSuperuser && !$isProjectAdmin) {
             // Regular users: only see published days + unrestricted clips OR clips they have group access to
-            $visibilitySql =
-                " AND d.published_at IS NOT NULL"
-                . " AND ("
-                . "       c.is_restricted = 0"
-                . "       OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid, 1)"
-                . "     )";
+            // Using EXISTS to prevent duplication
+            $visibilitySql = "
+                AND d.published_at IS NOT NULL
+                AND (
+                    c.is_restricted = 0
+                    OR EXISTS (
+                        SELECT 1
+                        FROM clip_sensitive_acl csa_sub
+                        JOIN sensitive_group_members sgm_sub ON sgm_sub.group_id = csa_sub.group_id
+                        WHERE csa_sub.clip_id = c.id
+                          AND sgm_sub.person_id = UUID_TO_BIN(:viewer_person_uuid, 1)
+                    )
+                )
+            ";
 
             $params[':viewer_person_uuid'] = $personUuid ?? '00000000-0000-0000-0000-000000000000';
         }
@@ -1211,8 +1244,6 @@ final class ProjectClipsController
             ) AS poster_path
         FROM clips c
         INNER JOIN days d ON d.id = c.day_id
-        LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-        LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
         WHERE c.id IN ({$inClause})
           AND c.project_id = UUID_TO_BIN(:project_uuid, 1)
           {$dayFilter}

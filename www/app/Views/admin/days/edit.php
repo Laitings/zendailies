@@ -173,7 +173,7 @@ $this->start('head'); ?>
 
 <?php $this->start('content'); ?>
 <div class="zd-page">
-    <form action="/admin/projects/<?= $project_uuid ?>/days/<?= $day['day_uuid'] ?>/update" method="POST">
+    <form action="/admin/projects/<?= $project_uuid ?>/days/<?= $day['day_uuid'] ?>/edit" method="POST">
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
             <div>

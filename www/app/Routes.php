@@ -253,6 +253,9 @@ $router->group([new AuthGuard], function (\App\Http\Router $r) use (
         // Maintenance / tools
         $r2->get('/admin/tools/backfill-fps', [MaintenanceController::class, 'backfillFps']);
 
+        // Restrict day
+        $r2->post('/admin/projects/{projectUuid}/days/{dayUuid}/restrict', [ProjectDaysController::class, 'restrict']);
+
         // Converter (DIT only) — kept behind AdminGuard as you had it
         $r2->get('/admin/projects/{projectUuid}/days/{dayUuid}/converter',                 [DayConverterController::class, 'index']);
         $r2->post('/admin/projects/{projectUuid}/days/{dayUuid}/converter/poster',         [DayConverterController::class, 'generatePoster']);

@@ -439,25 +439,37 @@ final class AuthController
     public function showSetupPassword()
     {
         $token = $_GET['token'] ?? '';
+
+        // Handle missing token
         if (!$token) {
-            return View::render('auth/error', ['message' => 'Invalid or missing invitation token.']);
+            return View::render('auth/error', [
+                'title'   => 'Missing Token',
+                'message' => 'No invitation token was provided. Please use the link sent to your email.'
+            ]);
         }
 
         $pdo = \App\Support\DB::pdo();
         $stmt = $pdo->prepare("
-        SELECT id, email 
-        FROM accounts 
-        WHERE setup_token = :token AND setup_expires_at > NOW() 
-        LIMIT 1
-    ");
+            SELECT id, email 
+            FROM accounts 
+            WHERE setup_token = :token AND setup_expires_at > NOW() 
+            LIMIT 1
+        ");
         $stmt->execute([':token' => $token]);
         $account = $stmt->fetch();
 
+        // Handle expired or non-existent token
         if (!$account) {
-            return View::render('auth/error', ['message' => 'This invitation has expired or is invalid.']);
+            return View::render('auth/error', [
+                'title'   => 'Link Expired',
+                'message' => 'This invitation link has expired or is no longer valid. Please contact your DIT or Administrator for a new invite.'
+            ]);
         }
 
-        return View::render('auth/setup-password', ['token' => $token, 'email' => $account['email']]);
+        return View::render('auth/setup-password', [
+            'token' => $token,
+            'email' => $account['email']
+        ]);
     }
 
     public function handleSetupPassword()

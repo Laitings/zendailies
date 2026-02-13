@@ -373,12 +373,65 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
         white-space: nowrap;
         z-index: 9999 !important;
     }
+
+    /* Security Chips */
+    .zd-security-cell {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .zd-sec-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #fff;
+        background: #444;
+        /* fallback */
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Security Chips */
+    .zd-security-cell {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+        /* Ensures chips align with each other */
+    }
+
+    .zd-clips-table .col-restricted {
+        vertical-align: middle !important;
+    }
+
+    .zd-pro-menu {
+        display: flex;
+        align-items: center;
+        height: 100%;
+    }
+
+    /* Optional: Ensure the button inside doesn't have stray margins */
+    .zd-pro-trigger {
+        margin: 0;
+    }
 </style>
 <?php $this->end(); ?>
 
 <?php $this->start('content'); ?>
 
 <div class="zd-page" data-project="<?= htmlspecialchars($project['project_uuid']) ?>" data-csrf="<?= htmlspecialchars(\App\Support\Csrf::token()) ?>">
+
+    <?php if (!empty($_SESSION['flash_success'])): ?>
+        <div style="background: rgba(46, 204, 113, 0.1); border: 1px solid var(--zd-success); color: var(--zd-success); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; font-weight: 600;">
+            <?= htmlspecialchars($_SESSION['flash_success']) ?>
+            <?php unset($_SESSION['flash_success']); ?>
+        </div>
+    <?php endif; ?>
 
     <div class="zd-header">
         <h1>
@@ -440,6 +493,9 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
                         <th style="width: 25%;"><?php $sortLink('title', 'Title'); ?></th>
                         <th style="width: 20%;"><?php $sortLink('shoot_date', 'Date'); ?></th>
                         <th style="width: 15%;"><?php $sortLink('unit', 'Unit'); ?></th>
+                        <?php if ($isPowerUser): ?>
+                            <th style="width: 15%;">Security</th>
+                        <?php endif; ?>
                         <th style="width: 10%;"><?php $sortLink('clip_count', 'Clips'); ?></th>
 
                         <?php if ($isPowerUser): ?>
@@ -466,7 +522,7 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
 
                         // Publish info
                         $isPublished      = !empty($d['published_at'] ?? null);
-                        $visibilityLabel  = $isPublished ? 'Public' : 'Internal';
+                        $visibilityLabel  = $isPublished ? 'Published' : 'Internal';
                         $visibilityClass  = $isPublished ? 'zd-chip--public' : 'zd-chip--internal';
 
                         $publishUrl   = "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/publish";
@@ -480,6 +536,32 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
                             <td style="font-weight: 600;"><?= htmlspecialchars($d['title'] ?: ('Day ' . $d['shoot_date'])) ?></td>
                             <td style="font-family: 'Menlo', monospace; color: var(--zd-text-muted);"><?= htmlspecialchars($d['shoot_date']) ?></td>
                             <td><?= htmlspecialchars($d['unit'] ?? '') ?></td>
+
+                            <?php if ($isPowerUser): ?>
+                                <td>
+                                    <div class="zd-security-cell">
+                                        <?php
+                                        $secGroups = !empty($d['security_groups_json']) ? json_decode($d['security_groups_json'], true) : [];
+                                        $secGroupIds = array_column($secGroups ?? [], 'uuid');
+                                        $secGroupIdsJson = htmlspecialchars(json_encode($secGroupIds));
+                                        ?>
+
+                                        <input type="hidden" class="zd-day-security-data" value="<?= $secGroupIdsJson ?>">
+
+                                        <?php if (empty($secGroups)): ?>
+                                            <span class="zd-chip zd-chip--public">Public</span>
+                                        <?php else: ?>
+                                            <?php foreach ($secGroups as $sg): ?>
+                                                <span class="zd-sec-chip"
+                                                    style="background-color: <?= htmlspecialchars($sg['color'] ?? '#d9534f') ?>;">
+                                                    <?= htmlspecialchars($sg['name']) ?>
+                                                </span>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                            <?php endif; ?>
+
                             <td style="font-family: 'Menlo', monospace;"><?= (int)$d['clip_count'] ?></td>
 
                             <?php if ($isPowerUser): ?>
@@ -499,6 +581,15 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
                                             'link'  => "/admin/projects/{$project['project_uuid']}/days/{$dayUuid}/edit",
                                             'icon'  => 'pencil',
                                             'method' => 'GET'
+                                        ],
+                                        // NEW: Restrict Button
+                                        [
+                                            'label' => 'Manage Access',
+                                            'link'  => '#',
+                                            'icon'  => 'lock-closed', // Ensure you have a lock icon or use 'shield'
+                                            'class' => 'zd-day-restrict-btn',
+                                            'attr'  => 'data-day-uuid="' . htmlspecialchars($dayUuid) . '"',
+                                            'method' => 'BUTTON'
                                         ]
                                     ];
 
@@ -561,6 +652,41 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
         <div class="zd-publish-footer">
             <button type="button" class="zd-btn" style="background: transparent; border: 1px solid var(--zd-border-subtle); color: var(--zd-text-muted);" id="zd-publish-cancel">Cancel</button>
             <button type="button" class="zd-btn" id="zd-publish-confirm">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<div class="zd-publish-backdrop" id="zd-security-backdrop">
+    <div class="zd-publish-modal">
+        <div class="zd-publish-head">
+            <h2>Day Security</h2>
+        </div>
+        <div class="zd-publish-body">
+            <p style="color: var(--zd-text-muted); margin-bottom: 15px;">
+                Select security groups allowed to see this day.
+                <br><span style="font-size: 12px; opacity: 0.7;">(If no groups are selected, the day is visible to everyone on the project.)</span>
+            </p>
+
+            <form id="zd-security-form">
+                <div class="zd-security-list" style="max-height: 250px; overflow-y: auto; background: rgba(0,0,0,0.2); border: 1px solid var(--zd-border-subtle); border-radius: 4px; padding: 10px;">
+                    <?php if (empty($allSecurityGroups)): ?>
+                        <div style="padding: 10px; color: var(--zd-text-muted);">No security groups defined.</div>
+                    <?php else: ?>
+                        <?php foreach ($allSecurityGroups as $g): ?>
+                            <label class="zd-publish-checkbox" style="margin-top: 5px; margin-bottom: 5px; padding: 8px;">
+                                <input type="checkbox" name="groups[]" value="<?= htmlspecialchars($g['id']) ?>" class="zd-security-cb">
+                                <span class="zd-sec-chip" style="background-color: <?= htmlspecialchars($g['color'] ?? '#d9534f') ?>; margin-left: 8px;">
+                                    <?= htmlspecialchars($g['name']) ?>
+                                </span>
+                            </label>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </form>
+        </div>
+        <div class="zd-publish-footer">
+            <button type="button" class="zd-btn" style="background: transparent; border: 1px solid var(--zd-border-subtle); color: var(--zd-text-muted);" id="zd-security-cancel">Cancel</button>
+            <button type="button" class="zd-btn" id="zd-security-save">Save Access</button>
         </div>
     </div>
 </div>
@@ -699,6 +825,104 @@ $isPowerUser    = ($isSuperuser === 1 || $isProjectAdmin === 1);
             });
         });
     });
+
+    // --- Security Modal Logic ---
+    const secBackdrop = document.getElementById("zd-security-backdrop");
+    const secCancel = document.getElementById("zd-security-cancel");
+    const secSave = document.getElementById("zd-security-save");
+    const secCheckboxes = document.querySelectorAll(".zd-security-cb");
+
+    // 1. INJECT PHP VARIABLES HERE (Fixes ReferenceError)
+    const currentProjectUuid = "<?= htmlspecialchars($project['project_uuid'] ?? '') ?>";
+    const currentCsrfToken = "<?= \App\Support\Csrf::token() ?>";
+
+    let activeDayUuid = null;
+
+    function closeSecModal() {
+        if (secBackdrop) secBackdrop.style.display = "none";
+        activeDayUuid = null;
+    }
+
+    if (secCancel) secCancel.addEventListener("click", closeSecModal);
+    if (secBackdrop) secBackdrop.addEventListener("click", (e) => {
+        if (e.target === secBackdrop) closeSecModal();
+    });
+
+    // Capture click on "Manage Access" in dropdown
+    document.addEventListener("click", function(e) {
+        const btn = e.target.closest(".zd-day-restrict-btn");
+        if (btn) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            activeDayUuid = btn.getAttribute("data-day-uuid");
+            const row = btn.closest("tr");
+
+            // Get currently assigned groups from the hidden input in the row
+            const dataInput = row.querySelector(".zd-day-security-data");
+            const currentGroups = dataInput ? JSON.parse(dataInput.value) : [];
+
+            // Reset checkboxes
+            secCheckboxes.forEach(cb => {
+                cb.checked = currentGroups.includes(cb.value);
+            });
+
+            if (secBackdrop) secBackdrop.style.display = "flex";
+        }
+    }, true);
+
+    if (secSave) {
+        secSave.addEventListener("click", async function() {
+            if (!activeDayUuid) {
+                console.error("No active day UUID found.");
+                return;
+            }
+
+            const selected = [];
+            secCheckboxes.forEach(cb => {
+                if (cb.checked) selected.push(cb.value);
+            });
+
+            // Prepare Payload
+            const payload = new URLSearchParams();
+            // USE THE INJECTED TOKEN VARIABLE
+            payload.append("_csrf", currentCsrfToken);
+            selected.forEach(id => payload.append("groups[]", id));
+
+            // USE THE INJECTED PROJECT UUID
+            const targetUrl = `/admin/projects/${currentProjectUuid}/days/${activeDayUuid}/restrict`;
+
+            try {
+                // UI Feedback
+                const originalText = secSave.textContent;
+                secSave.textContent = "Saving...";
+                secSave.disabled = true;
+
+                const response = await fetch(targetUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: payload.toString()
+                });
+
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    console.error("Server returned:", response.status);
+                    alert("Failed to save permissions.");
+                    secSave.textContent = originalText;
+                    secSave.disabled = false;
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Network error.");
+                secSave.textContent = "Save Access";
+                secSave.disabled = false;
+            }
+        });
+    }
 </script>
 
 <?php $this->end(); ?>

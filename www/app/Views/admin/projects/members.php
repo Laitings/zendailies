@@ -256,6 +256,23 @@ $formatRole = function ($r) {
         color: #fff;
         border-color: #ef4444;
     }
+
+    /* Pending User Badge */
+    .badge-pending {
+        display: inline-block;
+        padding: 2px 8px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #ff5c3a;
+        /* Vibrant red-orange */
+        border: 1px solid rgba(255, 92, 58, 0.3);
+        background: rgba(255, 92, 58, 0.05);
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
+        pointer-events: none;
+    }
 </style>
 <?php $this->end(); ?>
 
@@ -296,6 +313,10 @@ $formatRole = function ($r) {
                         <div class="user-info">
                             <span class="name"><?= htmlspecialchars($u['last_name'] . ', ' . $u['first_name']) ?></span>
                             <span class="email"><?= htmlspecialchars($u['email']) ?></span>
+
+                            <?php if (($u['status'] ?? '') === 'pending'): ?>
+                                <div class="badge-pending">Pending</div>
+                            <?php endif; ?>
                         </div>
                         <div style="display:flex; justify-content:flex-end; margin-top:8px;">
                             <button type="button" class="action-btn add-btn" onclick="submitOne('add', '<?= $u['person_uuid'] ?>')">Add →</button>
@@ -325,6 +346,9 @@ $formatRole = function ($r) {
                         <div class="user-info">
                             <span class="name"><?= htmlspecialchars($m['display_name'] ?? ($m['first_name'] . ' ' . $m['last_name'])) ?></span>
                             <span class="email"><?= htmlspecialchars($m['email'] ?? '') ?></span>
+                            <?php if (($m['status'] ?? '') === 'pending'): ?>
+                                <div class="badge-pending">Pending</div>
+                            <?php endif; ?>
                         </div>
 
                         <form id="<?= $formId ?>" method="post" action="/admin/projects/<?= $project['id'] ?>/members/<?= $m['person_uuid'] ?>" class="member-controls">

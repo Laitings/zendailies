@@ -15,23 +15,70 @@ final class ClipPlayerController
 {
     private function fetchDaysWithThumbs(\PDO $pdo, string $projectUuid, string $dayVisibilitySql, string $aclSql, ?string $viewerParam): array
     {
-        // All days for project (order newest first)
+        $dayAclSql = '';
+        if ($viewerParam !== null) {
+            $dayAclSql = "
+                AND (
+                    NOT EXISTS (
+                        SELECT 1
+                        FROM day_sensitive_acl dsa_chk
+                        WHERE dsa_chk.day_id = d.id
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM day_sensitive_acl dsa_access
+                        JOIN sensitive_group_members sgm_access ON sgm_access.group_id = dsa_access.group_id
+                        WHERE dsa_access.day_id = d.id
+                          AND sgm_access.person_id = UUID_TO_BIN(:viewer_uuid_day, 1)
+                    )
+                )
+            ";
+        }
+
+        // 1. Prepare the Days Query (includes the security check)
         $allDaysStmt = $pdo->prepare("
-        SELECT 
-            BIN_TO_UUID(d.id,1) AS day_uuid,
-            d.shoot_date,
-            d.title
-        FROM days d
-        WHERE d.project_id = UUID_TO_BIN(:p,1)
+            SELECT 
+                BIN_TO_UUID(d.id,1) AS day_uuid,
+                d.shoot_date,
+                d.title
+            FROM days d
+            WHERE d.project_id = UUID_TO_BIN(:p,1)
             {$dayVisibilitySql}
+            {$dayAclSql}
             ORDER BY d.shoot_date DESC, d.created_at DESC
-        LIMIT 500
+            LIMIT 500
         ");
 
-        $allDaysStmt->execute([':p' => $projectUuid]);
+        // 2. Bind Parameters (include viewer UUID for day-level ACL checks)
+        $dayParams = [':p' => $projectUuid];
+        if ($viewerParam !== null) {
+            $dayParams[':viewer_uuid_day'] = $viewerParam;
+        }
+
+        $allDaysStmt->execute($dayParams);
         $rawDays = $allDaysStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
 
         if (!$rawDays) return [];
+
+        $clipAclSql = '';
+        if ($viewerParam !== null) {
+            $clipAclSql = "
+            AND (
+                -- Day Gate
+                (
+                    NOT EXISTS (SELECT 1 FROM day_sensitive_acl dsa WHERE dsa.day_id = c.day_id)
+                    OR EXISTS (
+                        SELECT 1 FROM day_sensitive_acl dsa
+                        JOIN sensitive_group_members sgm ON sgm.group_id = dsa.group_id
+                        WHERE dsa.day_id = c.day_id AND sgm.person_id = UUID_TO_BIN(:viewer_uuid_day, 1)
+                    )
+                )
+                AND
+                -- Clip Gate
+                (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_uuid_clip, 1))
+            )
+            ";
+        }
 
         /**
          * FIXED QUERY: 
@@ -64,8 +111,7 @@ final class ClipPlayerController
             LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
             WHERE c.project_id = UUID_TO_BIN(:p,1)
             AND c.day_id = UUID_TO_BIN(:d,1)
-            $aclSql
-            GROUP BY c.id
+            {$clipAclSql}
             ORDER BY c.created_at ASC
             LIMIT 1
         ) AS authorized_clip
@@ -73,7 +119,7 @@ final class ClipPlayerController
 
         $thumbStmt = $pdo->prepare($thumbSql);
 
-        // Per-day stats (ACL-aware): clip count + total duration (ms)
+        // Per-day stats (ACL-aware)
         $statsSql = "
         SELECT
             COUNT(*)                          AS cnt,
@@ -85,7 +131,8 @@ final class ClipPlayerController
             LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
             WHERE c.project_id = UUID_TO_BIN(:p,1)
             AND c.day_id     = UUID_TO_BIN(:d,1)
-            $aclSql
+            {$clipAclSql}
+
             GROUP BY c.id
         ) AS c
         ";
@@ -93,25 +140,29 @@ final class ClipPlayerController
 
         $daysOut = [];
         foreach ($rawDays as $rowDay) {
+            // Bind Thumb Query
             $thumbStmt->bindValue(':p', $projectUuid);
             $thumbStmt->bindValue(':d', $rowDay['day_uuid']);
             if ($viewerParam !== null) {
-                $thumbStmt->bindValue(':viewer_person_uuid', $viewerParam);
+                $thumbStmt->bindValue(':viewer_uuid_day', $viewerParam);
+                $thumbStmt->bindValue(':viewer_uuid_clip', $viewerParam);
             }
             $thumbStmt->execute();
             $thumbRow = $thumbStmt->fetch(\PDO::FETCH_ASSOC);
 
+            // Bind Stats Query
             $statsStmt->bindValue(':p', $projectUuid);
             $statsStmt->bindValue(':d', $rowDay['day_uuid']);
             if ($viewerParam !== null) {
-                $statsStmt->bindValue(':viewer_person_uuid', $viewerParam);
+                $statsStmt->bindValue(':viewer_uuid_day', $viewerParam);
+                $statsStmt->bindValue(':viewer_uuid_clip', $viewerParam);
             }
             $statsStmt->execute();
             $stats = $statsStmt->fetch(\PDO::FETCH_ASSOC) ?: ['cnt' => 0, 'tot_ms' => 0];
 
             $totMs = (int)($stats['tot_ms'] ?? 0);
 
-            // choose FPS for the day: first visible clip's FPS, else 25
+            // FPS / Duration Logic
             $dayFps = null;
             if (!empty($thumbRow) && isset($thumbRow['clip_fps']) && $thumbRow['clip_fps'] !== null) {
                 $dayFps = (float)$thumbRow['clip_fps'];
@@ -120,10 +171,8 @@ final class ClipPlayerController
                 $dayFps = 25.0;
             }
 
-            // Convert totMs to frames using the chosen FPS.
             $fpsInt = (int)round($dayFps);
             if ($fpsInt < 1) $fpsInt = 25;
-
             $totalFrames   = (int)round(($totMs / 1000.0) * $dayFps);
             $frames        = $totalFrames % $fpsInt;
             $totalSeconds  = intdiv($totalFrames, $fpsInt);
@@ -131,7 +180,6 @@ final class ClipPlayerController
             $totalMinutes  = intdiv($totalSeconds, 60);
             $mm            = $totalMinutes % 60;
             $hh            = intdiv($totalMinutes, 60);
-
             $hmsff = sprintf('%02d:%02d:%02d:%02d', $hh, $mm, $ss, $frames);
 
             $daysOut[] = [
@@ -157,32 +205,54 @@ final class ClipPlayerController
      * @param bool $isProjectAdmin Whether the user is a project admin
      * @return bool True if user has access, false otherwise
      */
+    /**
+     * Validate whether a user has access to view a specific clip
+     * Checks both DAY-level and CLIP-level permissions.
+     */
+    /**
+     * Validate whether a user has access to view a specific clip
+     */
     private function validateClipAccess(\PDO $pdo, string $clipUuid, ?string $personUuid, bool $isSuperuser, bool $isProjectAdmin): bool
     {
-        // Superusers and project admins have access to everything
         if ($isSuperuser || $isProjectAdmin) {
             return true;
         }
 
-        // For regular users, check if clip is restricted and if they're in the group
         $stmt = $pdo->prepare("
             SELECT 
                 CASE 
-                    WHEN csa.group_id IS NULL THEN 1
-                    WHEN sgm.person_id IS NOT NULL THEN 1
-                    ELSE 0
+                    -- 1. DAY CHECK: Fail if Day is restricted and user is NOT in the group
+                    WHEN EXISTS (SELECT 1 FROM day_sensitive_acl dsa WHERE dsa.day_id = c.day_id)
+                         AND NOT EXISTS (
+                            SELECT 1 
+                            FROM day_sensitive_acl dsa
+                            JOIN sensitive_group_members sgm ON sgm.group_id = dsa.group_id
+                            WHERE dsa.day_id = c.day_id
+                              AND sgm.person_id = UUID_TO_BIN(:viewer_uuid_day, 1)
+                         ) THEN 0
+
+                    -- 2. CLIP CHECK: Fail if Clip is restricted and user is NOT in the group
+                    WHEN c.is_restricted = 1
+                         AND NOT EXISTS (
+                            SELECT 1
+                            FROM clip_sensitive_acl csa_sub
+                            JOIN sensitive_group_members sgm_sub ON sgm_sub.group_id = csa_sub.group_id
+                            WHERE csa_sub.clip_id = c.id
+                              AND sgm_sub.person_id = UUID_TO_BIN(:viewer_uuid_clip, 1)
+                        ) THEN 0
+                    
+                    -- 3. Otherwise, Access Granted
+                    ELSE 1
                 END AS has_access
             FROM clips c
-            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id 
-                AND sgm.person_id = UUID_TO_BIN(:viewer_person_uuid, 1)
             WHERE c.id = UUID_TO_BIN(:c, 1)
             LIMIT 1
         ");
 
         $stmt->execute([
             ':c' => $clipUuid,
-            ':viewer_person_uuid' => ($personUuid ?? '00000000-0000-0000-0000-000000000000')
+            ':viewer_uuid_day'  => ($personUuid ?? '00000000-0000-0000-0000-000000000000'),
+            ':viewer_uuid_clip' => ($personUuid ?? '00000000-0000-0000-0000-000000000000')
         ]);
 
         return (bool)($stmt->fetchColumn() ?: 0);
@@ -407,7 +477,11 @@ final class ClipPlayerController
         $sceneFilterSql = $targetScene ? " AND c.scene = :sc " : " AND c.day_id = UUID_TO_BIN(:d,1) ";
         if ($targetScene) $clipListParams[':sc'] = $targetScene;
         else $clipListParams[':d'] = $dayUuid;
-        if ($viewerParam !== null) $clipListParams[':viewer_person_uuid'] = $viewerParam;
+
+        // Bind ACL placeholder used by $aclSql in this query
+        if ($viewerParam !== null) {
+            $clipListParams[':viewer_person_uuid'] = $viewerParam;
+        }
 
         $clipListSql = "
             SELECT BIN_TO_UUID(c.id,1) AS clip_uuid, BIN_TO_UUID(c.day_id,1) AS day_uuid,
@@ -782,27 +856,32 @@ final class ClipPlayerController
         // Build list of clip UUIDs that should show the sensitive chip
         // - Superusers and Project Admins: see chip for ALL sensitive clips
         // - Regular users: only see chip if they're in the security group for that clip
+        // ... inside show() method ...
+
         $sensitiveClips = [];
         if ($isSuperuser || $isProjectAdmin) {
-            // Admins and Superusers see the chip for ANY sensitive clip in the current list
+            // (Keep existing Admin logic if it's there, or use this block)
             $sensSql = "
                 SELECT DISTINCT BIN_TO_UUID(c.id, 1) AS clip_uuid
                 FROM clips c
                 JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
                 WHERE c.project_id = UUID_TO_BIN(:pid, 1)
-                $sceneFilterSql
-            ";
+                " . $sceneFilterSql; // Concatenate safely
+
             $stmtSens = $pdo->prepare($sensSql);
             $stmtSens->bindValue(':pid', $projectUuid);
+
             if ($targetScene) {
                 $stmtSens->bindValue(':sc', $targetScene);
             } else {
                 $stmtSens->bindValue(':d', $dayUuid);
             }
             $stmtSens->execute();
-            $sensitiveClips = $stmtSens->fetchAll(PDO::FETCH_COLUMN);
+            $sensitiveClips = $stmtSens->fetchAll(\PDO::FETCH_COLUMN);
         } elseif ($personUuid) {
             // Regular users only see the chip if they are IN the specific security group
+
+            // 1. Build Query with Concatenation to ensure $sceneFilterSql is included
             $sensSql = "
                 SELECT DISTINCT BIN_TO_UUID(c.id, 1) AS clip_uuid
                 FROM clips c
@@ -810,18 +889,23 @@ final class ClipPlayerController
                 JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
                 WHERE c.project_id = UUID_TO_BIN(:pid, 1)
                 AND sgm.person_id = UUID_TO_BIN(:uid, 1)
-                $sceneFilterSql
-            ";
+                " . $sceneFilterSql;
+
             $stmtSens = $pdo->prepare($sensSql);
+
+            // 2. Bind Params
             $stmtSens->bindValue(':pid', $projectUuid);
             $stmtSens->bindValue(':uid', $personUuid);
+
+            // 3. Bind Conditional Param (Scene or Day)
             if ($targetScene) {
                 $stmtSens->bindValue(':sc', $targetScene);
             } else {
                 $stmtSens->bindValue(':d', $dayUuid);
             }
+
             $stmtSens->execute();
-            $sensitiveClips = $stmtSens->fetchAll(PDO::FETCH_COLUMN);
+            $sensitiveClips = $stmtSens->fetchAll(\PDO::FETCH_COLUMN);
         }
 
         View::render($isMobile ? 'admin/player/show_mobile' : 'admin/player/show', [
@@ -1232,8 +1316,33 @@ final class ClipPlayerController
     }
 
     // Insert after fetchDaysWithThumbs around line 133
-    public function fetchScenesWithThumbs(PDO $pdo, string $projectUuid, string $aclSql, ?string $viewerParam): array
+    public function fetchScenesWithThumbs(\PDO $pdo, string $projectUuid, string $ignoredAclSql, ?string $viewerParam): array
     {
+        // 1. Build the Security SQL locally to ensure placeholders match the binds.
+        // We ignore the passed $ignoredAclSql to prevent alias errors.
+        $localSecuritySql = '';
+
+        if ($viewerParam) {
+            $localSecuritySql = "
+                AND d.published_at IS NOT NULL
+                AND (
+                    -- Day Gate
+                    (
+                        NOT EXISTS (SELECT 1 FROM day_sensitive_acl dsa WHERE dsa.day_id = c.day_id)
+                        OR EXISTS (
+                            SELECT 1 FROM day_sensitive_acl dsa 
+                            JOIN sensitive_group_members sgm_d ON sgm_d.group_id = dsa.group_id
+                            WHERE dsa.day_id = c.day_id AND sgm_d.person_id = UUID_TO_BIN(:viewer_uuid_day, 1)
+                        )
+                    )
+                    AND
+                    -- Clip Gate
+                    (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_uuid_clip, 1))
+                )
+             ";
+        }
+
+        // 2. Main Query
         $sql = "
             SELECT 
                 scene,
@@ -1255,11 +1364,13 @@ final class ClipPlayerController
                     c.id,
                     c.duration_ms
                 FROM clips c
+                -- JOIN DAYS is critical for the 'd.published_at' check
+                JOIN days d ON d.id = c.day_id 
                 LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
                 LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
                 WHERE c.project_id = UUID_TO_BIN(:p_main, 1)
                   AND c.scene IS NOT NULL AND c.scene != ''
-                  $aclSql
+                  $localSecuritySql
                 GROUP BY c.scene, c.id, c.duration_ms
             ) AS scene_clips
             GROUP BY scene
@@ -1271,13 +1382,16 @@ final class ClipPlayerController
         $st = $pdo->prepare($sql);
         $st->bindValue(':p_sub', $projectUuid);
         $st->bindValue(':p_main', $projectUuid);
+
+        // 3. Bind the placeholders if we injected the SQL
         if ($viewerParam) {
-            $st->bindValue(':viewer_person_uuid', $viewerParam);
+            $st->bindValue(':viewer_uuid_day', $viewerParam);
+            $st->bindValue(':viewer_uuid_clip', $viewerParam);
         }
         $st->execute();
 
         $scenes = [];
-        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        foreach ($st->fetchAll(\PDO::FETCH_ASSOC) as $row) {
             $ms = (int)$row['tot_ms'];
             $ss = intdiv($ms, 1000);
             $mm = intdiv($ss, 60);
@@ -1338,13 +1452,28 @@ final class ClipPlayerController
             $isProjectAdmin = (int)($admStmt->fetchColumn() ?: 0);
         }
 
-        // 3. Sensitive Groups ACL Logic
+        // 3. Sensitive Groups ACL Logic (Day + Clip)
         $aclSql = '';
         $params = [':clip_uuid' => $clipUuid, ':project_uuid' => $projectUuid];
 
         if (!$isSuperuser && !$isProjectAdmin) {
-            $aclSql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid, 1))";
-            $params[':viewer_person_uuid'] = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
+            $viewerUuid = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
+            $params[':viewer_uuid_day']  = $viewerUuid;
+            $params[':viewer_uuid_clip'] = $viewerUuid;
+
+            $aclSql = " 
+                -- Day Gate
+                AND (
+                    NOT EXISTS (SELECT 1 FROM day_sensitive_acl dsa WHERE dsa.day_id = c.day_id)
+                    OR EXISTS (
+                        SELECT 1 FROM day_sensitive_acl dsa 
+                        JOIN sensitive_group_members sgm ON sgm.group_id = dsa.group_id
+                        WHERE dsa.day_id = c.day_id AND sgm.person_id = UUID_TO_BIN(:viewer_uuid_day, 1)
+                    )
+                )
+                -- Clip Gate
+                AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_uuid_clip, 1))
+            ";
         }
 
         // 4. Locate the Asset
@@ -1440,261 +1569,251 @@ final class ClipPlayerController
     }
 
     /**
-     * Batch fetch thumbnails for multiple days
-     * GET /admin/projects/{projectUuid}/player/days/thumbnails?day_uuids=xxx,yyy,zzz
+     * JSON endpoint for batch-loading day thumbnails (sidebar).
+     * Route: /admin/projects/{projectUuid}/player/days/thumbnails
      */
     public function batchDayThumbnails(string $projectUuid): void
     {
-        header('Content-Type: application/json');
+        // 1. Auth & Context
+        if (session_status() === \PHP_SESSION_NONE) session_start();
+        $account = $_SESSION['account'] ?? null;
+        $personUuid = $_SESSION['person_uuid'] ?? null;
+        $isSuperuser = (int)($account['is_superuser'] ?? 0);
 
-        \App\Support\Auth::startSession();
-        if (!\App\Support\Auth::check()) {
-            http_response_code(403);
-            echo json_encode(['error' => 'Unauthorized']);
-            exit;
+        // Check Project Admin
+        $isProjectAdmin = 0;
+        if ($personUuid) {
+            $pdo = DB::pdo();
+            $stmt = $pdo->prepare("SELECT is_project_admin FROM project_members WHERE project_id = UUID_TO_BIN(:p,1) AND person_id = UUID_TO_BIN(:u,1)");
+            $stmt->execute([':p' => $projectUuid, ':u' => $personUuid]);
+            $isProjectAdmin = (int)$stmt->fetchColumn();
         }
 
-        $dayUuidsParam = $_GET['day_uuids'] ?? '';
-        if (empty($dayUuidsParam)) {
+        // 2. Parse Requested Days
+        $dayUuidsRaw = $_GET['days'] ?? '';
+        $dayUuids = explode(',', $dayUuidsRaw);
+        if (empty($dayUuidsRaw) || empty($dayUuids)) {
             echo json_encode([]);
-            exit;
+            return;
         }
 
-        $dayUuids = array_filter(array_map('trim', explode(',', $dayUuidsParam)));
+        // 3. Build Security SQL
+        $visibilitySql = '';
+        $params = [':project_uuid' => $projectUuid];
 
-        if (empty($dayUuids) || count($dayUuids) > 200) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid day_uuids parameter']);
-            exit;
+        // Regular users must pass Day Gate + Clip Gate + Published check
+        if (!$isSuperuser && !$isProjectAdmin) {
+            $viewerUuid = $personUuid ?? '00000000-0000-0000-0000-000000000000';
+            $params[':viewer_uuid_day']  = $viewerUuid;
+            $params[':viewer_uuid_clip'] = $viewerUuid;
+
+            $visibilitySql = "
+                AND d.published_at IS NOT NULL
+                
+                -- Day Gate
+                AND (
+                    NOT EXISTS (SELECT 1 FROM day_sensitive_acl dsa WHERE dsa.day_id = c.day_id)
+                    OR EXISTS (
+                        SELECT 1 FROM day_sensitive_acl dsa 
+                        JOIN sensitive_group_members sgm ON sgm.group_id = dsa.group_id
+                        WHERE dsa.day_id = c.day_id AND sgm.person_id = UUID_TO_BIN(:viewer_uuid_day, 1)
+                    )
+                )
+
+                -- Clip Gate
+                AND (
+                    c.is_restricted = 0
+                    OR EXISTS (
+                        SELECT 1
+                        FROM clip_sensitive_acl csa_sub
+                        JOIN sensitive_group_members sgm_sub ON sgm_sub.group_id = csa_sub.group_id
+                        WHERE csa_sub.clip_id = c.id
+                          AND sgm_sub.person_id = UUID_TO_BIN(:viewer_uuid_clip, 1)
+                    )
+                )
+            ";
         }
+
+        // 4. Build IN clause for days
+        // We manually sanitize UUIDs to be safe since we can't bind an array directly
+        $validUuids = [];
+        foreach ($dayUuids as $du) {
+            if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', trim($du))) {
+                $validUuids[] = trim($du);
+            }
+        }
+        if (empty($validUuids)) {
+            echo json_encode([]);
+            return;
+        }
+
+        $inClause = [];
+        foreach ($validUuids as $i => $uuid) {
+            $pkey = ":d_$i";
+            $inClause[] = "UUID_TO_BIN($pkey, 1)";
+            $params[$pkey] = $uuid;
+        }
+        $inSql = implode(',', $inClause);
+
+        // 5. Query: Get 1 poster per day (respecting security)
+        $sql = "
+            SELECT 
+                BIN_TO_UUID(c.day_id, 1) as day_uuid,
+                (
+                    SELECT a.storage_path
+                    FROM clip_assets a
+                    WHERE a.clip_id = c.id
+                      AND a.asset_type = 'poster'
+                    ORDER BY a.created_at DESC
+                    LIMIT 1
+                ) as poster_path
+            FROM clips c
+            JOIN days d ON d.id = c.day_id
+            WHERE c.project_id = UUID_TO_BIN(:project_uuid, 1)
+              AND c.day_id IN ($inSql)
+              $visibilitySql
+            GROUP BY c.day_id
+        ";
 
         $pdo = DB::pdo();
-        $personUuid = $_SESSION['person_uuid'] ?? null;
-        $account = $_SESSION['account'] ?? [];
-        $isSuperuser = !empty($account['is_superuser']);
-
-        // Check project admin status
-        $isProjectAdmin = 0;
-        if (!$isSuperuser && $personUuid) {
-            $admStmt = $pdo->prepare("
-            SELECT is_project_admin 
-            FROM project_members 
-            WHERE project_id = UUID_TO_BIN(:p, 1) 
-              AND person_id = UUID_TO_BIN(:person, 1) 
-            LIMIT 1
-        ");
-            $admStmt->execute([':p' => $projectUuid, ':person' => $personUuid]);
-            $isProjectAdmin = (int)($admStmt->fetchColumn() ?: 0);
-        }
-
-        // Build visibility SQL
-        $dayVisibilitySql = '';
-        if (!$isSuperuser && !$isProjectAdmin) {
-            $dayVisibilitySql = " AND d.published_at IS NOT NULL";
-        }
-
-        // Build ACL SQL for clips
-        $aclSql = '';
-        $viewerParam = null;
-        if (!$isSuperuser && !$isProjectAdmin) {
-            $aclSql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid, 1))";
-            $viewerParam = $personUuid ?? '00000000-0000-0000-0000-000000000000';
-        }
-
-        // Build IN clause
-        $placeholders = [];
-        $params = [':p' => $projectUuid];
-
-        foreach ($dayUuids as $idx => $uuid) {
-            $key = ":day_uuid_{$idx}";
-            $placeholders[] = "UUID_TO_BIN({$key}, 1)";
-            $params[$key] = $uuid;
-        }
-
-        if ($viewerParam !== null) {
-            $params[':viewer_person_uuid'] = $viewerParam;
-        }
-
-        $inClause = implode(',', $placeholders);
-
-        /**
-         * FIXED QUERY: 
-         * Nested subquery structure ensures ACL filtering happens FIRST with GROUP BY,
-         * then poster is fetched only from authorized clips.
-         */
-        $sql = "
-        SELECT 
-            BIN_TO_UUID(d.id, 1) AS day_uuid,
-            (
-                SELECT a.storage_path
-                FROM (
-                    SELECT c.id
-                    FROM clips c
-                    LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-                    LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-                    WHERE c.day_id = d.id
-                      AND c.project_id = d.project_id
-                      {$aclSql}
-                    GROUP BY c.id
-                    ORDER BY c.created_at ASC
-                    LIMIT 1
-                ) AS authorized_first_clip
-                INNER JOIN clip_assets a ON a.clip_id = authorized_first_clip.id
-                WHERE a.asset_type = 'poster'
-                ORDER BY a.created_at DESC
-                LIMIT 1
-            ) AS poster_path
-        FROM days d
-        WHERE d.id IN ({$inClause})
-          AND d.project_id = UUID_TO_BIN(:p, 1)
-          {$dayVisibilitySql}
-    ";
-
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
+
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+        // 6. Output Map
         $result = [];
-        foreach ($rows as $row) {
-            $result[$row['day_uuid']] = $row['poster_path'] ?? null;
+        foreach ($rows as $r) {
+            if (!empty($r['poster_path'])) {
+                $result[$r['day_uuid']] = $r['poster_path'];
+            }
         }
 
-        header('Cache-Control: public, max-age=300');
-        header('ETag: "' . md5(json_encode($result)) . '"');
-
+        header('Content-Type: application/json');
         echo json_encode($result);
-        exit;
     }
 
 
     /**
-     * Batch fetch thumbnails for multiple scenes
-     * GET /admin/projects/{projectUuid}/player/scenes/thumbnails?scenes=1,2,3
+     * JSON endpoint for batch-loading scene thumbnails (sidebar).
+     * Route: /admin/projects/{projectUuid}/player/scenes/thumbnails
      */
     public function batchSceneThumbnails(string $projectUuid): void
     {
-        header('Content-Type: application/json');
+        // 1. Auth & Context
+        if (session_status() === \PHP_SESSION_NONE) session_start();
+        $account = $_SESSION['account'] ?? null;
+        $personUuid = $_SESSION['person_uuid'] ?? null;
+        $isSuperuser = (int)($account['is_superuser'] ?? 0);
 
-        \App\Support\Auth::startSession();
-        if (!\App\Support\Auth::check()) {
-            http_response_code(403);
-            echo json_encode(['error' => 'Unauthorized']);
-            exit;
+        // Check Project Admin
+        $isProjectAdmin = 0;
+        if ($personUuid) {
+            $pdo = DB::pdo();
+            $stmt = $pdo->prepare("SELECT is_project_admin FROM project_members WHERE project_id = UUID_TO_BIN(:p,1) AND person_id = UUID_TO_BIN(:u,1)");
+            $stmt->execute([':p' => $projectUuid, ':u' => $personUuid]);
+            $isProjectAdmin = (int)$stmt->fetchColumn();
         }
 
-        $scenesParam = $_GET['scenes'] ?? '';
-        if (empty($scenesParam)) {
+        // 2. Parse Requested Scenes
+        $scenesRaw = $_GET['scenes'] ?? '';
+        $scenes = explode(',', $scenesRaw);
+        if (empty($scenesRaw) || empty($scenes)) {
             echo json_encode([]);
-            exit;
+            return;
         }
 
-        $scenes = array_filter(array_map('trim', explode(',', $scenesParam)));
-        $scenes = array_map('urldecode', $scenes);
+        // 3. Build Security SQL
+        $visibilitySql = '';
+        $params = [':project_uuid' => $projectUuid];
 
-        if (empty($scenes) || count($scenes) > 200) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid scenes parameter']);
-            exit;
+        if (!$isSuperuser && !$isProjectAdmin) {
+            $viewerUuid = $personUuid ?? '00000000-0000-0000-0000-000000000000';
+            $params[':viewer_uuid_day']  = $viewerUuid;
+            $params[':viewer_uuid_clip'] = $viewerUuid;
+
+            $visibilitySql = "
+                AND d.published_at IS NOT NULL
+                
+                -- Day Gate
+                AND (
+                    NOT EXISTS (SELECT 1 FROM day_sensitive_acl dsa WHERE dsa.day_id = c.day_id)
+                    OR EXISTS (
+                        SELECT 1 FROM day_sensitive_acl dsa 
+                        JOIN sensitive_group_members sgm ON sgm.group_id = dsa.group_id
+                        WHERE dsa.day_id = c.day_id AND sgm.person_id = UUID_TO_BIN(:viewer_uuid_day, 1)
+                    )
+                )
+
+                -- Clip Gate
+                AND (
+                    c.is_restricted = 0
+                    OR EXISTS (
+                        SELECT 1
+                        FROM clip_sensitive_acl csa_sub
+                        JOIN sensitive_group_members sgm_sub ON sgm_sub.group_id = csa_sub.group_id
+                        WHERE csa_sub.clip_id = c.id
+                          AND sgm_sub.person_id = UUID_TO_BIN(:viewer_uuid_clip, 1)
+                    )
+                )
+            ";
         }
+
+        // 4. Build IN clause for scenes (Manual sanitization)
+        $validScenes = [];
+        foreach ($scenes as $sc) {
+            $s = trim($sc);
+            if ($s !== '') $validScenes[] = $s;
+        }
+
+        if (empty($validScenes)) {
+            echo json_encode([]);
+            return;
+        }
+
+        $inClause = [];
+        foreach ($validScenes as $i => $s) {
+            $pkey = ":s_$i";
+            $inClause[] = $pkey;
+            $params[$pkey] = $s;
+        }
+        $inSql = implode(',', $inClause);
+
+        // 5. Query
+        $sql = "
+            SELECT 
+                c.scene,
+                (
+                    SELECT a.storage_path
+                    FROM clip_assets a
+                    WHERE a.clip_id = c.id
+                      AND a.asset_type = 'poster'
+                    ORDER BY a.created_at DESC
+                    LIMIT 1
+                ) as poster_path
+            FROM clips c
+            JOIN days d ON d.id = c.day_id
+            WHERE c.project_id = UUID_TO_BIN(:project_uuid, 1)
+              AND c.scene IN ($inSql)
+              $visibilitySql
+            GROUP BY c.scene
+        ";
 
         $pdo = DB::pdo();
-        $personUuid = $_SESSION['person_uuid'] ?? null;
-        $account = $_SESSION['account'] ?? [];
-        $isSuperuser = !empty($account['is_superuser']);
-
-        // Check project admin status
-        $isProjectAdmin = 0;
-        if (!$isSuperuser && $personUuid) {
-            $admStmt = $pdo->prepare("
-            SELECT is_project_admin 
-            FROM project_members 
-            WHERE project_id = UUID_TO_BIN(:p, 1) 
-              AND person_id = UUID_TO_BIN(:person, 1) 
-            LIMIT 1
-        ");
-            $admStmt->execute([':p' => $projectUuid, ':person' => $personUuid]);
-            $isProjectAdmin = (int)($admStmt->fetchColumn() ?: 0);
-        }
-
-        // Build ACL SQL
-        $aclSql = '';
-        $viewerParam = null;
-        if (!$isSuperuser && !$isProjectAdmin) {
-            $aclSql = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid, 1))";
-            $viewerParam = $personUuid ?? '00000000-0000-0000-0000-000000000000';
-        }
-
-        // Build IN clause for scenes
-        $placeholders = [];
-        $params = [':p' => $projectUuid];
-
-        foreach ($scenes as $idx => $scene) {
-            $key = ":scene_{$idx}";
-            $placeholders[] = $key;
-            $params[$key] = $scene;
-        }
-
-        if ($viewerParam !== null) {
-            $params[':viewer_person_uuid'] = $viewerParam;
-        }
-
-        $inClause = implode(',', $placeholders);
-
-        /**
-         * FIXED QUERY:
-         * The outer query now selects from authorized clips FIRST (with GROUP BY),
-         * then fetches posters only from those authorized clips.
-         */
-        $sql = "
-        SELECT 
-            authorized_scenes.scene,
-            (
-                SELECT a.storage_path
-                FROM (
-                    SELECT c2.id
-                    FROM clips c2
-                    LEFT JOIN clip_sensitive_acl csa2 ON csa2.clip_id = c2.id
-                    LEFT JOIN sensitive_group_members sgm2 ON sgm2.group_id = csa2.group_id
-                    WHERE c2.project_id = UUID_TO_BIN(:p_sub, 1)
-                      AND c2.scene = authorized_scenes.scene
-                      {$aclSql}
-                    GROUP BY c2.id
-                    ORDER BY c2.created_at ASC
-                    LIMIT 1
-                ) AS authorized_first_clip
-                INNER JOIN clip_assets a ON a.clip_id = authorized_first_clip.id
-                WHERE a.asset_type = 'poster'
-                ORDER BY a.created_at DESC
-                LIMIT 1
-            ) AS poster_path
-        FROM (
-            SELECT c.scene
-            FROM clips c
-            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-            WHERE c.project_id = UUID_TO_BIN(:p, 1)
-              AND c.scene IN ({$inClause})
-              {$aclSql}
-            GROUP BY c.scene
-        ) AS authorized_scenes
-    ";
-
-        $params[':p_sub'] = $projectUuid;
-
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+        // 6. Output
         $result = [];
-        foreach ($rows as $row) {
-            $result[$row['scene']] = $row['poster_path'] ?? null;
+        foreach ($rows as $r) {
+            if (!empty($r['poster_path'])) {
+                $result[$r['scene']] = $r['poster_path'];
+            }
         }
 
-        header('Cache-Control: public, max-age=300');
-        header('ETag: "' . md5(json_encode($result)) . '"');
-
+        header('Content-Type: application/json');
         echo json_encode($result);
-        exit;
     }
 
     /**

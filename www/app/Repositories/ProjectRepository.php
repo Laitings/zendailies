@@ -77,17 +77,18 @@ class ProjectRepository
     {
         $pdo = \App\Support\DB::pdo();
         $sql = "
-        SELECT 
-            BIN_TO_UUID(p.id, 1) as person_uuid, 
-            p.first_name, 
-            p.last_name, 
-            a.email
-        FROM persons p
-        JOIN accounts_persons ap ON p.id = ap.person_id
-        JOIN accounts a ON ap.account_id = a.id
-        WHERE a.status = 'active'
-        ORDER BY p.last_name ASC, p.first_name ASC
-    ";
+            SELECT 
+                BIN_TO_UUID(p.id, 1) as person_uuid, 
+                p.first_name, 
+                p.last_name, 
+                a.email,
+                a.status  -- Add status to the SELECT list
+            FROM persons p
+            JOIN accounts_persons ap ON p.id = ap.person_id
+            JOIN accounts a ON ap.account_id = a.id
+            WHERE a.status IN ('active', 'pending') -- Include pending users
+            ORDER BY p.last_name ASC, p.first_name ASC
+        ";
         return $pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
     }
 

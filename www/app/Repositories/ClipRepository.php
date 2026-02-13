@@ -169,6 +169,9 @@ final class ClipRepository
         $limit  = max(1, (int)($options['limit'] ?? 50));
         $offset = max(0, (int)($options['offset'] ?? 0));
 
+        // FIX: Remove the LEFT JOIN to clip_sensitive_acl and sensitive_group_members
+        // These joins create duplicate rows when a clip belongs to multiple groups
+        // The visibility check is already handled properly via EXISTS subquery in the controller
         $sql = "
             SELECT
                 BIN_TO_UUID(c.id,1)              AS clip_uuid,
@@ -219,8 +222,6 @@ final class ClipRepository
             FROM clips c
             JOIN days d ON d.id = c.day_id
             LEFT JOIN clip_assets a ON a.clip_id = c.id
-            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
             WHERE " . implode(' AND ', $where) . $visibilitySql . "
             GROUP BY c.id
             ORDER BY " . implode(', ', $orderParts) . "
@@ -229,7 +230,6 @@ final class ClipRepository
         $stmt = $this->pdo->prepare($sql);
 
         foreach ($params as $k => $v) {
-            if ($k === ':limit' || $k === ':offset') continue;
             $stmt->bindValue($k, $v);
         }
         $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
@@ -241,13 +241,14 @@ final class ClipRepository
     }
 
     /**
-     * List clips for the entire project (All Days mode).
+     * Same as listForDay, but for ALL days (project-level) -> uses the 'all' logic
      */
     public function listForProject(
         string $projectUuid,
         array $filters = [],
         array $options = []
     ): array {
+        // Same logic, just skip the day_id filter
         $where = [
             'c.project_id = UUID_TO_BIN(:project_uuid, 1)',
         ];
@@ -256,7 +257,7 @@ final class ClipRepository
             ':project_uuid' => $projectUuid,
         ];
 
-        // --- Filters (Same as listForDay) ---
+        // Filter logic (mirrors listForDay)
         $scene  = trim((string)($filters['scene'] ?? ''));
         $slate  = trim((string)($filters['slate'] ?? ''));
         $take   = trim((string)($filters['take']  ?? ''));
@@ -265,19 +266,22 @@ final class ClipRepository
         $select = (string)($filters['select'] ?? '');
         $text   = trim((string)($filters['text'] ?? ''));
 
-        // [New Code - Copy and replace]
         if ($scene !== '') {
-            $where[] = 'c.scene LIKE :scene';
-            $params[':scene'] = $scene . '%'; // Starts with...
+            $where[] = 'c.scene LIKE :scene_prefix';
+            $params[':scene_prefix'] = $scene . '%';
         }
         if ($slate !== '') {
-            $where[] = 'c.slate LIKE :slate';
-            $params[':slate'] = $slate . '%'; // Starts with...
+            $where[] = 'c.slate LIKE :slate_prefix';
+            $params[':slate_prefix'] = $slate . '%';
         }
         if ($take !== '') {
-            // Switch to string matching to allow "4" to find "42", "4A", etc.
-            $where[] = 'c.take LIKE :take';
-            $params[':take'] = $take . '%';
+            if (ctype_digit($take)) {
+                $where[] = 'CAST(c.take_int AS CHAR) LIKE :take_prefix_int';
+                $params[':take_prefix_int'] = $take . '%';
+            } else {
+                $where[] = 'c.take LIKE :take_prefix';
+                $params[':take_prefix'] = $take . '%';
+            }
         }
         if ($camera !== '') {
             $where[] = 'c.camera = :camera';
@@ -297,14 +301,14 @@ final class ClipRepository
             $params[':t2'] = '%' . $text . '%';
         }
 
-        // --- Sensitive-ACL visibility ---
+        // Visibility
         $visibilitySql    = (string)($options['visibility_sql'] ?? '');
         $visibilityParams = (array)($options['visibility_params'] ?? []);
         foreach ($visibilityParams as $k => $v) {
             $params[$k] = $v;
         }
 
-        // --- Sort logic ---
+        // Sort
         $sortWhitelist = [
             'created_at' => 'c.created_at',
             'scene'      => 'c.scene',
@@ -329,16 +333,19 @@ final class ClipRepository
             foreach (explode(',', $sortSpec) as $part) {
                 $k = trim($part);
                 if ($k === '') continue;
+
                 $dir = $globalDir;
                 if ($k[0] === '-') {
                     $k   = substr($k, 1);
                     $dir = 'DESC';
                 }
+
                 if (isset($sortWhitelist[$k])) {
                     $orderParts[] = $sortWhitelist[$k] . ' ' . $dir;
                 }
             }
         }
+
         if (!$orderParts) {
             $orderParts[] = 'c.scene ASC';
             $orderParts[] = 'c.slate ASC';
@@ -349,19 +356,44 @@ final class ClipRepository
         $limit  = max(1, (int)($options['limit'] ?? 50));
         $offset = max(0, (int)($options['offset'] ?? 0));
 
+        // FIX: Remove the LEFT JOIN to clip_sensitive_acl and sensitive_group_members
         $sql = "
             SELECT
-                BIN_TO_UUID(c.id,1) AS clip_uuid,
-                BIN_TO_UUID(c.day_id,1) AS day_uuid,
-                c.scene, c.slate, c.take, c.take_int, c.camera, c.reel, c.file_name,
-                c.tc_start, c.tc_end, c.duration_ms, c.rating, c.is_select, c.is_restricted, c.created_at,
-                d.shoot_date,
+                BIN_TO_UUID(c.id,1)              AS clip_uuid,
+                BIN_TO_UUID(c.day_id,1)          AS day_uuid,
+                c.scene,
+                c.slate,
+                c.take,
+                c.take_int,
+                c.camera,
+                c.rating,
+                c.is_select,
+                c.is_restricted,
+                c.created_at,
+                c.reel,
+                c.file_name,
+                c.tc_start,
+                c.duration_ms,
+                c.fps,
+
                 MAX(CASE WHEN a.asset_type = 'poster'    THEN a.storage_path END) AS poster_path,
                 MAX(CASE WHEN a.asset_type = 'proxy_web' THEN a.storage_path END) AS proxy_path,
-                (SELECT COUNT(*) FROM clip_assets a2 WHERE a2.clip_id = c.id AND a2.asset_type = 'proxy_web') AS proxy_count,
-                (SELECT ej.state FROM jobs_queue ej WHERE ej.clip_id = c.id ORDER BY ej.id DESC LIMIT 1) AS job_state,
-                
-                -- ADD THIS SUBQUERY HERE:
+
+                (
+                    SELECT COUNT(*)
+                    FROM clip_assets a2
+                    WHERE a2.clip_id = c.id
+                    AND a2.asset_type = 'proxy_web'
+                ) AS proxy_count,
+
+                (
+                    SELECT ej.state
+                    FROM jobs_queue ej
+                    WHERE ej.clip_id = c.id
+                    ORDER BY ej.id DESC
+                    LIMIT 1
+                ) AS job_state,
+
                 (
                     SELECT GROUP_CONCAT(BIN_TO_UUID(group_id, 1))
                     FROM clip_sensitive_acl
@@ -371,8 +403,6 @@ final class ClipRepository
             FROM clips c
             JOIN days d ON d.id = c.day_id
             LEFT JOIN clip_assets a ON a.clip_id = c.id
-            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
             WHERE " . implode(' AND ', $where) . $visibilitySql . "
             GROUP BY c.id
             ORDER BY " . implode(', ', $orderParts) . "
@@ -381,164 +411,18 @@ final class ClipRepository
 
         $stmt = $this->pdo->prepare($sql);
         foreach ($params as $k => $v) {
-            if ($k === ':limit' || $k === ':offset') continue;
             $stmt->bindValue($k, $v);
         }
         $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
         $stmt->execute();
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
     /**
-     * Count clips for the project (All days).
-     */
-    public function countForProject(
-        string $projectUuid,
-        array $filters = [],
-        array $options = []
-    ): int {
-        $where = ['c.project_id = UUID_TO_BIN(:project_uuid, 1)'];
-        $params = [':project_uuid' => $projectUuid];
-
-        // --- Duplicated Filter Logic ---
-        $scene = trim((string)($filters['scene'] ?? ''));
-        $slate = trim((string)($filters['slate'] ?? ''));
-        $take = trim((string)($filters['take'] ?? ''));
-        $camera = trim((string)($filters['camera'] ?? ''));
-        $rating = (string)($filters['rating'] ?? '');
-        $select = (string)($filters['select'] ?? '');
-        $text = trim((string)($filters['text'] ?? ''));
-
-        // [New Code - Copy and replace]
-        if ($scene !== '') {
-            $where[] = 'c.scene LIKE :scene';
-            $params[':scene'] = $scene . '%'; // Starts with...
-        }
-        if ($slate !== '') {
-            $where[] = 'c.slate LIKE :slate';
-            $params[':slate'] = $slate . '%'; // Starts with...
-        }
-        if ($take !== '') {
-            // Switch to string matching to allow "4" to find "42", "4A", etc.
-            $where[] = 'c.take LIKE :take';
-            $params[':take'] = $take . '%';
-        }
-        if ($camera !== '') {
-            $where[] = 'c.camera = :camera';
-            $params[':camera'] = $camera;
-        }
-        if ($rating !== '') {
-            $where[] = 'c.rating = :rating';
-            $params[':rating'] = (int)$rating;
-        }
-        if ($select !== '') {
-            $where[] = 'c.is_select = :is_select';
-            $params[':is_select'] = (int)$select;
-        }
-        // [New Code]
-        if ($text !== '') {
-            $where[] = '(c.file_name LIKE :t1 OR c.reel LIKE :t2)';
-            $params[':t1'] = '%' . $text . '%';
-            $params[':t2'] = '%' . $text . '%';
-        }
-
-        $visibilitySql = (string)($options['visibility_sql'] ?? '');
-        $visibilityParams = (array)($options['visibility_params'] ?? []);
-        foreach ($visibilityParams as $k => $v) {
-            $params[$k] = $v;
-        }
-
-        $sql = "
-            SELECT COUNT(DISTINCT c.id)
-            FROM clips c
-            JOIN days d ON d.id = c.day_id
-            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-            WHERE " . implode(' AND ', $where) . $visibilitySql . "
-        ";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        return (int)$stmt->fetchColumn();
-    }
-
-    /**
-     * Sum duration for the project (All days).
-     */
-    public function sumDurationForProject(
-        string $projectUuid,
-        array $filters = [],
-        array $options = []
-    ): int {
-        $where = ['c.project_id = UUID_TO_BIN(:project_uuid, 1)'];
-        $params = [':project_uuid' => $projectUuid];
-
-        // --- Duplicated Filter Logic ---
-        $scene = trim((string)($filters['scene'] ?? ''));
-        $slate = trim((string)($filters['slate'] ?? ''));
-        $take = trim((string)($filters['take'] ?? ''));
-        $camera = trim((string)($filters['camera'] ?? ''));
-        $rating = (string)($filters['rating'] ?? '');
-        $select = (string)($filters['select'] ?? '');
-        $text = trim((string)($filters['text'] ?? ''));
-
-        // [New Code - Copy and replace]
-        if ($scene !== '') {
-            $where[] = 'c.scene LIKE :scene';
-            $params[':scene'] = $scene . '%'; // Starts with...
-        }
-        if ($slate !== '') {
-            $where[] = 'c.slate LIKE :slate';
-            $params[':slate'] = $slate . '%'; // Starts with...
-        }
-        if ($take !== '') {
-            // Switch to string matching to allow "4" to find "42", "4A", etc.
-            $where[] = 'c.take LIKE :take';
-            $params[':take'] = $take . '%';
-        }
-        if ($camera !== '') {
-            $where[] = 'c.camera = :camera';
-            $params[':camera'] = $camera;
-        }
-        if ($rating !== '') {
-            $where[] = 'c.rating = :rating';
-            $params[':rating'] = (int)$rating;
-        }
-        if ($select !== '') {
-            $where[] = 'c.is_select = :is_select';
-            $params[':is_select'] = (int)$select;
-        }
-        // [New Code]
-        if ($text !== '') {
-            $where[] = '(c.file_name LIKE :t1 OR c.reel LIKE :t2)';
-            $params[':t1'] = '%' . $text . '%';
-            $params[':t2'] = '%' . $text . '%';
-        }
-        $visibilitySql = (string)($options['visibility_sql'] ?? '');
-        $visibilityParams = (array)($options['visibility_params'] ?? []);
-        foreach ($visibilityParams as $k => $v) {
-            $params[$k] = $v;
-        }
-
-        $sql = "
-            SELECT COALESCE(SUM(sq.duration_ms), 0) AS total_ms
-            FROM (
-                SELECT DISTINCT c.id, c.duration_ms
-                FROM clips c
-                JOIN days d ON d.id = c.day_id
-                LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-                LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
-                WHERE " . implode(' AND ', $where) . $visibilitySql . "
-            ) AS sq
-        ";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return (int)($row['total_ms'] ?? 0);
-    }
-    /**
-     * Count clips for the same filters, for pagination.
+     * Count clips (unfiltered or filtered).
      */
     public function countForDay(
         string $projectUuid,
@@ -550,13 +434,12 @@ final class ClipRepository
             'c.project_id = UUID_TO_BIN(:project_uuid, 1)',
             'c.day_id     = UUID_TO_BIN(:day_uuid, 1)',
         ];
-
         $params = [
             ':project_uuid' => $projectUuid,
             ':day_uuid'     => $dayUuid,
         ];
 
-        // Reuse the same basic filters as listForDay (scene/slate/take/camera/rating/select/text)
+        // Apply filters
         $scene  = trim((string)($filters['scene'] ?? ''));
         $slate  = trim((string)($filters['slate'] ?? ''));
         $take   = trim((string)($filters['take']  ?? ''));
@@ -565,19 +448,14 @@ final class ClipRepository
         $select = (string)($filters['select'] ?? '');
         $text   = trim((string)($filters['text'] ?? ''));
 
-        // Scene: prefix match
         if ($scene !== '') {
             $where[] = 'c.scene LIKE :scene_prefix';
             $params[':scene_prefix'] = $scene . '%';
         }
-
-        // Slate: prefix match
         if ($slate !== '') {
             $where[] = 'c.slate LIKE :slate_prefix';
             $params[':slate_prefix'] = $slate . '%';
         }
-
-        // Take: prefix match with numeric branch
         if ($take !== '') {
             if (ctype_digit($take)) {
                 $where[] = 'CAST(c.take_int AS CHAR) LIKE :take_prefix_int';
@@ -587,7 +465,6 @@ final class ClipRepository
                 $params[':take_prefix'] = $take . '%';
             }
         }
-
         if ($camera !== '') {
             $where[] = 'c.camera = :camera';
             $params[':camera'] = $camera;
@@ -606,32 +483,108 @@ final class ClipRepository
             $params[':t2'] = '%' . $text . '%';
         }
 
-
-
+        // Visibility
         $visibilitySql    = (string)($options['visibility_sql'] ?? '');
         $visibilityParams = (array)($options['visibility_params'] ?? []);
         foreach ($visibilityParams as $k => $v) {
             $params[$k] = $v;
         }
 
+        // FIX: Use DISTINCT to avoid counting duplicate rows and remove the problematic JOINs
         $sql = "
-            SELECT COUNT(DISTINCT c.id)
+            SELECT COUNT(DISTINCT c.id) AS cnt
             FROM clips c
             JOIN days d ON d.id = c.day_id
-            LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-            LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
             WHERE " . implode(' AND ', $where) . $visibilitySql . "
         ";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        return (int)$stmt->fetchColumn();
+        return (int)($row['cnt'] ?? 0);
+    }
+
+    public function countForProject(
+        string $projectUuid,
+        array $filters = [],
+        array $options = []
+    ): int {
+        $where = [
+            'c.project_id = UUID_TO_BIN(:project_uuid, 1)',
+        ];
+        $params = [
+            ':project_uuid' => $projectUuid,
+        ];
+
+        // Filters
+        $scene  = trim((string)($filters['scene'] ?? ''));
+        $slate  = trim((string)($filters['slate'] ?? ''));
+        $take   = trim((string)($filters['take']  ?? ''));
+        $camera = trim((string)($filters['camera'] ?? ''));
+        $rating = (string)($filters['rating'] ?? '');
+        $select = (string)($filters['select'] ?? '');
+        $text   = trim((string)($filters['text'] ?? ''));
+
+        if ($scene !== '') {
+            $where[] = 'c.scene LIKE :scene_prefix';
+            $params[':scene_prefix'] = $scene . '%';
+        }
+        if ($slate !== '') {
+            $where[] = 'c.slate LIKE :slate_prefix';
+            $params[':slate_prefix'] = $slate . '%';
+        }
+        if ($take !== '') {
+            if (ctype_digit($take)) {
+                $where[] = 'CAST(c.take_int AS CHAR) LIKE :take_prefix_int';
+                $params[':take_prefix_int'] = $take . '%';
+            } else {
+                $where[] = 'c.take LIKE :take_prefix';
+                $params[':take_prefix'] = $take . '%';
+            }
+        }
+        if ($camera !== '') {
+            $where[] = 'c.camera = :camera';
+            $params[':camera'] = $camera;
+        }
+        if ($rating !== '') {
+            $where[] = 'c.rating = :rating';
+            $params[':rating'] = (int)$rating;
+        }
+        if ($select !== '') {
+            $where[] = 'c.is_select = :is_select';
+            $params[':is_select'] = (int)$select;
+        }
+        if ($text !== '') {
+            $where[] = '(c.file_name LIKE :t1 OR c.reel LIKE :t2)';
+            $params[':t1'] = '%' . $text . '%';
+            $params[':t2'] = '%' . $text . '%';
+        }
+
+        // Visibility
+        $visibilitySql    = (string)($options['visibility_sql'] ?? '');
+        $visibilityParams = (array)($options['visibility_params'] ?? []);
+        foreach ($visibilityParams as $k => $v) {
+            $params[$k] = $v;
+        }
+
+        // FIX: Use DISTINCT and remove problematic JOINs
+        $sql = "
+            SELECT COUNT(DISTINCT c.id) AS cnt
+            FROM clips c
+            JOIN days d ON d.id = c.day_id
+            WHERE " . implode(' AND ', $where) . $visibilitySql . "
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return (int)($row['cnt'] ?? 0);
     }
 
     /**
-     * Sum duration_ms for all clips in a day (honouring the same filters + ACL).
-     * This is your "day runtime" calculation.
+     * Sum durations (for total runtime).
      */
     public function sumDurationForDay(
         string $projectUuid,
@@ -643,13 +596,12 @@ final class ClipRepository
             'c.project_id = UUID_TO_BIN(:project_uuid, 1)',
             'c.day_id     = UUID_TO_BIN(:day_uuid, 1)',
         ];
-
         $params = [
             ':project_uuid' => $projectUuid,
             ':day_uuid'     => $dayUuid,
         ];
 
-        // Same filter logic as above
+        // Filters
         $scene  = trim((string)($filters['scene'] ?? ''));
         $slate  = trim((string)($filters['slate'] ?? ''));
         $take   = trim((string)($filters['take']  ?? ''));
@@ -658,19 +610,14 @@ final class ClipRepository
         $select = (string)($filters['select'] ?? '');
         $text   = trim((string)($filters['text'] ?? ''));
 
-        // Scene: prefix match
         if ($scene !== '') {
             $where[] = 'c.scene LIKE :scene_prefix';
             $params[':scene_prefix'] = $scene . '%';
         }
-
-        // Slate: prefix match
         if ($slate !== '') {
             $where[] = 'c.slate LIKE :slate_prefix';
             $params[':slate_prefix'] = $slate . '%';
         }
-
-        // Take: prefix match
         if ($take !== '') {
             if (ctype_digit($take)) {
                 $where[] = 'CAST(c.take_int AS CHAR) LIKE :take_prefix_int';
@@ -698,7 +645,88 @@ final class ClipRepository
             $params[':t2'] = '%' . $text . '%';
         }
 
+        // Visibility
+        $visibilitySql    = (string)($options['visibility_sql'] ?? '');
+        $visibilityParams = (array)($options['visibility_params'] ?? []);
+        foreach ($visibilityParams as $k => $v) {
+            $params[$k] = $v;
+        }
 
+        // FIX: Use subquery with DISTINCT to avoid summing duplication from JOINs
+        $sql = "
+            SELECT COALESCE(SUM(sq.duration_ms), 0) AS total_ms
+            FROM (
+                SELECT DISTINCT c.id, c.duration_ms
+                FROM clips c
+                JOIN days d ON d.id = c.day_id
+                WHERE " . implode(' AND ', $where) . $visibilitySql . "
+            ) AS sq
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return (int)($row['total_ms'] ?? 0);
+    }
+
+    public function sumDurationForProject(
+        string $projectUuid,
+        array $filters = [],
+        array $options = []
+    ): int {
+        $where = [
+            'c.project_id = UUID_TO_BIN(:project_uuid, 1)',
+        ];
+        $params = [
+            ':project_uuid' => $projectUuid,
+        ];
+
+        // Filters
+        $scene  = trim((string)($filters['scene'] ?? ''));
+        $slate  = trim((string)($filters['slate'] ?? ''));
+        $take   = trim((string)($filters['take']  ?? ''));
+        $camera = trim((string)($filters['camera'] ?? ''));
+        $rating = (string)($filters['rating'] ?? '');
+        $select = (string)($filters['select'] ?? '');
+        $text   = trim((string)($filters['text'] ?? ''));
+
+        if ($scene !== '') {
+            $where[] = 'c.scene LIKE :scene_prefix';
+            $params[':scene_prefix'] = $scene . '%';
+        }
+        if ($slate !== '') {
+            $where[] = 'c.slate LIKE :slate_prefix';
+            $params[':slate_prefix'] = $slate . '%';
+        }
+        if ($take !== '') {
+            if (ctype_digit($take)) {
+                $where[] = 'CAST(c.take_int AS CHAR) LIKE :take_prefix_int';
+                $params[':take_prefix_int'] = $take . '%';
+            } else {
+                $where[] = 'c.take LIKE :take_prefix';
+                $params[':take_prefix'] = $take . '%';
+            }
+        }
+        if ($camera !== '') {
+            $where[] = 'c.camera = :camera';
+            $params[':camera'] = $camera;
+        }
+        if ($rating !== '') {
+            $where[] = 'c.rating = :rating';
+            $params[':rating'] = (int)$rating;
+        }
+        if ($select !== '') {
+            $where[] = 'c.is_select = :is_select';
+            $params[':is_select'] = (int)$select;
+        }
+        if ($text !== '') {
+            $where[] = '(c.file_name LIKE :t1 OR c.reel LIKE :t2)';
+            $params[':t1'] = '%' . $text . '%';
+            $params[':t2'] = '%' . $text . '%';
+        }
+
+        // Visibility
         $visibilitySql    = (string)($options['visibility_sql'] ?? '');
         $visibilityParams = (array)($options['visibility_params'] ?? []);
         foreach ($visibilityParams as $k => $v) {
@@ -711,8 +739,6 @@ final class ClipRepository
                 SELECT DISTINCT c.id, c.duration_ms
                 FROM clips c
                 JOIN days d ON d.id = c.day_id
-                LEFT JOIN clip_sensitive_acl csa ON csa.clip_id = c.id
-                LEFT JOIN sensitive_group_members sgm ON sgm.group_id = csa.group_id
                 WHERE " . implode(' AND ', $where) . $visibilitySql . "
             ) AS sq
         ";

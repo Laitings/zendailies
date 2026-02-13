@@ -172,23 +172,46 @@ class ProjectDaysController
         ];
         $orderBy = $colMap[$sort] . ' ' . $dir;
 
-        // --- Days + clip counts (single query) ---
-        // Regular users should only see published days
+        // --- Days + clip counts + ACL Security ---
+
+        // 1. Base WHERE: Project Scope
         $where = "d.project_id = UUID_TO_BIN(:pid,1)";
+        $params = [':pid' => $projectUuid];
+
+        // 2. Publish Logic: Regular users only see published days
         if (!$isSuper && !$isProjectAdmin) {
             $where .= " AND d.published_at IS NOT NULL";
         }
 
-        // Build ACL-aware clip count subquery
+        // 3. Clip Count ACL & Day ACL Logic
         $clipCountAcl = '';
-        $executeParams = [':pid' => $projectUuid];
+
+        // Define the viewer UUID once, defaulting to zero-uuid if not set
+        $viewerUuid = $personUuid ?? '00000000-0000-0000-0000-000000000000';
 
         if (!$isSuper && !$isProjectAdmin) {
-            // Regular users: filter clips based on sensitive ACL
-            $clipCountAcl = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid,1))";
-            $executeParams[':viewer_person_uuid'] = ($personUuid ?? '00000000-0000-0000-0000-000000000000');
+            // A. Restrict Clip Counts
+            $clipCountAcl = " AND (csa.group_id IS NULL OR sgm.person_id = UUID_TO_BIN(:viewer_person_uuid_clips, 1))";
+
+            // B. Restrict Day Rows (Day ACL)
+            $where .= " AND (
+                (NOT EXISTS (SELECT 1 FROM day_sensitive_acl dsa_chk WHERE dsa_chk.day_id = d.id))
+                OR
+                (EXISTS (
+                    SELECT 1 
+                    FROM day_sensitive_acl dsa_access
+                    JOIN sensitive_group_members sgm_access ON dsa_access.group_id = sgm_access.group_id
+                    WHERE dsa_access.day_id = d.id 
+                      AND sgm_access.person_id = UUID_TO_BIN(:viewer_person_uuid_days, 1)
+                ))
+            )";
+
+            // Add params with distinct names to avoid confusion/collisions
+            $params[':viewer_person_uuid_clips'] = $viewerUuid;
+            $params[':viewer_person_uuid_days']  = $viewerUuid;
         }
 
+        // 4. The Main Query
         $sql = "
             SELECT
                 BIN_TO_UUID(d.id,1) AS day_uuid,
@@ -196,7 +219,16 @@ class ProjectDaysController
                 d.unit,
                 d.title,
                 d.published_at,
-                COALESCE(c.cnt, 0) AS clip_count
+                COALESCE(c.cnt, 0) AS clip_count,
+                (
+                    SELECT JSON_ARRAYAGG(JSON_OBJECT(
+                        'uuid', BIN_TO_UUID(sg.id,1),
+                        'name', sg.name
+                    ))
+                    FROM day_sensitive_acl dsa
+                    JOIN sensitive_groups sg ON sg.id = dsa.group_id
+                    WHERE dsa.day_id = d.id
+                ) AS security_groups_json
             FROM days d
             LEFT JOIN (
                 SELECT day_id, COUNT(DISTINCT clips.id) AS cnt
@@ -212,8 +244,17 @@ class ProjectDaysController
         ";
 
         $daysStmt = $pdo->prepare($sql);
-        $daysStmt->execute($executeParams);
+        $daysStmt->execute($params);
         $days = $daysStmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // --- Fetch All Available Security Groups (For the Admin Modal) ---
+        $allGroups = [];
+        if ($isProjectAdmin || $isSuper) {
+            // REMOVED: , color
+            $gStmt = $pdo->prepare("SELECT BIN_TO_UUID(id,1) as id, name FROM sensitive_groups WHERE project_id = UUID_TO_BIN(:p,1) ORDER BY name ASC");
+            $gStmt->execute([':p' => $projectUuid]);
+            $allGroups = $gStmt->fetchAll(\PDO::FETCH_ASSOC);
+        }
 
         // --- 1. DEFINE ACL LOGIC FOR SCENES ---
         $aclSql = '';
@@ -279,6 +320,7 @@ class ProjectDaysController
             'layout'         => $layoutFile,
             'project'        => $projectRow,
             'days'           => $days,
+            'allSecurityGroups' => $allGroups,
             'scenes'         => $scenesOut,
             'sensitiveScenes' => $sensitiveScenes, // <--- Added this
             'routes'         => $routes,
@@ -659,6 +701,7 @@ class ProjectDaysController
         ]);
 
         // back to list
+        $_SESSION['flash_success'] = "Day updated successfully.";
         header("Location: /admin/projects/$projectUuid/days");
     }
 
@@ -884,6 +927,59 @@ class ProjectDaysController
 
         // Redirect back to project days list
         header("Location: /admin/projects/{$projectUuid}/days?deleted=1");
+        exit;
+    }
+
+    public function restrict(string $projectUuid, string $dayUuid): void
+    {
+        $pdo = DB::pdo();
+
+        // 1. AuthZ
+        if (!$this->canManageProject($projectUuid)) {
+            http_response_code(403);
+            exit("Forbidden");
+        }
+
+        // 2. Parse Inputs
+        $groupIds = $_POST['groups'] ?? []; // Array of UUID strings
+        if (!is_array($groupIds)) {
+            $groupIds = [];
+        }
+
+        try {
+            $pdo->beginTransaction();
+
+            // 3. Clear existing ACLs for this day
+            $del = $pdo->prepare("
+                DELETE FROM day_sensitive_acl 
+                WHERE day_id = UUID_TO_BIN(:day, 1)
+            ");
+            $del->execute([':day' => $dayUuid]);
+
+            // 4. Insert new ACLs
+            if (!empty($groupIds)) {
+                $ins = $pdo->prepare("
+                    INSERT INTO day_sensitive_acl (day_id, group_id)
+                    VALUES (UUID_TO_BIN(:day, 1), UUID_TO_BIN(:group, 1))
+                ");
+                foreach ($groupIds as $gUuid) {
+                    if (!empty($gUuid)) {
+                        $ins->execute([':day' => $dayUuid, ':group' => $gUuid]);
+                    }
+                }
+            }
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            http_response_code(500);
+            echo "Error updating permissions: " . $e->getMessage();
+            return;
+        }
+
+        // Return JSON for the AJAX modal
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true]);
         exit;
     }
 }
